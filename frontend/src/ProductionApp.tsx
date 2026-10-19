@@ -10,6 +10,10 @@ import {
   LogOut,
   CheckCircle2,
   AlertTriangle,
+  Code2,
+  Database,
+  Layers3,
+  Sparkles,
 } from "lucide-react";
 const API = "";
 export function Login() {
@@ -36,6 +40,15 @@ export function Login() {
   }
   return (
     <div className="authPage">
+      <aside className="authBrandPanel">
+        <a className="studioBrand" href="/" aria-label="Data Engineering Interview Studio home">
+          <span className="studioBrandMark"><Layers3 size={19} /></span>
+          <span><strong>Data Engineering</strong><small>INTERVIEW STUDIO</small></span>
+        </a>
+        <h2>Build the instincts behind reliable data.</h2>
+        <p>Learn, practice, and get interview-ready across the tools used by modern data teams.</p>
+        <div className="authFeatureList"><span><Database size={15} /> Real PostgreSQL practice</span><span><Code2 size={15} /> Isolated Python and Spark labs</span><span><Sparkles size={15} /> Progress paths and AI tutoring</span></div>
+      </aside>
       <div className="authCard">
         <div className="brandMark">✦</div>
         <h1>SQL Practice Online</h1>

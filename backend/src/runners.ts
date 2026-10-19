@@ -3,10 +3,16 @@ import { z } from "zod";
 export type RunnerLanguage = "python" | "pyspark";
 
 const runnerResultSchema = z.object({
-  status: z.enum(["passed", "failed", "timeout", "error"]),
+  status: z.enum(["passed", "failed", "timeout", "error", "resource_limit_exceeded", "cancelled"]),
   executionMs: z.number().int().min(0).max(120_000),
   tests: z.array(z.object({ name: z.string().min(1).max(120), passed: z.boolean() }).strict()).max(100),
-  message: z.string().max(500).optional()
+  message: z.string().max(500).optional(),
+  output: z.object({
+    columns: z.array(z.string().max(128)).max(100).optional(),
+    schema: z.array(z.object({ name: z.string().max(128), type: z.string().max(80) }).strict()).max(100).optional(),
+    rows: z.array(z.record(z.string(), z.unknown())).max(500).optional(),
+    console: z.string().max(16_000).optional()
+  }).strict().optional()
 }).strict();
 
 function runnerConfig(language: RunnerLanguage) {
@@ -20,8 +26,10 @@ function runnerConfig(language: RunnerLanguage) {
   } catch {
     return null;
   }
-  const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
-  if (url.protocol !== "https:" && !(process.env.NODE_ENV !== "production" && local && url.protocol === "http:")) return null;
+  const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname) || (process.env.NODE_ENV !== "production" && url.hostname === "spark_runner");
+  const privateSparkHttp = language === "pyspark" && process.env.SPARK_RUNNER_ALLOW_PRIVATE_HTTP === "true" && url.hostname === "spark_runner" && url.protocol === "http:";
+  const privatePythonHttp = language === "python" && process.env.PYTHON_RUNNER_ALLOW_PRIVATE_HTTP === "true" && url.hostname === "python_runner" && url.protocol === "http:";
+  if (url.protocol !== "https:" && !(process.env.NODE_ENV !== "production" && local && url.protocol === "http:") && !privateSparkHttp && !privatePythonHttp) return null;
   if (url.username || url.password || url.search || url.hash) return null;
   url.pathname = url.pathname.replace(/\/$/, "");
   return { url, token };
@@ -51,6 +59,7 @@ export type RunnerTestCase = { name: string; input: unknown; expected: unknown }
 export async function executeOnRunner(input: {
   language: RunnerLanguage;
   taskId: string;
+  functionName?: string;
   code: string;
   testCases: RunnerTestCase[];
 }) {
@@ -65,8 +74,8 @@ export async function executeOnRunner(input: {
       method: "POST",
       redirect: "error",
       headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ taskId: input.taskId, language: input.language, code: input.code, testCases: input.testCases }),
-      signal: AbortSignal.timeout(15_000)
+      body: JSON.stringify({ taskId: input.taskId, functionName: input.functionName || input.taskId.replace(/-/g, "_"), language: input.language, code: input.code, testCases: input.testCases }),
+      signal: AbortSignal.timeout(input.language === "pyspark" ? 150_000 : 15_000)
     });
     const text = await response.text();
     if (!response.ok || Buffer.byteLength(text, "utf8") > 512_000) return { status: "error" as const, message: "Execution service returned an invalid response." };
@@ -84,9 +93,73 @@ export async function executeOnRunner(input: {
       correct: passed,
       executionMs: parsed.data.executionMs,
       tests: parsed.data.tests,
-      message: parsed.data.message
+      message: parsed.data.message,
+      output: parsed.data.output
     };
   } catch {
     return { status: "unavailable" as const, message: "Execution service is unavailable." };
+  }
+}
+
+const sparkJobState = z.enum(["queued", "running", "succeeded", "failed", "timed_out", "cancelled", "resource_limit_exceeded"]);
+const sparkJobResult = z.object({
+  status: z.enum(["passed", "failed", "timeout", "error", "resource_limit_exceeded", "cancelled"]),
+  executionMs: z.number().int().min(0).max(120_000),
+  tests: z.array(z.object({ name: z.string().min(1).max(120), passed: z.boolean(), status: z.string().max(40).optional(), executionMs: z.number().int().min(0).optional(), message: z.string().max(500).optional() }).strict()).max(3),
+  output: z.object({ columns: z.array(z.string()).optional(), schema: z.array(z.object({ name: z.string(), type: z.string() }).strict()).optional(), rows: z.array(z.record(z.string(), z.unknown())).max(500).optional(), console: z.string().max(16_000).optional() }).strict().optional(),
+  message: z.string().max(500).nullable().optional()
+}).strict();
+
+export async function createSparkJob(input: { taskId: string; functionName: string; code: string; testCases: RunnerTestCase[]; returnOutput: boolean }) {
+  const config = runnerConfig("pyspark");
+  if (!config) return { status: "unavailable" as const };
+  if (Buffer.byteLength(input.code, "utf8") > 32_000 || input.testCases.length < 1 || input.testCases.length > 3 || !/^[a-zA-Z_][a-zA-Z0-9_]{0,100}$/.test(input.functionName)) return { status: "invalid" as const };
+  try {
+    const response = await fetch(new URL("/v1/jobs", config.url), {
+      method: "POST",
+      redirect: "error",
+      headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ language: "pyspark", taskId: input.taskId, functionName: input.functionName, code: input.code, testCases: input.testCases, returnOutput: input.returnOutput }),
+      signal: AbortSignal.timeout(8_000)
+    });
+    if (response.status === 429) return { status: "capacity" as const };
+    const payload: unknown = await response.json();
+    if (!response.ok) return { status: "error" as const };
+    const parsed = z.object({ jobId: z.string().uuid(), status: z.literal("queued"), createdAt: z.string() }).strict().safeParse(payload);
+    return parsed.success ? { status: "ok" as const, job: parsed.data } : { status: "error" as const };
+  } catch {
+    return { status: "unavailable" as const };
+  }
+}
+
+export async function getSparkJob(jobId: string) {
+  const config = runnerConfig("pyspark");
+  if (!config) return { status: "unavailable" as const };
+  try {
+    const response = await fetch(new URL(`/v1/jobs/${encodeURIComponent(jobId)}`, config.url), {
+      headers: { Authorization: `Bearer ${config.token}` }, redirect: "error", signal: AbortSignal.timeout(5_000)
+    });
+    if (response.status === 404) return { status: "not_found" as const };
+    const payload: unknown = await response.json();
+    const parsed = z.object({ jobId: z.string().uuid(), status: sparkJobState, createdAt: z.string(), startedAt: z.string().nullable().optional(), finishedAt: z.string().nullable().optional(), result: sparkJobResult.nullable() }).strict().safeParse(payload);
+    return response.ok && parsed.success ? { status: "ok" as const, job: parsed.data } : { status: "error" as const };
+  } catch {
+    return { status: "unavailable" as const };
+  }
+}
+
+export async function cancelSparkJob(jobId: string) {
+  const config = runnerConfig("pyspark");
+  if (!config) return { status: "unavailable" as const };
+  try {
+    const response = await fetch(new URL(`/v1/jobs/${encodeURIComponent(jobId)}`, config.url), {
+      method: "DELETE", headers: { Authorization: `Bearer ${config.token}` }, redirect: "error", signal: AbortSignal.timeout(5_000)
+    });
+    if (response.status === 404) return { status: "not_found" as const };
+    if (response.status === 409) return { status: "complete" as const };
+    if (!response.ok) return { status: "error" as const };
+    return { status: "cancelled" as const };
+  } catch {
+    return { status: "unavailable" as const };
   }
 }

@@ -46,6 +46,8 @@ export async function connectMongo(): Promise<Db> {
     database.collection("learning_bookmarks").createIndex({ user_id: 1, question_id: 1 }, { unique: true }),
     database.collection("learning_question_progress").createIndex({ user_id: 1, question_id: 1 }, { unique: true }),
     database.collection("learning_question_progress").createIndex({ user_id: 1, updated_at: -1 }),
+    database.collection("spark_execution_jobs").createIndex({ user_id: 1, created_at: -1 }),
+    database.collection("spark_execution_jobs").createIndex({ expire_at: 1 }, { expireAfterSeconds: 0 }),
     database.collection("interview_sessions").createIndex({ user_id: 1, created_at: -1 }),
     database.collection("interview_sessions").createIndex({ deadline_at: 1 }, { expireAfterSeconds: 2592000 })
   ]);

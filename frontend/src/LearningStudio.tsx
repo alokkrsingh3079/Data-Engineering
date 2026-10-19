@@ -1,8 +1,13 @@
-import { useDeferredValue, useEffect, useState } from "react";
-import { ArrowRight, BookOpen, Check, Circle, Code2, Database, Layers3, RefreshCw } from "lucide-react";
+import { useDeferredValue, useEffect, useState, type CSSProperties } from "react";
+import CodeMirror from "@uiw/react-codemirror";
+import { python } from "@codemirror/lang-python";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { Activity, ArrowRight, BarChart3, BookOpen, Check, Circle, Clock3, Code2, Database, Layers3, Lightbulb, LogOut, RefreshCw, Sparkles, Target } from "lucide-react";
 import "./learning-studio.css";
 import "./learning-engine.css";
 import "./studio-polish.css";
+import "./studio-theme.css";
+import "./studio-sidebar.css";
 
 type Lesson = {
   id: string;
@@ -63,6 +68,8 @@ const API = "";
 
 export default function LearningStudio() {
   const [modules, setModules] = useState<Module[]>([]);
+  const [dashboardOpen, setDashboardOpen] = useState(location.pathname === "/");
+  const [userName, setUserName] = useState("Data Engineer");
   const [selectedModule, setSelectedModule] = useState("");
   const [selectedLesson, setSelectedLesson] = useState("");
   const [filter, setFilter] = useState("All");
@@ -108,6 +115,11 @@ export default function LearningStudio() {
       if (!response.ok) throw new Error("Learning content is temporarily unavailable.");
       const data = (await response.json()) as { modules: Module[] };
       setModules(data.modules);
+      const accountResponse = await fetch(`${API}/api/auth/me`, { credentials: "include" });
+      if (accountResponse.ok) {
+        const account = await accountResponse.json();
+        setUserName(account.user?.name || "Data Engineer");
+      }
       const runnerResponse = await fetch(`${API}/api/learning/runners/status`, { credentials: "include" });
       if (runnerResponse.ok) setRunnerStatus(await runnerResponse.json());
       const routeModule = decodeURIComponent(location.pathname.split("/")[2] || "");
@@ -139,6 +151,10 @@ export default function LearningStudio() {
   const visibleModules = filter === "All" ? modules : modules.filter((module) => module.category === filter);
   const activeModule = visibleModules.find((module) => module.id === selectedModule) || visibleModules[0];
   const activeLesson = activeModule?.lessons.find((lesson) => lesson.id === selectedLesson) || activeModule?.lessons[0];
+  const totalQuestions = modules.reduce((total, module) => total + module.questionCount, 0);
+  const completedQuestions = modules.reduce((total, module) => total + module.completedQuestions, 0);
+  const completedLessons = modules.reduce((total, module) => total + module.lessons.filter((lesson) => lesson.completed).length, 0);
+  const completionPercent = totalQuestions ? Math.round((completedQuestions / totalQuestions) * 100) : 0;
 
   useEffect(() => {
     if (!activeModule || activeModule.questionCount === 0) {
@@ -248,10 +264,11 @@ export default function LearningStudio() {
   }
 
   function chooseModule(module: Module) {
-    if (module.href === "/sql" || module.href === "/interview") {
+    if (module.href === "/sql" || module.href === "/interview" || module.href === "/pyspark") {
       location.href = module.href;
       return;
     }
+    setDashboardOpen(false);
     setSelectedModule(module.id);
     setSelectedLesson(module.lessons[0]?.id || "");
     setQuestionId("");
@@ -261,6 +278,11 @@ export default function LearningStudio() {
   }
 
   function resumeQuestion(questionToResume: Question) {
+    if (questionToResume.language === "pyspark") {
+      location.href = "/pyspark";
+      return;
+    }
+    setDashboardOpen(false);
     const targetModule = modules.find((module) => module.id === questionToResume.module_id);
     if (!targetModule) return;
     setFilter("All");
@@ -347,37 +369,74 @@ export default function LearningStudio() {
     setQuestions((current) => current.map((item) => item.id === question.id ? { ...item, bookmarked: marked } : item));
   }
 
+  async function signOut() {
+    await fetch(`${API}/api/auth/logout`, { method: "POST", credentials: "include" });
+    location.href = "/login";
+  }
+
   return (
-    <main className="studioPage">
-      <header className="studioHeader">
+    <div className="studioShell">
+      <aside className="studioSidebar">
         <a className="studioBrand" href="/" aria-label="Data Engineering Studio home">
           <span className="studioBrandMark"><Layers3 size={18} /></span>
-          <span><strong>Fieldnotes</strong><small>DATA ENGINEERING STUDIO</small></span>
+          <span><strong>Data Engineering</strong><small>INTERVIEW STUDIO</small></span>
         </a>
         <nav className="studioActions" aria-label="Main navigation">
-          <a className="studioNavActive" href="/">Learning path</a>
+          <a className={dashboardOpen ? "studioNavActive" : ""} href="/"><BarChart3 size={15} /> Dashboard</a>
           <a href="/sql"><Database size={15} /> SQL lab</a>
           <a href="/learn/python-etl"><Code2 size={15} /> Python lab</a>
-          <a href="/learn/pyspark-foundations"><Layers3 size={15} /> PySpark lab</a>
+          <a href="/pyspark"><Layers3 size={15} /> PySpark lab</a>
+          <a href="/learn/azure-data-factory"><Activity size={15} /> Azure &amp; Databricks</a>
+          <a href="/learn/etl-data-quality"><Target size={15} /> ETL testing</a>
           <a href="/interview"><BookOpen size={15} /> Interview</a>
-          <a href="/ai-interview">AI interview</a>
-          <button type="button" onClick={() => void load()} title="Refresh learning content" aria-label="Refresh learning content"><RefreshCw size={16} /></button>
+          <a href="/analytics"><BarChart3 size={15} /> Progress &amp; Analytics</a>
+          <a href="/ai-interview"><Sparkles size={15} /> AI interview</a>
+          <button type="button" onClick={() => void load()}><RefreshCw size={15} /> Refresh learning path</button>
         </nav>
-      </header>
+        <button className="studioSidebarAccount" onClick={() => void signOut()} title="Sign out"><span>{userName.slice(0, 1).toUpperCase()}</span><span><strong>{userName}</strong><small>LEARNER ACCOUNT</small></span><LogOut size={15} /></button>
+      </aside>
+      <main className="studioPage">
 
-      <section className="studioIntro">
-        <div className="studioEyebrow">PRACTICE PATHS <span>{modules.length.toString().padStart(2, "0")} MODULES</span></div>
-        <h1>Build the instincts<br />behind reliable data.</h1>
-        <p>Short, practical lessons across Python, Spark, cloud pipelines, and data quality. Progress is saved to your account.</p>
-        {recentAttempt?.question && <button className="resumeLearning" onClick={() => resumeQuestion(recentAttempt.question!)}><span>CONTINUE LAST QUESTION</span><strong>{recentAttempt.question.title}</strong><small>{recentAttempt.correct ? "Last result: correct" : "Last result: retry recommended"} <ArrowRight size={13} /></small></button>}
-      </section>
+      {dashboardOpen && <section className="studioWelcome">
+        <div className="studioWelcomeCopy"><div className="studioEyebrow"><span className="liveDot" /> YOUR LEARNING STUDIO <span>{modules.length.toString().padStart(2, "0")} TRACKS</span></div><h1>Welcome back, <span>{userName.split(" ")[0]}.</span></h1><p>Your next data engineering skill is one focused session away.</p>
+          {recentAttempt?.question && <button className="studioContinue" onClick={() => resumeQuestion(recentAttempt.question!)}><span className="continueIcon"><Activity size={18} /></span><span><small>CONTINUE LEARNING</small><strong>{recentAttempt.question.title}</strong><em>{recentAttempt.correct ? "Last result: passed" : "Last result: ready to retry"}</em></span><ArrowRight size={17} /></button>}
+        </div>
+        <div className="studioWelcomeProgress"><div className="progressRing" style={{ "--progress": `${completionPercent}%` } as CSSProperties}><div><strong>{completionPercent}%</strong><span>complete</span></div></div><span>OVERALL PROGRESS</span></div>
+      </section>}
 
       {error && <div className="studioAlert" role="alert">{error}</div>}
       <div className="studioFilters" role="tablist" aria-label="Filter learning modules">
         {categories.map((category) => <button key={category} className={filter === category ? "selected" : ""} onClick={() => setFilter(category)} role="tab" aria-selected={filter === category}>{category}</button>)}
       </div>
 
-      {loading ? <div className="studioLoading">Loading your learning path…</div> : (
+      {loading ? <div className="studioLoading">Loading your learning path…</div> : dashboardOpen ? <>
+        <section className="studioMetricRow" aria-label="Learning overview">
+          <div className="studioMetricCard metricBlue"><span><Layers3 size={17} /></span><small>LEARNING TRACKS</small><strong>{modules.length}</strong><em>across data engineering</em></div>
+          <div className="studioMetricCard metricViolet"><span><BookOpen size={17} /></span><small>QUESTIONS AVAILABLE</small><strong>{totalQuestions}</strong><em>hands-on practice</em></div>
+          <div className="studioMetricCard metricMint"><span><Target size={17} /></span><small>COMPLETED</small><strong>{completedQuestions}</strong><em>{completedLessons} lessons finished</em></div>
+          <div className="studioMetricCard metricCyan"><span><Sparkles size={17} /></span><small>RECENT ACTIVITY</small><strong>{recentAttempt ? "1" : "0"}</strong><em>{recentAttempt ? "last question saved" : "your journey starts here"}</em></div>
+        </section>
+        <div className="studioDashboardGrid">
+          <section className="studioModuleDeck" aria-label="Learning modules">
+            <div className="studioSectionHead"><div><span>YOUR CURRICULUM</span><h2>Learning modules</h2></div><span>{visibleModules.length} shown</span></div>
+            <div className="studioDashboardModules">{visibleModules.map((module, index) => {
+              const completed = module.completedQuestions;
+              const percent = module.questionCount ? Math.round((completed / module.questionCount) * 100) : 0;
+              const Icon = module.category === "SQL" ? Database : module.category === "Python" ? Code2 : module.category === "Spark" ? Layers3 : module.category === "Interview" ? Sparkles : module.category === "Azure" || module.category === "Databricks" ? Activity : module.category === "Concepts" ? Lightbulb : BookOpen;
+              return <button key={module.id} className={`studioDashboardModule tone-${index % 6}`} onClick={() => chooseModule(module)}>
+                <div className="dashboardModuleTop"><span className="dashboardModuleIcon"><Icon size={19} /></span><span className="dashboardModuleCategory">{module.category}</span><ArrowRight size={15} /></div>
+                <strong>{module.title}</strong><p>{module.description}</p>
+                <div className="dashboardModuleMeta"><span>{module.questionCount} questions</span><span>{percent}%</span></div><div className="dashboardProgress"><span style={{ width: `${percent}%` }} /></div>
+                <small>{completed} completed <span>·</span> {Math.max(module.questionCount - completed, 0)} remaining</small>
+              </button>;
+            })}</div>
+          </section>
+          <aside className="studioDashboardAside">
+            <section className="studioSidePanel"><div className="studioSectionHead"><div><span>YOUR JOURNEY</span><h2>Progress</h2></div><BarChart3 size={17} /></div><div className="studioProgressSummary"><span>{completedQuestions} of {totalQuestions} questions</span><strong>{completionPercent}%</strong></div><div className="dashboardProgress overall"><span style={{ width: `${completionPercent}%` }} /></div><div className="studioTrackProgress">{modules.slice(0, 6).map((module, index) => <div key={module.id}><span className={`trackDot tone-${index % 6}`} /><span>{module.title}</span><strong>{module.questionCount ? Math.round(module.completedQuestions / module.questionCount * 100) : 0}%</strong></div>)}</div></section>
+            <section className="studioSidePanel activityPanel"><div className="studioSectionHead"><div><span>YOUR PRACTICE</span><h2>Recent activity</h2></div><Clock3 size={17} /></div>{recentAttempt?.question ? <button className="studioActivityItem" onClick={() => resumeQuestion(recentAttempt.question!)}><span className="activityStatus"><Check size={15} /></span><span><strong>{recentAttempt.question.title}</strong><small>{recentAttempt.question.topic} · {recentAttempt.correct ? "Completed" : "Retry recommended"}</small></span><ArrowRight size={15} /></button> : <div className="studioActivityEmpty"><Activity size={18} /><p>Your recent practice will appear here.</p><span>Choose a module to begin.</span></div>}</section>
+          </aside>
+        </div>
+      </> : (
         <div className="studioLayout">
           <aside className="studioModuleList" aria-label="Learning modules">
             {visibleModules.map((module, index) => {
@@ -410,12 +469,13 @@ export default function LearningStudio() {
             <h2>{question.title}</h2>
             <p className="lessonObjective">{question.prompt}</p>
             {question.type === "coding" ? <div className="codingWorkspace">
-              <div className="codingSpec"><div><strong>Input</strong><span>{question.input_description}</span></div><div><strong>Output</strong><span>{question.output_description}</span></div></div>
-              {question.public_examples?.map((example, index) => <div className="codingExample" key={index}><strong>Example {index + 1}</strong><pre>{JSON.stringify(example, null, 2)}</pre></div>)}
-              <label className="codeEditorLabel">{question.language === "pyspark" ? "PySpark" : "Python"} submission<textarea className="codeEditor" spellCheck={false} value={codeDraft} maxLength={32000} onChange={(event) => setCodeDraft(event.target.value)} /></label>
-              <div className="questionActions"><button className="lessonComplete" onClick={() => void runCode()} disabled={!runnerStatus[question.language || "python"].available || codeRunning || !codeDraft.trim()}>{codeRunning ? "Running…" : "Run against tests"}</button><button className="questionAction" onClick={() => { setCodeDraft(question.starter_code || ""); setCodeResult(null); }}>Reset code</button><button className="questionAction" onClick={() => void toggleBookmark()}>{question.bookmarked ? "Remove bookmark" : "Bookmark"}</button><button className="questionAction" onClick={() => setHintsOpen((open) => !open)}>{hintsOpen ? "Hide hints" : "Show hints"}</button></div>
-              {!runnerStatus[question.language || "python"].available && <div className="runnerNotice"><Code2 size={16} /><span><strong>Isolated runner unavailable</strong>{runnerStatus[question.language || "python"].configured ? "The configured runner did not pass its health check." : "No isolated execution service is configured. The code is not sent to or executed by this API."}</span></div>}
-              {codeResult && <div className={`questionFeedback ${codeResult.correct ? "correct" : "incorrect"}`}><strong>{codeResult.correct ? "All tests passed" : "Some tests failed"}</strong><p>Execution time: {codeResult.executionMs} ms</p><ul>{codeResult.tests.map((item) => <li key={item.name}>{item.name}: {item.passed ? "passed" : "failed"}</li>)}</ul></div>}
+              <div className="codingSpec"><div><strong>Input</strong><span>{question.input_description}</span></div><div><strong>Required output</strong><span>{question.output_description}</span></div></div>
+              <div className="pythonCodingColumns"><div className="pythonCodingMain">
+                <label className="codeEditorLabel">{question.language === "pyspark" ? "PySpark" : "Python"} solution<CodeMirror className="learningCodeMirror" value={codeDraft} height="310px" extensions={[python(), oneDark]} onChange={(value) => setCodeDraft(value.slice(0, 32000))} editable={!codeRunning} basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }} /></label>
+                <div className="questionActions"><button className="lessonComplete" onClick={() => void runCode()} disabled={!runnerStatus[question.language || "python"].available || codeRunning || !codeDraft.trim()}>{codeRunning ? "Running…" : "Run Code"}</button><button className="questionAction" onClick={() => { setCodeDraft(question.starter_code || ""); setCodeResult(null); }}>Reset</button><button className="questionAction" onClick={() => void toggleBookmark()}>{question.bookmarked ? "Remove bookmark" : "Bookmark"}</button><button className="questionAction" onClick={() => setHintsOpen((open) => !open)}>{hintsOpen ? "Hide hints" : "Hints"}</button></div>
+                {!runnerStatus[question.language || "python"].available && <div className="runnerNotice"><Code2 size={16} /><span><strong>Isolated runner unavailable</strong>{runnerStatus[question.language || "python"].configured ? "The configured runner did not pass its health check." : "No isolated execution service is configured. The code is not sent to or executed by this API."}</span></div>}
+                {codeResult && <div className={`questionFeedback ${codeResult.correct ? "correct" : "incorrect"}`}><strong>{codeResult.correct ? "All tests passed" : "Some tests failed"}</strong><p>Execution time: {codeResult.executionMs} ms</p><ul>{codeResult.tests.map((item) => <li key={item.name}>{item.name}: {item.passed ? "passed" : "failed"}</li>)}</ul></div>}
+              </div><aside className="pythonCodingPreview"><strong>Input / Output Preview</strong>{question.public_examples?.map((example, index) => <div className="codingExample" key={index}><span>Sample input</span><pre>{JSON.stringify(example.input, null, 2)}</pre><span>Expected output</span><pre>{JSON.stringify(example.expected, null, 2)}</pre></div>)}{!question.public_examples?.length && <p>Sample datasets are provided to the isolated runner.</p>}</aside></div>
             </div> : <div className="questionOptions" role="radiogroup" aria-label="Answer options">{question.options.map((option) => <label key={option.id} className={answerId === option.id ? "selected" : ""}><input type="radio" name="learning-answer" value={option.id} checked={answerId === option.id} onChange={() => setAnswerId(option.id)} disabled={Boolean(answerResult)} /><span>{option.text}</span></label>)}</div>}
             {question.type !== "coding" && <div className="questionActions"><button className="lessonComplete" onClick={() => void submitAnswer()} disabled={!answerId || Boolean(answerResult)}>Check answer</button>{answerResult && !answerResult.correct && <button className="questionAction" onClick={() => { setAnswerId(""); setAnswerResult(null); }}>Try again</button>}<button className="questionAction" onClick={() => void toggleBookmark()}>{question.bookmarked ? "Remove bookmark" : "Bookmark"}</button><button className="questionAction" onClick={() => setHintsOpen((open) => !open)}>{hintsOpen ? "Hide hints" : "Show hints"}</button></div>}
             {hintsOpen && <div className="questionHints">{question.hints.map((hint, index) => <p key={index}><strong>Hint {index + 1}</strong>{hint}</p>)}</div>}
@@ -439,6 +499,7 @@ export default function LearningStudio() {
         </div>
       )}
       <footer className="studioFooter"><span>Practice progress is private to your account.</span><a href="/sql">Open SQL workspace <ArrowRight size={14} /></a></footer>
-    </main>
+      </main>
+    </div>
   );
 }

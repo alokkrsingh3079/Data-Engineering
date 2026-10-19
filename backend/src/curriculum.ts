@@ -29,7 +29,7 @@ const modules = [
     title: "PySpark and Spark",
     category: "Spark",
     description: "Reason about DataFrame transformations, shuffles, and execution.",
-    href: "/learn/pyspark-foundations",
+    href: "/pyspark",
     runner: "unavailable",
     lessons: [{
       id: "spark-transformations-actions",

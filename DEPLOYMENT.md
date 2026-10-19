@@ -8,6 +8,7 @@ The Cloudflare Worker serves the built React/Vite frontend and forwards `/api/*`
 Browser -> Cloudflare Worker (frontend assets and /api proxy)
                           -> HTTPS -> Node/Express API -> MongoDB (platform data)
                                                      -> PostgreSQL (SQL practice)
+                                                     -> private Spark host -> disposable no-network PySpark containers
                                                      -> OpenAI (optional)
 ```
 
@@ -73,7 +74,7 @@ Prerequisites: Node.js 20+, npm, a Cloudflare account, and a deployed HTTPS API 
 
 ## Local development
 
-Start the local MongoDB and PostgreSQL services with `docker compose up -d mongodb postgres`, then run the Express API and Vite frontend using the commands in the root [README](README.md). The local MongoDB port is bound to loopback only. To exercise the Worker locally after building the frontend, set `API_ORIGIN` in Wrangler's local environment or use a local `.dev.vars` file (which must not be committed), then run:
+Start local MongoDB/PostgreSQL and the real Spark worker with `docker compose up -d mongodb postgres spark_runner`, then run the Express API and Vite frontend using the commands in the root [README](README.md). The backend should use `SPARK_RUNNER_URL=http://127.0.0.1:4021`, `SPARK_RUNNER_TOKEN=local-development-only-token`, and `NODE_ENV=development`. The local MongoDB port and Spark runner port bind to loopback only. Run `SPARK_RUNNER_URL=http://127.0.0.1:4021 SPARK_RUNNER_TOKEN=local-development-only-token python3 worker/spark/smoke_test.py` for real aggregation, join, window, null, syntax-error, and timeout checks. To exercise the Worker locally after building the frontend, set `API_ORIGIN` in Wrangler's local environment or use a local `.dev.vars` file (which must not be committed), then run:
 
 ```bash
 npm run build
@@ -81,6 +82,8 @@ npx wrangler dev
 ```
 
 ## Before production
+
+The Spark runner is separate from the Cloudflare Worker and Express API. Host it on a dedicated Docker-compatible VM/container host with Java 17, adequate memory (2 GiB per active job), Docker socket access, and the `SPARK_RUNNER_TOKEN`/`DOCKER_GID` configuration documented in [environment variables](docs/ENVIRONMENT_VARIABLES.md). The production Compose runner uses an internal network and should only be deployed on that dedicated host. The worker uses Spark local mode, not a multi-node cluster; its in-memory queue does not survive restarts and is not horizontally replicated.
 
 - Use managed MongoDB and PostgreSQL services with backups, TLS, and restricted network access.
 - Use strong, unique `AUTH_SECRET` and admin credentials; do not use example values.

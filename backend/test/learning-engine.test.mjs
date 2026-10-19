@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeQuestionFilters, publicLearningQuestion, validateLearningQuestion } from '../src/learning-engine.ts';
+import { foundationalSparkQuestions } from '../src/pyspark-questions.ts';
+import { cloudTrackQuestions, pythonTrackQuestions } from '../src/track-question-seeds.ts';
 
 test('question filters are bounded and reject unsupported filter values', () => {
   assert.deepEqual(normalizeQuestionFilters({ page: 0, pageSize: 1000, difficulty: 'expert', type: 'python', state: 'private', search: 'x'.repeat(150) }), {
@@ -30,14 +32,49 @@ test('reviewed questions require a valid answer, explanation, and unique choices
   assert.match(validateLearningQuestion({ ...question, answer_id: 'missing', options: [{ id: 'a', text: 'A' }, { id: 'a', text: 'Duplicate' }] }).join(' '), /unique|match/);
 });
 
-test('public coding challenge data excludes hidden tests and reference code', () => {
+test('public coding challenge data excludes hidden tests, evaluator function, and reference code', () => {
   const visible = publicLearningQuestion({
-    id: 'python-task', type: 'coding', starter_code: 'pass', test_cases: [{ name: 'hidden' }],
+    id: 'python-task', type: 'coding', starter_code: 'pass', function_name: 'internal_evaluator', test_cases: [{ name: 'hidden', expected: 'secret' }],
     reference_solution: 'secret code', reference_answer: 'secret answer', explanation: 'private rubric'
   });
   assert.equal(visible.starter_code, 'pass');
   assert.equal('test_cases' in visible, false);
+  assert.equal('function_name' in visible, false);
   assert.equal('reference_solution' in visible, false);
   assert.equal('reference_answer' in visible, false);
   assert.equal('explanation' in visible, false);
+});
+
+test('PySpark beginner curriculum has 15 validated exercises at each progressive level', () => {
+  assert.equal(foundationalSparkQuestions.length, 45);
+  for (const level of ['A', 'B', 'C']) {
+    const questions = foundationalSparkQuestions.filter((question) => question.learning_level === level);
+    assert.equal(questions.length, 15, `Level ${level} should have 15 exercises`);
+    assert.ok(questions.every((question) => validateLearningQuestion(question).length === 0));
+    assert.equal(new Set(questions.map((question) => question.id)).size, 15);
+    assert.equal(new Set(questions.map((question) => question.function_name)).size, 15);
+    assert.ok(questions.every((question) => question.starter_code.includes(`def ${question.function_name}(`)));
+    assert.ok(questions.every((question) => question.test_cases.length >= 2 && question.public_examples.length === 1));
+    assert.ok(questions.every((question) => !('test_cases' in publicLearningQuestion(question)) && !('function_name' in publicLearningQuestion(question))));
+  }
+});
+
+test('Python, cloud, and ETL tracks have 15 questions per level with private grading data', () => {
+  assert.equal(pythonTrackQuestions.length, 45);
+  assert.equal(cloudTrackQuestions.filter((question) => question.module_id === 'azure-data-factory').length, 45);
+  assert.equal(cloudTrackQuestions.filter((question) => question.module_id === 'etl-data-quality').length, 45);
+  for (const questions of [pythonTrackQuestions, cloudTrackQuestions.filter((question) => question.module_id === 'azure-data-factory'), cloudTrackQuestions.filter((question) => question.module_id === 'etl-data-quality')]) {
+    for (const level of ['A', 'B', 'C']) {
+      const atLevel = questions.filter((question) => question.learning_level === level);
+      assert.equal(atLevel.length, 15);
+      assert.equal(atLevel.filter((question) => validateLearningQuestion(question).length === 0).length, 15);
+      assert.equal(new Set(atLevel.map((question) => question.id)).size, 15);
+      for (const question of atLevel) {
+        const visible = publicLearningQuestion(question);
+        assert.equal('reference_solution' in visible, false);
+        assert.equal('test_cases' in visible, false);
+        assert.equal('answer_id' in visible, false);
+      }
+    }
+  }
 });

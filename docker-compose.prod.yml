@@ -28,12 +28,73 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
       AUTH_SECRET: ${AUTH_SECRET:?Set a long random AUTH_SECRET}
+      SPARK_RUNNER_URL: http://spark_runner:4021
+      SPARK_RUNNER_TOKEN: ${SPARK_RUNNER_TOKEN:?Set SPARK_RUNNER_TOKEN}
+      SPARK_RUNNER_ALLOW_PRIVATE_HTTP: "true"
+      PYTHON_RUNNER_URL: http://python_runner:4020
+      PYTHON_RUNNER_TOKEN: ${PYTHON_RUNNER_TOKEN:?Set PYTHON_RUNNER_TOKEN}
+      PYTHON_RUNNER_ALLOW_PRIVATE_HTTP: "true"
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@sqlpractice.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
       ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://localhost}
     depends_on:
       postgres: {condition: service_healthy}
+      spark_runner: {condition: service_healthy}
+      python_runner: {condition: service_healthy}
+    networks: [default, spark_execution]
     expose: ["4000"]
+  spark_runner:
+    image: sql-practice-spark-runner:3.5.6
+    build: ./worker/spark
+    restart: unless-stopped
+    environment:
+      SPARK_RUNNER_TOKEN: ${SPARK_RUNNER_TOKEN:?Set SPARK_RUNNER_TOKEN}
+      SPARK_JOB_IMAGE: sql-practice-spark-runner:3.5.6
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    group_add:
+      - "${DOCKER_GID:?Set DOCKER_GID to the docker socket group ID}"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,exec,nosuid,nodev,size=256m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    cpus: 1
+    mem_limit: 512m
+    networks: [spark_execution]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4021/health', timeout=2)"]
+      interval: 20s
+      timeout: 3s
+      start_period: 60s
+      retries: 3
+  python_runner:
+    image: sql-practice-python-runner:3.11
+    build: ./worker/python
+    restart: unless-stopped
+    environment:
+      PYTHON_RUNNER_TOKEN: ${PYTHON_RUNNER_TOKEN:?Set PYTHON_RUNNER_TOKEN}
+      PYTHON_JOB_IMAGE: sql-practice-python-runner:3.11
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    group_add:
+      - "${DOCKER_GID:?Set DOCKER_GID to the docker socket group ID}"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=128m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    cpus: 1
+    mem_limit: 512m
+    networks: [spark_execution]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4020/health', timeout=4)"]
+      interval: 20s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
   frontend:
     build: ./frontend
     restart: unless-stopped
@@ -41,3 +102,6 @@ services:
     depends_on: [backend]
 volumes:
   sql_practice_pg:
+networks:
+  spark_execution:
+    internal: true

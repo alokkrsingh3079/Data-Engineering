@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import { mongoCollection } from "./mongo.js";
-import { executeOnRunner, runnerHealth, type RunnerLanguage } from "./runners.js";
+import { cancelSparkJob, createSparkJob, executeOnRunner, getSparkJob, runnerHealth, type RunnerLanguage } from "./runners.js";
+import { foundationalSparkQuestions } from "./pyspark-questions.js";
+import { cloudTrackQuestions, pythonTrackQuestions } from "./track-question-seeds.js";
 
 const seedQuestions = [
   {
@@ -291,6 +293,8 @@ const seedQuestions = [
     difficulty: "beginner",
     type: "coding",
     language: "pyspark",
+    function_name: "count_by_event_type",
+    learning_level: "A",
     title: "Count events by type",
     prompt: "Implement `count_by_event_type(events)`. Return a DataFrame with columns `event_type` and `count`, one row per event type, ordered by event_type ascending. Use DataFrame operations; do not collect the input to the driver.",
     starter_code: "from pyspark.sql import functions as F\n\ndef count_by_event_type(events):\n    # Return event_type and count, ordered by event_type.\n    pass\n",
@@ -298,15 +302,126 @@ const seedQuestions = [
     output_description: "A Spark DataFrame containing event_type and integer count, ordered by event_type.",
     public_examples: [{ input: [{ event_type: "view" }, { event_type: "purchase" }, { event_type: "view" }], expected: [{ event_type: "purchase", count: 1 }, { event_type: "view", count: 2 }] }],
     test_cases: [
-      { name: "counts and sorts groups", input: [{ event_type: "view" }, { event_type: "purchase" }, { event_type: "view" }], expected: [{ event_type: "purchase", count: 1 }, { event_type: "view", count: 2 }] },
-      { name: "single group", input: [{ event_type: "click" }], expected: [{ event_type: "click", count: 1 }] }
+      { name: "counts and sorts groups", input: [{ event_type: "view" }, { event_type: "purchase" }, { event_type: "view" }], expected: [{ event_type: "purchase", count: 1 }, { event_type: "view", count: 2 }], ordered: true },
+      { name: "single group", input: [{ event_type: "click" }], expected: [{ event_type: "click", count: 1 }], ordered: true }
     ],
     reference_solution: "from pyspark.sql import functions as F\n\ndef count_by_event_type(events):\n    return events.groupBy(\"event_type\").count().orderBy(\"event_type\")\n",
     explanation: "groupBy and count build a distributed aggregation plan. orderBy makes the output ordering explicit. The operation does not collect source rows to the driver.",
     common_mistakes: ["Calling collect on the input DataFrame", "Returning a Python dictionary instead of a DataFrame", "Leaving result ordering unspecified"],
     hints: ["Use a distributed DataFrame aggregation rather than a Python loop.", "Spark DataFrame count() on a grouped frame produces the count column.", "Order the resulting frame by event_type."],
     status: "published"
-  }
+  },
+  {
+    id: "pyspark-filter-active-employees",
+    module_id: "pyspark-foundations",
+    topic: "DataFrame filtering",
+    subtopic: "filter and select",
+    tags: ["pyspark", "filter", "select"],
+    difficulty: "beginner",
+    type: "coding",
+    language: "pyspark",
+    function_name: "filter_active_employees",
+    learning_level: "A",
+    title: "Filter active employees",
+    prompt: "Implement `filter_active_employees(employees)`. Return only active employees with columns employee_id and name, ordered by employee_id.",
+    starter_code: "from pyspark.sql import functions as F\n\ndef filter_active_employees(employees):\n    # Keep active employees and return the required columns.\n    pass\n",
+    input_description: "employees: employee_id (integer), name (string), department_id (integer), active (boolean).",
+    output_description: "A DataFrame with employee_id and name for active employees, ordered by employee_id.",
+    public_examples: [{ input: [{ employee_id: 1, name: "Asha", department_id: 10, active: true }, { employee_id: 2, name: "Leo", department_id: 20, active: false }, { employee_id: 3, name: "Mina", department_id: 10, active: true }], expected: [{ employee_id: 1, name: "Asha" }, { employee_id: 3, name: "Mina" }] }],
+    test_cases: [
+      { name: "filters and projects active rows", input: [{ employee_id: 1, name: "Asha", department_id: 10, active: true }, { employee_id: 2, name: "Leo", department_id: 20, active: false }, { employee_id: 3, name: "Mina", department_id: 10, active: true }], expected: [{ employee_id: 1, name: "Asha" }, { employee_id: 3, name: "Mina" }], ordered: true },
+      { name: "empty result keeps correct columns", input: [{ employee_id: 4, name: "Noor", department_id: 30, active: false }], expected: [], expected_columns: ["employee_id", "name"] }
+    ],
+    reference_solution: "from pyspark.sql import functions as F\n\ndef filter_active_employees(employees):\n    return (employees.filter(F.col(\"active\") == True)\n            .select(\"employee_id\", \"name\")\n            .orderBy(\"employee_id\"))\n",
+    explanation: "Filter rows with a DataFrame expression before projecting the two required columns. Ordering is explicit because the exercise requires it.",
+    common_mistakes: ["Filtering by a truthy string instead of the boolean column", "Returning extra columns", "Leaving order unspecified"],
+    hints: ["Use filter with the active column.", "Project only employee_id and name.", "Order the result by employee_id."],
+    status: "published"
+  },
+  {
+    id: "pyspark-join-department-payroll",
+    module_id: "pyspark-foundations",
+    topic: "DataFrame joins",
+    subtopic: "Inner joins and aggregation",
+    tags: ["pyspark", "join", "groupBy"],
+    difficulty: "intermediate",
+    type: "coding",
+    language: "pyspark",
+    function_name: "payroll_by_department",
+    learning_level: "B",
+    title: "Summarize payroll by department",
+    prompt: "Implement `payroll_by_department(employees, departments)`. Join on department_id and return department_name plus total_salary, sorted by department_name.",
+    starter_code: "from pyspark.sql import functions as F\n\ndef payroll_by_department(employees, departments):\n    # Join employees to departments, then aggregate salary.\n    pass\n",
+    input_description: "employees: employee_id, department_id, salary. departments: department_id, department_name.",
+    output_description: "A DataFrame with department_name and total_salary, one row per department with employees.",
+    public_examples: [{ input: { employees: [{ employee_id: 1, department_id: 10, salary: 50000 }, { employee_id: 2, department_id: 10, salary: 60000 }, { employee_id: 3, department_id: 20, salary: 45000 }], departments: [{ department_id: 10, department_name: "Engineering" }, { department_id: 20, department_name: "Operations" }] }, expected: [{ department_name: "Engineering", total_salary: 110000 }, { department_name: "Operations", total_salary: 45000 }] }],
+    test_cases: [
+      { name: "joins and sums payroll", input: { employees: [{ employee_id: 1, department_id: 10, salary: 50000 }, { employee_id: 2, department_id: 10, salary: 60000 }, { employee_id: 3, department_id: 20, salary: 45000 }], departments: [{ department_id: 10, department_name: "Engineering" }, { department_id: 20, department_name: "Operations" }] }, expected: [{ department_name: "Engineering", total_salary: 110000 }, { department_name: "Operations", total_salary: 45000 }], ordered: true },
+      { name: "ignores departments without employees", input: { employees: [{ employee_id: 7, department_id: 30, salary: 70000 }], departments: [{ department_id: 30, department_name: "Research" }, { department_id: 40, department_name: "Legal" }] }, expected: [{ department_name: "Research", total_salary: 70000 }] }
+    ],
+    reference_solution: "from pyspark.sql import functions as F\n\ndef payroll_by_department(employees, departments):\n    return (employees.join(departments, \"department_id\", \"inner\")\n            .groupBy(\"department_name\")\n            .agg(F.sum(\"salary\").alias(\"total_salary\"))\n            .orderBy(\"department_name\"))\n",
+    explanation: "An inner join attaches department labels to employee rows. Grouping by department_name and summing salary produces one aggregate row per represented department.",
+    common_mistakes: ["Joining on the wrong identifier", "Grouping by employee instead of department", "Using a left join that includes empty departments"],
+    hints: ["Join the two DataFrames on department_id.", "Aggregate after the join with sum(salary).", "Alias the aggregate total_salary and sort by department_name."],
+    status: "published"
+  },
+  {
+    id: "pyspark-window-salary-rank",
+    module_id: "pyspark-foundations",
+    topic: "Window functions",
+    subtopic: "Ranking",
+    tags: ["pyspark", "window", "rank"],
+    difficulty: "advanced",
+    type: "coding",
+    language: "pyspark",
+    function_name: "rank_department_salaries",
+    learning_level: "B",
+    title: "Rank salaries within departments",
+    prompt: "Implement `rank_department_salaries(employees)`. Preserve each employee row and add salary_rank, with rank 1 assigned to the highest salary in each department. Sort by department_id then employee_id.",
+    starter_code: "from pyspark.sql import functions as F\nfrom pyspark.sql.window import Window\n\ndef rank_department_salaries(employees):\n    # Add a per-department salary rank.\n    pass\n",
+    input_description: "employees: employee_id (integer), department_id (integer), salary (integer).",
+    output_description: "All input columns plus salary_rank, ordered by department_id and employee_id.",
+    public_examples: [{ input: [{ employee_id: 1, department_id: 10, salary: 90000 }, { employee_id: 2, department_id: 10, salary: 70000 }, { employee_id: 3, department_id: 20, salary: 85000 }], expected: [{ employee_id: 1, department_id: 10, salary: 90000, salary_rank: 1 }, { employee_id: 2, department_id: 10, salary: 70000, salary_rank: 2 }, { employee_id: 3, department_id: 20, salary: 85000, salary_rank: 1 }] }],
+    test_cases: [
+      { name: "ranks within each department", input: [{ employee_id: 1, department_id: 10, salary: 90000 }, { employee_id: 2, department_id: 10, salary: 70000 }, { employee_id: 3, department_id: 20, salary: 85000 }], expected: [{ employee_id: 1, department_id: 10, salary: 90000, salary_rank: 1 }, { employee_id: 2, department_id: 10, salary: 70000, salary_rank: 2 }, { employee_id: 3, department_id: 20, salary: 85000, salary_rank: 1 }], ordered: true },
+      { name: "keeps tied salaries at equal rank", input: [{ employee_id: 4, department_id: 20, salary: 80000 }, { employee_id: 5, department_id: 20, salary: 80000 }], expected: [{ employee_id: 4, department_id: 20, salary: 80000, salary_rank: 1 }, { employee_id: 5, department_id: 20, salary: 80000, salary_rank: 1 }] }
+    ],
+    reference_solution: "from pyspark.sql import functions as F\nfrom pyspark.sql.window import Window\n\ndef rank_department_salaries(employees):\n    window = Window.partitionBy(\"department_id\").orderBy(F.desc(\"salary\"))\n    return (employees.withColumn(\"salary_rank\", F.rank().over(window))\n            .orderBy(\"department_id\", \"employee_id\"))\n",
+    explanation: "A window keeps the input rows while computing a rank per department. rank() gives tied salaries the same rank; a groupBy would collapse employee detail.",
+    common_mistakes: ["Using dense_rank when rank gaps are expected", "Partitioning by employee_id", "Aggregating away the original rows"],
+    hints: ["Define a Window partitioned by department_id.", "Order the window by descending salary and apply rank().", "Sort the final rows by department_id and employee_id."],
+    status: "published"
+  },
+  {
+    id: "pyspark-fill-null-scores",
+    module_id: "pyspark-foundations",
+    topic: "Null handling",
+    subtopic: "withColumn and coalesce",
+    tags: ["pyspark", "nulls", "withColumn"],
+    difficulty: "beginner",
+    type: "coding",
+    language: "pyspark",
+    function_name: "fill_missing_scores",
+    learning_level: "A",
+    title: "Fill missing assessment scores",
+    prompt: "Implement `fill_missing_scores(scores)`. Replace null score values with 0, preserve all columns, and return rows ordered by student_id.",
+    starter_code: "from pyspark.sql import functions as F\n\ndef fill_missing_scores(scores):\n    # Replace missing scores with zero and preserve the schema.\n    pass\n",
+    input_description: "scores: student_id (integer), score (integer, nullable).",
+    output_description: "All original columns with null score values replaced by 0, ordered by student_id.",
+    public_examples: [{ input: [{ student_id: 1, score: 88 }, { student_id: 2, score: null }, { student_id: 3, score: 74 }], expected: [{ student_id: 1, score: 88 }, { student_id: 2, score: 0 }, { student_id: 3, score: 74 }] }],
+    test_cases: [
+      { name: "fills null and preserves values", input: [{ student_id: 1, score: 88 }, { student_id: 2, score: null }, { student_id: 3, score: 74 }], expected: [{ student_id: 1, score: 88 }, { student_id: 2, score: 0 }, { student_id: 3, score: 74 }], ordered: true },
+      { name: "leaves non-null scores unchanged", input: [{ student_id: 9, score: 0 }, { student_id: 8, score: 100 }], expected: [{ student_id: 8, score: 100 }, { student_id: 9, score: 0 }] }
+    ],
+    reference_solution: "from pyspark.sql import functions as F\n\ndef fill_missing_scores(scores):\n    return scores.withColumn(\"score\", F.coalesce(F.col(\"score\"), F.lit(0))).orderBy(\"student_id\")\n",
+    explanation: "coalesce returns the first non-null expression, so the original score is preserved and only missing values receive the integer literal zero.",
+    common_mistakes: ["Dropping null rows instead of replacing values", "Converting scores to strings", "Returning only the score column"],
+    hints: ["Use withColumn to replace one field without dropping the others.", "Spark coalesce can choose the first non-null value.", "Use an integer literal for the fallback."],
+    status: "published"
+  },
+  ...foundationalSparkQuestions,
+  ...pythonTrackQuestions,
+  ...cloudTrackQuestions
 ].map((question) => ({ ...question, created_at: new Date("2026-10-19T00:00:00.000Z"), updated_at: new Date("2026-10-19T00:00:00.000Z") }));
 
 export type LearningQuestionFilters = {
@@ -334,7 +449,7 @@ export function normalizeQuestionFilters(filters: LearningQuestionFilters) {
 }
 
 export function publicLearningQuestion(question: any) {
-  const { answer_id, reference_answer, explanation, common_mistakes, reference_solution, test_cases, ...visible } = question;
+  const { answer_id, reference_answer, explanation, common_mistakes, reference_solution, function_name, test_cases, ...visible } = question;
   return visible;
 }
 
@@ -433,7 +548,7 @@ export async function listLearningQuestions(userId: string, input: LearningQuest
   const state = await userQuestionState(userId, ids);
   return {
     items: questions.map((question) => ({
-      ...question,
+      ...publicLearningQuestion(question),
       id: String(question._id),
       bookmarked: state.bookmarks.has(String(question._id)),
       completed: state.completed.has(String(question._id))
@@ -496,7 +611,7 @@ export async function submitLearningCode(userId: string, questionId: string, cod
   const question = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published", type: "coding" });
   if (!question) return { status: "not_found" as const };
   const language = question.language as RunnerLanguage;
-  const result = await executeOnRunner({ language, taskId: questionId, code, testCases: question.test_cases || [] });
+  const result = await executeOnRunner({ language, taskId: questionId, functionName: question.function_name || (questionId === "python-dedupe-events" ? "dedupe_events" : questionId.replace(/-/g, "_")), code, testCases: question.test_cases || [] });
   if (result.status === "unavailable") return { status: "unavailable" as const, message: result.message };
   if (result.status === "invalid") return { status: "invalid" as const, message: result.message };
   if (result.status === "error") return { status: "runner_error" as const, message: result.message };
@@ -527,6 +642,151 @@ export async function submitLearningCode(userId: string, questionId: string, cod
     );
   }
   return { status: "ok" as const, attemptId, correct, executionMs: result.executionMs, tests: result.tests };
+}
+
+const terminalSparkStates = ["succeeded", "failed", "timed_out", "cancelled", "resource_limit_exceeded"];
+
+export async function createLearningExecution(userId: string, questionId: string, code: string, mode: "run" | "submit") {
+  const question = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published", type: "coding", language: "pyspark" });
+  if (!question) return { status: "not_found" as const };
+  const testCases = mode === "run"
+    ? (question.public_examples || []).map((example: any, index: number) => ({ name: `Example ${index + 1}`, input: example.input, expected: example.expected }))
+    : question.test_cases || [];
+  if (!testCases.length) return { status: "invalid" as const, message: "This exercise has no test cases." };
+  const started = await createSparkJob({ taskId: questionId, functionName: String(question.function_name || ""), code, testCases, returnOutput: mode === "run" });
+  if (started.status !== "ok") return started.status === "capacity"
+    ? { status: "capacity" as const }
+    : started.status === "invalid" ? { status: "invalid" as const, message: "Invalid execution request." }
+      : { status: started.status as "unavailable" | "error" };
+  const id = crypto.randomUUID();
+  const createdAt = new Date();
+  try {
+    await mongoCollection("spark_execution_jobs").insertOne({
+      _id: id,
+      user_id: userId,
+      question_id: questionId,
+      runner_job_id: started.job.jobId,
+      mode,
+      code,
+      status: "queued",
+      created_at: createdAt,
+      updated_at: createdAt,
+      expire_at: new Date(createdAt.getTime() + 24 * 60 * 60 * 1000)
+    });
+  } catch (error) {
+    await cancelSparkJob(started.job.jobId);
+    throw error;
+  }
+  return { status: "ok" as const, jobId: id, state: "queued" as const, createdAt };
+}
+
+export async function getLearningExecution(userId: string, jobId: string) {
+  const jobs = mongoCollection("spark_execution_jobs");
+  const stored = await jobs.findOne({ _id: jobId, user_id: userId });
+  if (!stored) return { status: "not_found" as const };
+  if (terminalSparkStates.includes(String(stored.status))) return { status: "ok" as const, job: stored };
+  const response = await getSparkJob(String(stored.runner_job_id));
+  if (response.status !== "ok") return response.status === "not_found"
+    ? { status: "runner_error" as const }
+    : { status: response.status as "unavailable" | "error" };
+  const job = response.job;
+  if (job.status === "queued" || job.status === "running") {
+    await jobs.updateOne({ _id: jobId, user_id: userId, status: { $in: ["queued", "running"] } }, { $set: { status: job.status, updated_at: new Date() } });
+    return { status: "ok" as const, job: { ...stored, status: job.status, started_at: job.startedAt } };
+  }
+  const state = job.status;
+  const claim = await jobs.updateOne({ _id: jobId, user_id: userId, status: { $in: ["queued", "running"] } }, { $set: { status: "finalizing", updated_at: new Date() } });
+  if (claim.modifiedCount) {
+    const runnerResult = job.result;
+    const correct = runnerResult?.status === "passed";
+    const completedAt = new Date();
+    if (stored.mode === "submit" && runnerResult) {
+      const attemptId = crypto.randomUUID();
+      await mongoCollection("learning_attempts").insertOne({
+        _id: attemptId,
+        id: attemptId,
+        user_id: userId,
+        question_id: stored.question_id,
+        language: "pyspark",
+        code: stored.code,
+        correct,
+        status: runnerResult.status,
+        execution_ms: runnerResult.executionMs,
+        tests: runnerResult.tests,
+        created_at: completedAt
+      });
+      if (correct) {
+        await mongoCollection("learning_question_progress").updateOne(
+          { user_id: userId, question_id: stored.question_id },
+          { $set: { completed: true, completion_source: "runner_tests", updated_at: completedAt }, $setOnInsert: { created_at: completedAt } },
+          { upsert: true }
+        );
+      }
+    }
+    const savedResult = runnerResult ? {
+      status: runnerResult.status,
+      executionMs: runnerResult.executionMs,
+      tests: runnerResult.tests,
+      message: runnerResult.message,
+      ...(stored.mode === "run" ? { output: runnerResult.output } : {})
+    } : null;
+    await jobs.updateOne({ _id: jobId, user_id: userId, status: "finalizing" }, { $set: { status: state, result: savedResult, finished_at: completedAt, updated_at: completedAt } });
+  }
+  const finalized = await jobs.findOne({ _id: jobId, user_id: userId });
+  return { status: "ok" as const, job: finalized };
+}
+
+export async function cancelLearningExecution(userId: string, jobId: string) {
+  const jobs = mongoCollection("spark_execution_jobs");
+  const stored = await jobs.findOne({ _id: jobId, user_id: userId });
+  if (!stored) return { status: "not_found" as const };
+  if (terminalSparkStates.includes(String(stored.status))) return { status: "complete" as const };
+  const cancelled = await cancelSparkJob(String(stored.runner_job_id));
+  if (cancelled.status === "cancelled") {
+    const now = new Date();
+    await jobs.updateOne({ _id: jobId, user_id: userId, status: { $in: ["queued", "running", "finalizing"] } }, { $set: { status: "cancelled", finished_at: now, updated_at: now } });
+    return { status: "cancelled" as const };
+  }
+  return cancelled.status === "complete" ? { status: "complete" as const } : { status: cancelled.status as "not_found" | "unavailable" | "error" };
+}
+
+export async function executeLearningExample(questionId: string, code: string) {
+  const question = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published", type: "coding" });
+  if (!question) return { status: "not_found" as const };
+  const examples = Array.isArray(question.public_examples) ? question.public_examples : [];
+  if (!examples.length) return { status: "invalid" as const, message: "This exercise has no public example to run." };
+  const result = await executeOnRunner({
+    language: question.language as RunnerLanguage,
+    taskId: questionId,
+    code,
+    testCases: examples.map((example: any, index: number) => ({ name: `Example ${index + 1}`, input: example.input, expected: example.expected }))
+  });
+  if (result.status === "unavailable") return { status: "unavailable" as const, message: result.message };
+  if (result.status === "invalid") return { status: "invalid" as const, message: result.message };
+  if (result.status === "error") return { status: "runner_error" as const, message: result.message };
+  return {
+    status: result.status,
+    correct: result.correct,
+    executionMs: result.executionMs,
+    tests: result.tests,
+    output: result.output,
+    message: result.message
+  };
+}
+
+export async function getLearningQuestionReview(userId: string, questionId: string) {
+  const [question, attempt] = await Promise.all([
+    mongoCollection("learning_questions").findOne({ _id: questionId, status: "published", type: "coding" }),
+    mongoCollection("learning_attempts").findOne({ user_id: userId, question_id: questionId }, { projection: { _id: 1 } })
+  ]);
+  if (!question) return { status: "not_found" as const };
+  if (!attempt) return { status: "locked" as const };
+  return {
+    status: "ok" as const,
+    explanation: question.explanation,
+    commonMistakes: question.common_mistakes || [],
+    referenceSolution: question.reference_solution
+  };
 }
 
 export async function learningRunnerStatus() {
@@ -567,7 +827,7 @@ export async function listLearningBookmarks(userId: string) {
   const byId = new Map(questions.map((question) => [String(question._id), question]));
   return ids.flatMap((id) => {
     const question = byId.get(id);
-    return question ? [{ ...question, id, bookmarked: true }] : [];
+    return question ? [{ ...publicLearningQuestion(question), id, bookmarked: true }] : [];
   });
 }
 
