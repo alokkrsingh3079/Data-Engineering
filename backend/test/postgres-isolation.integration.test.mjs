@@ -47,8 +47,10 @@ test('PostgreSQL workspace roles isolate practice schemas', { skip: process.env.
       assert.equal(access.rows[0].current_user, leftRole.name);
       assert.equal(access.rows[0].can_use, false);
       assert.equal(access.rows[0].can_create, false);
-      const limits = await leftClient.query("SELECT current_setting('temp_file_limit') AS temp_file_limit");
-      assert.equal(limits.rows[0].temp_file_limit, '64MB');
+      const roleLimits = await leftClient.query(
+        'SELECT rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = current_user'
+      );
+      assert.deepEqual(roleLimits.rows[0], { rolsuper: false, rolcreatedb: false, rolcreaterole: false });
       await assert.rejects(leftClient.query(`SELECT * FROM ${rightSchema}.secret`), { code: '42501' });
       await assert.rejects(leftClient.query(`CREATE TABLE ${rightSchema}.injected (id INT)`), { code: '42501' });
     } finally {
