@@ -11,7 +11,7 @@ Browser -> Cloudflare Worker (frontend assets and /api proxy)
                                                      -> OpenAI (optional)
 ```
 
-Deploy the backend to a Node.js host with managed MongoDB and PostgreSQL services reachable from that host. Keep both database URIs and OpenAI credentials on the backend host. The Worker only needs the public HTTPS origin of the deployed API.
+Deploy the backend to a Node.js host with managed MongoDB and PostgreSQL services reachable from that host. Keep both database URIs, `PRACTICE_ROLE_SECRET`, and OpenAI credentials on the backend host. `DATABASE_URL` currently provisions workspace schemas and dedicated per-workspace SQL roles, so its PostgreSQL identity needs schema/role provisioning privileges; do not give it to the practice runner. The Worker only needs the public HTTPS origin of the deployed API.
 
 ## Repository layout
 
@@ -67,7 +67,7 @@ Prerequisites: Node.js 20+, npm, a Cloudflare account, and a deployed HTTPS API 
 
    Wrangler prints the public `workers.dev` URL.
 
-5. Set the backend's `ALLOWED_ORIGIN` to that Worker URL (for example, `https://sql-software.<your-subdomain>.workers.dev`) and restart the backend. Configure `MONGODB_URI`, `MONGODB_DATABASE`, `DATABASE_URL`, `AUTH_SECRET`, admin credentials, and optional `OPENAI_API_KEY` in the backend host's secret/environment settings.
+5. Set the backend's `ALLOWED_ORIGIN` to that Worker URL (for example, `https://sql-software.<your-subdomain>.workers.dev`) and restart the backend. Configure `MONGODB_URI`, `MONGODB_DATABASE`, `DATABASE_URL`, `PRACTICE_DATABASE_URL`, a stable `PRACTICE_ROLE_SECRET`, `AUTH_SECRET`, admin credentials, and optional `OPENAI_API_KEY` in the backend host's secret/environment settings.
 
 6. Open the Worker URL and verify `/api/health` reports healthy. Backend startup currently requires both database services; the health endpoint checks PostgreSQL.
 
@@ -87,3 +87,7 @@ npx wrangler dev
 - Set the backend's `ALLOWED_ORIGIN` to the deployed frontend origin.
 - Keep `OPENAI_API_KEY`, database credentials, and Cloudflare API tokens in provider secret stores.
 - Test signup/login, SQL execution, uploads, and AI endpoints against the deployed API and database.
+- Python/Spark execution requires separate hardened services. The API expects the runner routes and response format documented in [environment variables](docs/ENVIRONMENT_VARIABLES.md); configuring only a URL does not establish isolation.
+- Learning-interview AI feedback uses the optional OpenAI provider. It is subjective coaching, and responses remain saved if evaluation is unavailable.
+- Python/Spark execution requires separate hardened services. The API expects the runner routes and response format documented in [environment variables](ENVIRONMENT_VARIABLES.md); configuring only a URL does not establish isolation.
+- The learning-interview rubric uses the optional OpenAI provider. Feedback is subjective and the saved answer remains available when the provider is unavailable.

@@ -1,6 +1,24 @@
 import { parse } from "pgsql-ast-parser";
 
 const importStatementTypes = new Set(["create table", "insert", "alter table"]);
+const blockedFunctions = new Set([
+  "dblink",
+  "lo_export",
+  "lo_import",
+  "nextval",
+  "pg_advisory_lock",
+  "pg_advisory_lock_shared",
+  "pg_advisory_xact_lock",
+  "pg_cancel_backend",
+  "pg_notify",
+  "pg_read_binary_file",
+  "pg_read_file",
+  "pg_sleep",
+  "pg_stat_file",
+  "pg_terminate_backend",
+  "set_config",
+  "setval"
+]);
 
 function parseWorkspaceSql(schemaName: string, sql: string): any[] {
   if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName)) throw new Error("Invalid schema");
@@ -24,6 +42,16 @@ function parseWorkspaceSql(schemaName: string, sql: string): any[] {
       if (key === "schema" && typeof child === "string" && child.toLowerCase() !== schemaName.toLowerCase()) {
         throw new Error("SQL may only reference the current practice workspace");
       }
+      if (
+        key === "function" &&
+        child &&
+        typeof child === "object" &&
+        "name" in child &&
+        typeof child.name === "string" &&
+        blockedFunctions.has(child.name.toLowerCase())
+      ) {
+        throw new Error("This PostgreSQL function is not available in practice queries");
+      }
       visit(child);
     }
   };
@@ -46,4 +74,16 @@ export function validatePracticeImport(schemaName: string, sql: string): string 
     throw new Error("Imports may only create or alter workspace tables and insert rows");
   }
   return sql;
+}
+
+export function limitPracticeResult<T>(rows: T[], maxBytes = 1024 * 1024): { rows: T[]; truncated: boolean } {
+  const limited: T[] = [];
+  let size = 2;
+  for (const row of rows) {
+    const rowSize = Buffer.byteLength(JSON.stringify(row));
+    if (size + rowSize > maxBytes) return { rows: limited, truncated: true };
+    limited.push(row);
+    size += rowSize + 1;
+  }
+  return { rows: limited, truncated: false };
 }

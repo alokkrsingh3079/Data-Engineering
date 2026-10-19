@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "runner": "tsx src/runner-service.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "node --import tsx --test test/*.test.mjs",

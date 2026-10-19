@@ -40,6 +40,12 @@ export async function connectMongo(): Promise<Db> {
     database.collection("learning_modules").createIndex({ order: 1 }),
     database.collection("learning_progress").createIndex({ user_id: 1, lesson_id: 1 }, { unique: true }),
     database.collection("learning_progress").createIndex({ user_id: 1, updated_at: -1 }),
+    database.collection("learning_questions").createIndex({ module_id: 1, status: 1, difficulty: 1, type: 1, created_at: -1 }),
+    database.collection("learning_attempts").createIndex({ user_id: 1, question_id: 1, created_at: -1 }),
+    database.collection("learning_attempts").createIndex({ user_id: 1, created_at: -1 }),
+    database.collection("learning_bookmarks").createIndex({ user_id: 1, question_id: 1 }, { unique: true }),
+    database.collection("learning_question_progress").createIndex({ user_id: 1, question_id: 1 }, { unique: true }),
+    database.collection("learning_question_progress").createIndex({ user_id: 1, updated_at: -1 }),
     database.collection("interview_sessions").createIndex({ user_id: 1, created_at: -1 }),
     database.collection("interview_sessions").createIndex({ deadline_at: 1 }, { expireAfterSeconds: 2592000 })
   ]);

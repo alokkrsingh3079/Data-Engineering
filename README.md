@@ -44,12 +44,12 @@ Status last checked: 2026-10-19. “Partial” means some useful functionality e
 | Phase | Status | Evidence and remaining gate |
 |---|---|---|
 | 1. Repository audit | Done | See [the audit report](docs/PROJECT_AUDIT.md). |
-| 2. Stabilize and secure | Partial | Multipart ownership and parser-backed SQL restrictions exist; live authorization tests and per-workspace PostgreSQL roles remain required. |
-| 3. Dashboard and question engine | Partial | Mongo-backed learning modules and per-user lesson completion are available; the full generalized module/question workflow is not complete. |
-| 4. Python Interview Lab | Partial | Original Python learning content is available; code editor, execution service, automated test cases, and submission history are not implemented. |
-| 5. PySpark and Spark Lab | Partial | Spark learning content is available; no Spark runtime or execution service is configured. |
-| 6. Azure, Databricks, ETL, and AI interviews | Partial | Scenario lessons and persistent SQL interview sessions exist; no cloud deployment integrations or AI rubric-based interview feedback are implemented. |
-| 7. Final QA and production readiness | Blocked | Builds and unit/source tests pass, but MongoDB/PostgreSQL integration, migration reconciliation, and end-to-end deployment checks have not run. |
+| 2. Stabilize and secure | Partial | Per-workspace PostgreSQL roles, cross-schema denial, query limits, malformed-password handling, and admin-bootstrap regression tests are implemented. A disposable PostgreSQL integration test passed; upload and full authorization/API regression coverage remain incomplete. |
+| 3. Dashboard and question engine | Partial, substantially implemented | Mongo-backed modules, reviewed MCQ/scenario questions, search/topic/difficulty/type/progress filters, answer checking, retries, bookmarks, attempts, resume, and topic progress are implemented. Disposable Mongo tests and a two-account API smoke test passed; reviewer authoring and non-objectively-graded question workflows remain incomplete. |
+| 4. Python Interview Lab | Partial | Python lessons, an original coding exercise, editor, hidden tests, private bounded submissions, and a fail-closed external runner adapter are implemented. No isolated Python service is configured or verified. |
+| 5. PySpark and Spark Lab | Partial | Spark lessons, an original PySpark exercise/editor, and external runner contract are implemented. No Spark runtime, execution plan, or service is configured. |
+| 6. Azure, Databricks, ETL, and AI interviews | Partial | Original ADF/ADLS/Delta/ETL/system-design lessons and scenario questions are available. Persisted learning interviews support rubric feedback and follow-ups when OpenAI is configured; the provider was not called and no cloud service is integrated. |
+| 7. Final QA and production readiness | Blocked | Unit/builds, disposable PostgreSQL/Mongo integrations, runner-contract tests, and a two-account API smoke test pass. Production migration reconciliation, browser automation, upload security coverage, live runners, and provider/cloud verification remain outstanding. |
 
 Platform records are intended for MongoDB; PostgreSQL still contains legacy application tables used by startup and account/workspace provisioning, as well as the SQL-practice schemas. Do not remove those PostgreSQL tables or deploy a Mongo-only configuration until a resumable migration and runtime cutover are implemented and verified. See [environment variables](docs/ENVIRONMENT_VARIABLES.md) and the [current QA report](docs/FINAL_QA_REPORT.md).
 
@@ -1578,31 +1578,32 @@ Update this section after each implementation phase.
 
 ### Current status
 
-- **Current phase:** MongoDB persistence migration and security stabilization (in progress)
+- **Current phase:** Phases 2–6 implemented in part; Phase 7 release verification
 - **Last completed phase:** Phase 1 audit and roadmap
-- **Repository commit / checkpoint:** Pending GitHub checkpoint
-- **Backend build status:** Verified locally
-- **Automated backend tests:** 13 passed; the suite includes source-level assertions and is not a replacement for full integration coverage
-- **Security review:** Multipart ownership fixed; restricted SQL role verified locally; further review remains
-- **Production readiness:** Not assessed; do not deploy this in-progress migration
+- **Repository checkpoint:** Current Phase 2–7 changes are local and uncommitted
+- **Backend build status:** Type check and production build pass locally
+- **Automated backend tests:** 30 pass; 2 opt-in database integration tests skip by default
+- **Integration evidence:** Disposable PostgreSQL role isolation, Mongo learning/interview persistence, and two-account API smoke tests pass
+- **Security review:** Per-workspace SQL roles are verified; broader multipart and production review remain
+- **Production readiness:** Not ready; migration reconciliation, real runner/cloud services, and browser E2E remain outstanding
 
 ### Feature status
 
 | Feature | Status | Evidence / notes |
 |---|---|---|
-| Existing SQL functionality | Partially verified | Local smoke test passed against the restricted PostgreSQL role; existing editor remains in place |
-| Authentication and authorization | Partially verified | Accounts/sessions/audit moved to Mongo; signed-session behavior and full cross-user API coverage remain |
-| Learning dashboard | Not implemented | Phase 3 UI is not yet built |
-| Shared question engine | Partially migrated | Question reads, generation, reviews, collections, and attempts use Mongo; legacy PostgreSQL copies remain for compatibility |
-| Python Lab | Not implemented / not verified | Phase 4 target |
-| Isolated Python execution | Not implemented / not verified | Requires verified runner |
-| PySpark Lab | Not implemented / not verified | Phase 5 target |
-| Isolated Spark execution | Not implemented / not verified | Requires Spark infrastructure |
-| Azure learning content | Not implemented / not verified | Phase 6 target |
-| Databricks learning content | Not implemented / not verified | Phase 6 target |
-| ETL and warehouse content | Not implemented / not verified | Phase 6 target |
-| AI Mock Interviews | Not implemented / not verified | Phase 6 target |
-| Final deployment documentation | In progress | MongoDB and isolated PostgreSQL configuration documented; rollout/rollback still needs full verification |
+| Existing SQL functionality | Partially verified | Existing editor remains; per-workspace isolation passed a disposable PostgreSQL integration. |
+| Authentication and authorization | Partially verified | Mongo accounts/sessions and owner-scoped learning/interview APIs exist; full multipart/API matrix remains. |
+| Learning dashboard | Implemented, partial | Nine module paths, filters, question bank, attempts, bookmarks, progress, and resume. |
+| Shared question engine | Implemented, partial | Mongo MCQ/scenario/coding records; reviewer authoring and more question types remain. |
+| Python Lab | Implemented, partial | Lessons, coding editor, hidden-test contract, and private submission history; no runner deployed. |
+| Isolated Python execution | Unavailable | External adapter is tested, but no Python sandbox is configured. |
+| PySpark Lab | Implemented, partial | Lessons and coding exercise/editor; no Spark runtime deployed. |
+| Isolated Spark execution | Unavailable | External adapter is tested, but no Spark service is configured. |
+| Azure learning content | Partial | Original ADF/ADLS scenario lessons; no live cloud connection. |
+| Databricks learning content | Partial | Original Delta/MERGE lessons; no live Databricks connection. |
+| ETL and warehouse content | Partial | Reconciliation, SCD, and quality lessons/questions. |
+| AI Mock Interviews | Partial | Mongo sessions, resume, rubric and follow-up flow; AI provider was not called in tests. |
+| Final deployment documentation | Partial | Requirements documented; production migration, rollback, and deployment are not verified. |
 
 Update statuses only when supported by repository inspection, tests, or manual verification. Replace this template with actual evidence as work progresses.
 

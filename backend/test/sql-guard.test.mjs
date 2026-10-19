@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validatePracticeImport, validatePracticeRead } from '../src/sql-guard.ts';
+import { limitPracticeResult, validatePracticeImport, validatePracticeRead } from '../src/sql-guard.ts';
 
 test('workspace reads allow local tables and CTEs', () => {
   assert.equal(validatePracticeRead('practice_one', 'SELECT * FROM employees'), 'SELECT * FROM employees');
@@ -12,6 +12,15 @@ test('workspace reads reject cross-schema references, multiple statements, and m
   assert.throws(() => validatePracticeRead('practice_one', 'WITH x AS (SELECT * FROM practice_two.secret) SELECT * FROM x'), /current practice workspace/);
   assert.throws(() => validatePracticeRead('practice_one', 'SELECT 1; SELECT 2'), /one SELECT\/WITH/);
   assert.throws(() => validatePracticeRead('practice_one', 'DELETE FROM employees'), /one SELECT\/WITH/);
+  assert.throws(() => validatePracticeRead('practice_one', 'SELECT pg_sleep(10)'), /function is not available/);
+  assert.throws(() => validatePracticeRead('practice_one', 'SELECT nextval(\'seq\')'), /function is not available/);
+});
+
+test('practice result serialization is bounded by response bytes', () => {
+  assert.deepEqual(limitPracticeResult([{ value: 'ok' }, { value: 'too large' }], 18), {
+    rows: [{ value: 'ok' }],
+    truncated: true
+  });
 });
 
 test('practice imports only allow local table DDL and inserts', () => {

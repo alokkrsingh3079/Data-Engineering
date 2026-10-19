@@ -1,9 +1,10 @@
 import "dotenv/config";
 import crypto from "node:crypto";
 import pg from "pg";
-import type { PoolClient, FieldDef } from "pg";
+import { parse as parsePgConnectionString } from "pg-connection-string";
+import type { PoolClient, FieldDef, PoolConfig } from "pg";
 import { connectMongo, mongoCollection } from "./mongo.js";
-import { validatePracticeImport, validatePracticeRead } from "./sql-guard.js";
+import { limitPracticeResult, validatePracticeImport, validatePracticeRead } from "./sql-guard.js";
 const { Pool } = pg;
 
 export const pool = new Pool({
@@ -13,13 +14,25 @@ export const pool = new Pool({
   connectionTimeoutMillis: 5_000
 });
 
-let practicePool: any;
-function getPracticePool(){
+const practicePools = new Map<string, any>();
+export function derivePracticeRoleCredentials(schemaName: string, secret = process.env.PRACTICE_ROLE_SECRET || process.env.AUTH_SECRET) {
+ if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error('Invalid schema name');
+ if(!secret)throw new Error('PRACTICE_ROLE_SECRET or AUTH_SECRET must be configured');
+ return {name:`practice_${crypto.createHash('sha256').update(schemaName).digest('hex').slice(0,24)}`,password:crypto.createHmac('sha256',secret).update(schemaName).digest('base64url')};
+}
+function getPracticePool(schemaName:string){
  const connectionString=process.env.PRACTICE_DATABASE_URL;
  if(!connectionString)throw new Error('PRACTICE_DATABASE_URL must be configured for isolated SQL execution');
- if(!practicePool)practicePool=new Pool({connectionString,max:Number(process.env.DB_POOL_SIZE??10),idleTimeoutMillis:30_000,connectionTimeoutMillis:5_000});
+ if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error('Invalid schema name');
+ let practicePool=practicePools.get(schemaName);
+ if(practicePool){practicePools.delete(schemaName);practicePools.set(schemaName,practicePool);return practicePool}
+ if(practicePools.size>=64){const idle=[...practicePools].find(([,cached])=>cached.totalCount===cached.idleCount);if(!idle)throw new Error('Practice execution capacity is full');practicePools.delete(idle[0]);void idle[1].end()}
+ const role=derivePracticeRoleCredentials(schemaName),parsed=parsePgConnectionString(connectionString),parsedSsl=parsed.ssl,ssl=typeof parsedSsl==='string'?parsedSsl==='true'||parsedSsl==='1':parsedSsl&&typeof parsedSsl==='object'?Object.fromEntries(Object.entries(parsedSsl).filter(([,value])=>value!==null)) as PoolConfig['ssl']:parsedSsl??undefined;practicePool=new Pool({...parsed,host:parsed.host??undefined,port:parsed.port?Number(parsed.port):undefined,database:parsed.database??undefined,ssl,user:role.name,password:role.password,max:1,idleTimeoutMillis:10_000,connectionTimeoutMillis:5_000});practicePools.set(schemaName,practicePool);
  return practicePool;
 }
+
+export async function closePracticePools():Promise<void>{await Promise.all([...practicePools.values()].map((practicePool)=>practicePool.end()));practicePools.clear()}
+export async function dropPracticeSchema(schemaName:string):Promise<void>{if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error('Invalid schema name');const cached=practicePools.get(schemaName);if(cached){practicePools.delete(schemaName);await cached.end()}await pool.query(`DROP SCHEMA IF EXISTS ${quoteIdent(schemaName)} CASCADE`);const role=derivePracticeRoleCredentials(schemaName);await pool.query(`DROP ROLE IF EXISTS ${quoteIdent(role.name)}`)}
 
 export async function withClient<T>(fn:(client:PoolClient)=>Promise<T>):Promise<T>{const c=await pool.connect();try{return await fn(c)}finally{c.release()}}
 
@@ -60,10 +73,10 @@ export async function initDb(){
  CREATE TABLE IF NOT EXISTS refresh_jobs(id UUID PRIMARY KEY,job_type TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',payload JSONB NOT NULL DEFAULT '{}'::jsonb,progress INTEGER NOT NULL DEFAULT 0,error TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),finished_at TIMESTAMPTZ);
 
  `);
- await getPracticePool().query('SELECT 1');
+ await pool.query('SELECT 1');
 }
 
-export async function grantPracticeSchema(schemaName:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error("Invalid schema name");const schema=quoteIdent(schemaName),role=quoteIdent(process.env.PRACTICE_DATABASE_ROLE||'practice_executor');await pool.query(`GRANT USAGE, CREATE ON SCHEMA ${schema} TO ${role}`);await pool.query(`GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA ${schema} TO ${role}`);await pool.query(`GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA ${schema} TO ${role}`)}
+export async function grantPracticeSchema(schemaName:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error("Invalid schema name");const schema=quoteIdent(schemaName),roleData=derivePracticeRoleCredentials(schemaName),role=quoteIdent(roleData.name),password=roleData.password;await pool.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${roleData.name}') THEN CREATE ROLE ${role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT; END IF; END $$`);await pool.query(`ALTER ROLE ${role} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD '${password}'`);await pool.query(`ALTER ROLE ${role} SET temp_file_limit='64MB'`);await pool.query(`REVOKE ALL ON SCHEMA ${schema} FROM PUBLIC`);const legacyRole=await pool.query("SELECT 1 FROM pg_roles WHERE rolname='practice_executor'");if(legacyRole.rowCount){await pool.query(`REVOKE ALL ON SCHEMA ${schema} FROM practice_executor`);await pool.query(`REVOKE ALL ON ALL TABLES IN SCHEMA ${schema} FROM practice_executor`);await pool.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA ${schema} FROM practice_executor`)}await pool.query(`GRANT USAGE, CREATE ON SCHEMA ${schema} TO ${role}`);await pool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${schema} TO ${role}`);await pool.query(`GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA ${schema} TO ${role}`);const tables=await pool.query('SELECT tablename FROM pg_tables WHERE schemaname=$1',[schemaName]);for(const table of tables.rows)await pool.query(`ALTER TABLE ${schema}.${quoteIdent(table.tablename)} OWNER TO ${role}`);const sequences=await pool.query("SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema=$1",[schemaName]);for(const sequence of sequences.rows)await pool.query(`ALTER SEQUENCE ${schema}.${quoteIdent(sequence.sequence_name)} OWNER TO ${role}`)}
 export async function createPracticeSchema(schemaName:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error("Invalid schema name");await pool.query(`CREATE SCHEMA IF NOT EXISTS ${quoteIdent(schemaName)}`);await grantPracticeSchema(schemaName)}
 export function quoteIdent(v:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(v))throw new Error("Invalid identifier");return `"${v}"`}
 
@@ -78,10 +91,10 @@ export async function schemaSnapshot(schemaName:string){
 export async function executeReadOnly(schemaName:string,sql:string){
  const cleaned=validatePracticeRead(schemaName,sql);
  if(cleaned.includes(';'))throw new Error("Only one SQL statement is allowed per practice run.");
- const client=await getPracticePool().connect();const started=Date.now();try{await client.query('BEGIN');await client.query("SET LOCAL statement_timeout='5000ms'");await client.query("SET LOCAL idle_in_transaction_session_timeout='6000ms'");await client.query("SET LOCAL transaction_read_only=on");await client.query("SET LOCAL work_mem='16MB'");await client.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);const r=await client.query(`SELECT * FROM (${cleaned}) AS practice_result LIMIT 1000`);await client.query('ROLLBACK');return{columns:r.fields.map((f:FieldDef)=>f.name),rows:r.rows,rowCount:r.rowCount??r.rows.length,executionMs:Date.now()-started};}catch(e){try{await client.query('ROLLBACK')}catch{}throw e}finally{client.release()}
+ const client=await getPracticePool(schemaName).connect();const started=Date.now();try{await client.query('BEGIN');await client.query("SET LOCAL statement_timeout='5000ms'");await client.query("SET LOCAL idle_in_transaction_session_timeout='6000ms'");await client.query("SET LOCAL transaction_read_only=on");await client.query("SET LOCAL work_mem='16MB'");await client.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);const r=await client.query(`SELECT * FROM (${cleaned}) AS practice_result LIMIT 1000`);await client.query('ROLLBACK');const limited=limitPracticeResult(r.rows);return{columns:r.fields.map((f:FieldDef)=>f.name),rows:limited.rows,rowCount:r.rowCount??r.rows.length,truncated:limited.truncated||r.rows.length===1000,executionMs:Date.now()-started};}catch(e){try{await client.query('ROLLBACK')}catch{}throw e}finally{client.release()}
 }
 
-export async function executeImport(schemaName:string,sql:string){const validated=validatePracticeImport(schemaName,sql);const c=await getPracticePool().connect();try{await c.query('BEGIN');await c.query("SET LOCAL statement_timeout='30000ms'");await c.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);await c.query(validated);await c.query('COMMIT')}catch(e){try{await c.query('ROLLBACK')}catch{}throw e}finally{c.release()}}
+export async function executeImport(schemaName:string,sql:string){const validated=validatePracticeImport(schemaName,sql);const c=await getPracticePool(schemaName).connect();try{await c.query('BEGIN');await c.query("SET LOCAL statement_timeout='30000ms'");await c.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);await c.query(validated);await c.query('COMMIT')}catch(e){try{await c.query('ROLLBACK')}catch{}throw e}finally{c.release()}}
 
 export async function clearPracticeSchema(schemaName:string){await pool.query(`DROP SCHEMA IF EXISTS ${quoteIdent(schemaName)} CASCADE`);await createPracticeSchema(schemaName)}
 export async function schemaDDL(schemaName:string){const tables=await listTables(schemaName);const lines:string[]=[];for(const t of tables){lines.push(`CREATE TABLE ${quoteIdent(t.name)} (`);lines.push(t.columns.map((c:any)=>`  ${quoteIdent(c.column_name)} ${c.data_type.toUpperCase()}${c.is_nullable==='NO'?' NOT NULL':''}${c.is_primary_key?' PRIMARY KEY':''}`).join(',\n'));lines.push(');')}const snap=await schemaSnapshot(schemaName);for(const fk of snap.relationships)lines.push(`ALTER TABLE ${quoteIdent(fk.table_name)} ADD CONSTRAINT ${quoteIdent(fk.constraint_name)} FOREIGN KEY (${quoteIdent(fk.column_name)}) REFERENCES ${quoteIdent(fk.foreign_table_name)} (${quoteIdent(fk.foreign_column_name)});`);return lines.join('\n')}

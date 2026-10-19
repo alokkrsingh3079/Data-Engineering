@@ -10,7 +10,7 @@ This roadmap refines the project phases for the requested MongoDB application st
 
 ## Phase order and gates
 
-Verified status as of 2026-10-19: Phase 1 is complete. Phase 2 through Phase 6 have partial implementation only; Phase 7 is blocked on live database and deployment validation. Detailed evidence is in `PROJECT_AUDIT.md` and `FINAL_QA_REPORT.md`. Do not treat the planned milestones below as completed work.
+Verified status as of 2026-10-19: Phase 1 is complete. Phases 2–6 have substantial implementation but remain partial: disposable PostgreSQL/MongoDB integrations, runner-adapter tests, rubric schema tests, and a two-account API smoke test pass. Remaining gaps include full multipart security coverage, content authoring/review, real Python/Spark services, actual AI-provider verification, cloud integrations, and PostgreSQL-to-Mongo reconciliation. Phase 7 remains blocked on migration, browser, and production deployment validation. Detailed evidence is in `PROJECT_AUDIT.md` and `FINAL_QA_REPORT.md`. Do not treat the planned milestones below as completed work.
 
 1. Audit (complete): document the existing architecture, verified features, test limits, risks, and migration boundary in `docs/PROJECT_AUDIT.md`.
 2. Security stabilization: fix multipart ownership checks, constrain SQL imports, remove insecure secret defaults, and add behavior tests. Gate: backend build and security tests pass in an environment with installed dependencies and isolated databases.
