@@ -8,7 +8,7 @@ export async function migrateLegacyWorkspaces(): Promise<void> {
     const batch = rows.slice(offset, offset + 250);
     await workspaces.bulkWrite(batch.map((workspace: any) => ({
       updateOne: {
-        filter: { _id: String(workspace.id) },
+        filter: { $or: [{ _id: String(workspace.id) }, { slug: workspace.slug }] },
         update: { $set: { ...workspace, id: String(workspace.id) }, $setOnInsert: { _id: String(workspace.id) } },
         upsert: true
       }
@@ -26,7 +26,7 @@ export async function migrateUserWorkspace(userId: string): Promise<void> {
   const workspaces = mongoCollection("app_databases");
   await workspaces.bulkWrite(rows.map((workspace: any) => ({
     updateOne: {
-      filter: { _id: String(workspace.id) },
+      filter: { $or: [{ _id: String(workspace.id) }, { slug: workspace.slug }] },
       update: { $set: { ...workspace, id: String(workspace.id) }, $setOnInsert: { _id: String(workspace.id) } },
       upsert: true
     }
@@ -35,7 +35,7 @@ export async function migrateUserWorkspace(userId: string): Promise<void> {
 }
 
 export async function getWorkspaceById(id: string): Promise<any> {
-  return mongoCollection("app_databases").findOne({ _id: id });
+  return mongoCollection("app_databases").findOne({ $or: [{ _id: id }, { id }] });
 }
 
 export async function getWorkspaceBySlug(slug: string): Promise<any> {
@@ -56,7 +56,7 @@ export async function createWorkspace(workspace: Record<string, unknown>): Promi
 
 export async function workspaceOwnedByUser(workspaceId: string, userId: string): Promise<boolean> {
   return Boolean(await mongoCollection("app_databases").findOne(
-    { _id: workspaceId, owner_user_id: userId },
+    { $or: [{ _id: workspaceId }, { id: workspaceId }], owner_user_id: userId },
     { projection: { _id: 1 } }
   ));
 }
@@ -80,7 +80,7 @@ export async function deleteWorkspaceRecord(workspaceId: string): Promise<void> 
   ).toArray();
   const collectionIds = collections.map(collection => String(collection.id));
   const cleanup: Promise<unknown>[] = [
-    mongoCollection("app_databases").deleteOne({ _id: workspaceId }),
+    mongoCollection("app_databases").deleteOne({ $or: [{ _id: workspaceId }, { id: workspaceId }] }),
     mongoCollection("schema_imports").deleteMany({ database_id: workspaceId }),
     mongoCollection("database_snapshots").deleteMany({ database_id: workspaceId }),
     mongoCollection("question_sets").deleteMany({ database_id: workspaceId }),
