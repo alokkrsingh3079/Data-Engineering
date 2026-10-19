@@ -238,12 +238,32 @@ export function summarizeAllTimeSolved(
     .sort((left, right) => left.trackId.localeCompare(right.trackId));
 }
 
-export async function dailyProgress(userId: string, days = 30, timeZone = "UTC") {
+export function summarizeTrackQuestionTotals(
+  sqlQuestionCount: number,
+  learningQuestionCounts: { trackId: string; total: number }[],
+  solvedTracks: { trackId: string; solved: number }[]
+) {
+  const solvedByTrack = new Map(solvedTracks.map(track => [track.trackId, track.solved]));
+  const totals = new Map<string, number>([["sql-interview-lab", sqlQuestionCount]]);
+  for (const track of learningQuestionCounts) totals.set(track.trackId, track.total);
+  return [...totals].map(([trackId, total]) => ({ trackId, total, solved: solvedByTrack.get(trackId) || 0 }))
+    .sort((left, right) => left.trackId.localeCompare(right.trackId));
+}
+
+export async function dailyProgress(userId: string, days = 30, timeZone = "UTC", isAdmin = false) {
   const since = new Date(Date.now() - (days + 2) * 24 * 60 * 60 * 1000);
+  const workspaces = isAdmin
+    ? await pool.query("SELECT id FROM app_databases")
+    : await pool.query("SELECT id FROM app_databases WHERE owner_user_id=$1", [userId]);
+  const databaseIds = workspaces.rows.map((workspace: any) => String(workspace.id));
+  const sqlQuestions = databaseIds.length
+    ? await mongoCollection("challenges").find({ database_id: { $in: databaseIds } }, { projection: { id: 1 } }).toArray()
+    : [];
+  const sqlQuestionIds = sqlQuestions.map((question: any) => String(question.id || question._id));
   const [sqlAttempts, learningAttempts, sqlSolvedIds, learningCompletions] = await Promise.all([
-    mongoCollection("attempts").find({ session_id: userId, created_at: { $gte: since } }, { projection: { challenge_id: 1, correct: 1, created_at: 1 } }).toArray(),
+    mongoCollection("attempts").find({ session_id: userId, challenge_id: { $in: sqlQuestionIds }, created_at: { $gte: since } }, { projection: { challenge_id: 1, correct: 1, created_at: 1 } }).toArray(),
     mongoCollection("learning_attempts").find({ user_id: userId, created_at: { $gte: since } }, { projection: { question_id: 1, correct: 1, created_at: 1 } }).toArray(),
-    mongoCollection("attempts").distinct("challenge_id", { session_id: userId, correct: true }),
+    mongoCollection("attempts").distinct("challenge_id", { session_id: userId, challenge_id: { $in: sqlQuestionIds }, correct: true }),
     mongoCollection("learning_question_progress").find({ user_id: userId, completed: true }, { projection: { question_id: 1 } }).toArray()
   ]);
   const learningQuestionIds = [...new Set(learningAttempts.map((attempt: any) => String(attempt.question_id)))];
@@ -255,15 +275,24 @@ export async function dailyProgress(userId: string, days = 30, timeZone = "UTC")
   const completedLearningQuestions = completedLearningQuestionIds.length
     ? await mongoCollection("learning_questions").find({ _id: { $in: completedLearningQuestionIds } }, { projection: { module_id: 1 } }).toArray()
     : [];
+  const learningQuestionCounts = await mongoCollection("learning_questions").aggregate([
+    { $match: { status: "published" } },
+    { $group: { _id: "$module_id", total: { $sum: 1 } } }
+  ]).toArray();
   const allTimeTracks = summarizeAllTimeSolved(
     sqlSolvedIds.map((questionId: unknown) => String(questionId)),
     completedLearningQuestions.map((question: any) => ({ question_id: String(question._id), track_id: String(question.module_id || "unknown") }))
+  );
+  const trackTotals = summarizeTrackQuestionTotals(
+    sqlQuestionIds.length,
+    learningQuestionCounts.map((track: any) => ({ trackId: String(track._id), total: Number(track.total) })),
+    allTimeTracks
   );
   const records = [
     ...sqlAttempts.map((attempt: any) => ({ created_at: attempt.created_at, correct: Boolean(attempt.correct), track_id: "sql-interview-lab", question_id: String(attempt.challenge_id) })),
     ...learningAttempts.map((attempt: any) => ({ created_at: attempt.created_at, correct: Boolean(attempt.correct), track_id: moduleByQuestionId.get(String(attempt.question_id)) || "unknown", question_id: String(attempt.question_id) }))
   ];
-  return { ...summarizeDailyAttempts(records, days, timeZone), allTimeTracks };
+  return { ...summarizeDailyAttempts(records, days, timeZone), allTimeTracks, trackTotals };
 }
 
 export async function exportProgress(sessionId: string) {

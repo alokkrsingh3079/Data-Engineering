@@ -2,9 +2,10 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { Flame } from "lucide-react";
 import "./today-track-rings.css";
 import "./today-track-rings-size.css";
+import "./today-track-rings-tooltip.css";
 
 type TrackCount = { trackId: string; attempts: number; solved: number };
-type DailyProgress = { streakDays: number; today: { tracks: TrackCount[] }; allTimeTracks: { trackId: string; solved: number }[] };
+type DailyProgress = { streakDays: number; today: { tracks: TrackCount[] }; allTimeTracks: { trackId: string; solved: number }[]; trackTotals: { trackId: string; solved: number; total: number }[] };
 
 const API = "";
 const tracks = [
@@ -19,8 +20,10 @@ const tracks = [
 export default function TodayTrackRings() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [allTimeCounts, setAllTimeCounts] = useState<Record<string, number>>({});
+  const [questionTotals, setQuestionTotals] = useState<Record<string, number>>({});
   const [ready, setReady] = useState(false);
   const [streakDays, setStreakDays] = useState(0);
+  const [activeTrack, setActiveTrack] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -37,6 +40,7 @@ export default function TodayTrackRings() {
         const progress: DailyProgress = await response.json();
         setCounts(Object.fromEntries(progress.today.tracks.map((track) => [track.trackId, track.solved])));
         setAllTimeCounts(Object.fromEntries(progress.allTimeTracks.map((track) => [track.trackId, track.solved])));
+        setQuestionTotals(Object.fromEntries(progress.trackTotals.map((track) => [track.trackId, track.total])));
         setStreakDays(progress.streakDays);
         setReady(true);
       } catch {}
@@ -52,8 +56,6 @@ export default function TodayTrackRings() {
     };
   }, []);
 
-  const maxSolved = Math.max(0, ...Object.values(counts));
-
   return <section className="todayTrackRings" aria-label="Today's solved questions by track">
     <div className="todayTrackRingsTitle">
       <div className="todayTrackRingsHeading"><span>TODAY</span><span className="todayTrackStreak" title={`${streakDays} consecutive days with a correct answer`}><Flame size={12} />{ready ? `${streakDays}d streak` : "—"}</span></div>
@@ -62,10 +64,11 @@ export default function TodayTrackRings() {
     <div className="todayTrackRingList">{tracks.map((track) => {
       const solved = counts[track.id] || 0;
       const totalSolved = allTimeCounts[track.id] || 0;
-      const fill = maxSolved ? Math.round(solved / maxSolved * 100) : 0;
-      return <div className={`todayTrackRingItem tone-${track.tone}`} key={track.id} title={`${track.name}: ${solved} unique questions solved today, ${totalSolved} solved overall`}>
-        <span className="todayTrackRing" style={{ "--ring-fill": `${fill}%` } as CSSProperties} role="img" aria-label={`${track.name}: ${solved} solved today, ${totalSolved} solved overall`}><strong>{ready ? solved : "·"}</strong></span>
-        <span className="todayTrackRingLabel"><b>{track.name}</b><small>Today {solved} · Total {ready ? totalSolved : "—"}</small></span>
+      const totalQuestions = questionTotals[track.id] || 0;
+      const fill = totalQuestions ? Math.min(100, Math.round(totalSolved / totalQuestions * 100)) : 0;
+      return <div className={`todayTrackRingItem tone-${track.tone}`} key={track.id} data-tooltip={`${totalSolved}/${totalQuestions} questions solved overall`} tabIndex={0} onMouseEnter={() => setActiveTrack(track.id)} onMouseLeave={() => setActiveTrack((current) => current === track.id ? null : current)} onFocus={() => setActiveTrack(track.id)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setActiveTrack(null); }} aria-label={`${track.name}: ${solved} solved today, ${totalSolved} of ${totalQuestions} solved overall`}>
+        <span className={`todayTrackRing${activeTrack === track.id ? " todayTrackRingFraction" : ""}`} style={{ "--ring-fill": `${fill}%` } as CSSProperties} aria-hidden="true"><strong>{ready ? activeTrack === track.id ? `${totalSolved}/${totalQuestions}` : solved : "·"}</strong></span>
+        <span className="todayTrackRingLabel"><b>{track.name}</b><small>Today {solved} · All-time {ready ? totalSolved : "—"}</small></span>
       </div>;
     })}</div>
   </section>;

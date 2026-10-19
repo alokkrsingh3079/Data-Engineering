@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeAllTimeSolved, summarizeDailyAttempts } from '../src/learning.ts';
+import { summarizeAllTimeSolved, summarizeDailyAttempts, summarizeTrackQuestionTotals } from '../src/learning.ts';
 
 test('daily progress groups attempts by local date and track and counts solved streaks', () => {
   const summary = summarizeDailyAttempts([
@@ -46,5 +46,21 @@ test('all-time solved totals count unique correct questions by track', () => {
     { trackId: 'pyspark-foundations', solved: 1 },
     { trackId: 'python-etl', solved: 1 },
     { trackId: 'sql-interview-lab', solved: 2 }
+  ]);
+});
+
+test('track totals pair lifetime solved counts with available question-bank sizes', () => {
+  const totals = summarizeTrackQuestionTotals(279, [
+    { trackId: 'python-etl', total: 273 },
+    { trackId: 'pyspark-foundations', total: 270 }
+  ], [
+    { trackId: 'sql-interview-lab', solved: 2 },
+    { trackId: 'python-etl', solved: 1 }
+  ]);
+
+  assert.deepEqual(totals, [
+    { trackId: 'pyspark-foundations', total: 270, solved: 0 },
+    { trackId: 'python-etl', total: 273, solved: 1 },
+    { trackId: 'sql-interview-lab', total: 279, solved: 2 }
   ]);
 });

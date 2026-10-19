@@ -6,6 +6,7 @@
 .todayTrackRingItem{min-height:68px;gap:10px;padding:7px 9px}
 .todayTrackRing{width:52px;height:52px}
 .todayTrackRing strong{width:41px;height:41px;font-size:15px}
+.todayTrackRingFraction strong{font-size:9px;white-space:nowrap}
 .todayTrackRingLabel{gap:4px}
 .todayTrackRingLabel b{font-size:11px}
 .todayTrackRingLabel small{font-size:9px}

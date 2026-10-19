@@ -13,6 +13,7 @@ import "./studio-sidebar.css";
 import "./revision-queue.css";
 import "./solution-copy.css";
 import "./revision-bookmark.css";
+import "./dashboard-progress.css";
 
 type Lesson = {
   id: string;
@@ -172,7 +173,7 @@ export default function LearningStudio() {
   const totalQuestions = modules.reduce((total, module) => total + module.questionCount, 0);
   const completedQuestions = modules.reduce((total, module) => total + module.completedQuestions, 0);
   const completedLessons = modules.reduce((total, module) => total + module.lessons.filter((lesson) => lesson.completed).length, 0);
-  const completionPercent = totalQuestions ? Math.round((completedQuestions / totalQuestions) * 100) : 0;
+  const completionPercent = totalQuestions ? Number(((completedQuestions / totalQuestions) * 100).toFixed(1)) : 0;
 
   useEffect(() => {
     if (!activeModule || activeModule.questionCount === 0) {
@@ -489,7 +490,7 @@ export default function LearningStudio() {
         <div className="studioWelcomeCopy"><div className="studioEyebrow"><span className="liveDot" /> YOUR LEARNING STUDIO <span>{modules.length.toString().padStart(2, "0")} TRACKS</span></div><h1>Welcome back, <span>{userName.split(" ")[0]}.</span></h1><p>Your next data engineering skill is one focused session away.</p>
           {recentAttempt?.question && <button className="studioContinue" onClick={() => resumeQuestion(recentAttempt.question!)}><span className="continueIcon"><Activity size={18} /></span><span><small>CONTINUE LEARNING</small><strong>{recentAttempt.question.title}</strong><em>{recentAttempt.correct ? "Last result: passed" : "Last result: ready to retry"}</em></span><ArrowRight size={17} /></button>}
         </div>
-        <div className="studioWelcomeProgress"><div className="progressRing" style={{ "--progress": `${completionPercent}%` } as CSSProperties}><div><strong>{completionPercent}%</strong><span>complete</span></div></div><span>OVERALL PROGRESS</span></div>
+        <div className="studioWelcomeProgress"><div className="progressRing" style={{ "--progress": `${completionPercent}%` } as CSSProperties}><div><strong>{completionPercent}%</strong><span>complete</span></div></div><span>OVERALL PROGRESS</span><small>{completedQuestions} / {totalQuestions} questions solved</small></div>
         <TodayTrackRings />
       </section>}
 
