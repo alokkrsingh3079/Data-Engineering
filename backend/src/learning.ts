@@ -155,6 +155,117 @@ export async function analyticsOverview(sessionId: string) {
   };
 }
 
+export function summarizeDailyAttempts(
+  attempts: { created_at: Date | string; correct: boolean; track_id: string; question_id: string }[],
+  days: number,
+  timeZone: string,
+  now = new Date()
+) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+  const dateKey = (value: Date | string) => {
+    const parts = formatter.formatToParts(new Date(value));
+    const part = (type: string) => parts.find(item => item.type === type)?.value || "";
+    return `${part("year")}-${part("month")}-${part("day")}`;
+  };
+  const today = dateKey(now);
+  const counts = new Map<string, { attempts: number; solvedQuestions: Set<string>; tracks: Map<string, { attempts: number; solvedQuestions: Set<string> }> }>();
+  const solvedDates = new Set<string>();
+
+  for (const attempt of attempts) {
+    const date = dateKey(attempt.created_at);
+    const day = counts.get(date) || { attempts: 0, solvedQuestions: new Set(), tracks: new Map() };
+    const track = day.tracks.get(attempt.track_id) || { attempts: 0, solvedQuestions: new Set() };
+    day.attempts += 1;
+    track.attempts += 1;
+    if (attempt.correct) {
+      day.solvedQuestions.add(`${attempt.track_id}:${attempt.question_id}`);
+      track.solvedQuestions.add(attempt.question_id);
+      solvedDates.add(date);
+    }
+    day.tracks.set(attempt.track_id, track);
+    counts.set(date, day);
+  }
+
+  const calendarDays = Array.from({ length: days }, (_, index) => {
+    const date = new Date(`${today}T12:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() - index);
+    const key = date.toISOString().slice(0, 10);
+    const count = counts.get(key);
+    return {
+      date: key,
+      attempts: count?.attempts || 0,
+      solved: count?.solvedQuestions.size || 0,
+      tracks: count ? [...count.tracks].map(([trackId, values]) => ({ trackId, attempts: values.attempts, solved: values.solvedQuestions.size })).sort((left, right) => left.trackId.localeCompare(right.trackId)) : []
+    };
+  });
+
+  const todayCounts = calendarDays[0];
+  let streakCursor = today;
+  if (!solvedDates.has(streakCursor)) {
+    const yesterday = new Date(`${today}T12:00:00.000Z`);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    streakCursor = yesterday.toISOString().slice(0, 10);
+  }
+  let streakDays = 0;
+  while (solvedDates.has(streakCursor)) {
+    streakDays += 1;
+    const previousDay = new Date(`${streakCursor}T12:00:00.000Z`);
+    previousDay.setUTCDate(previousDay.getUTCDate() - 1);
+    streakCursor = previousDay.toISOString().slice(0, 10);
+  }
+
+  return { timeZone, streakDays, today: todayCounts, days: calendarDays };
+}
+
+export function summarizeAllTimeSolved(
+  sqlQuestionIds: string[],
+  learningQuestions: { question_id: string; track_id: string }[]
+) {
+  const counts = new Map<string, Set<string>>();
+  const sqlIds = new Set(sqlQuestionIds);
+  counts.set("sql-interview-lab", sqlIds);
+  for (const question of learningQuestions) {
+    const questionIds = counts.get(question.track_id) || new Set<string>();
+    questionIds.add(question.question_id);
+    counts.set(question.track_id, questionIds);
+  }
+  return [...counts].map(([trackId, questionIds]) => ({ trackId, solved: questionIds.size }))
+    .sort((left, right) => left.trackId.localeCompare(right.trackId));
+}
+
+export async function dailyProgress(userId: string, days = 30, timeZone = "UTC") {
+  const since = new Date(Date.now() - (days + 2) * 24 * 60 * 60 * 1000);
+  const [sqlAttempts, learningAttempts, sqlSolvedIds, learningCompletions] = await Promise.all([
+    mongoCollection("attempts").find({ session_id: userId, created_at: { $gte: since } }, { projection: { challenge_id: 1, correct: 1, created_at: 1 } }).toArray(),
+    mongoCollection("learning_attempts").find({ user_id: userId, created_at: { $gte: since } }, { projection: { question_id: 1, correct: 1, created_at: 1 } }).toArray(),
+    mongoCollection("attempts").distinct("challenge_id", { session_id: userId, correct: true }),
+    mongoCollection("learning_question_progress").find({ user_id: userId, completed: true }, { projection: { question_id: 1 } }).toArray()
+  ]);
+  const learningQuestionIds = [...new Set(learningAttempts.map((attempt: any) => String(attempt.question_id)))];
+  const learningQuestions = learningQuestionIds.length
+    ? await mongoCollection("learning_questions").find({ _id: { $in: learningQuestionIds } }, { projection: { module_id: 1 } }).toArray()
+    : [];
+  const moduleByQuestionId = new Map(learningQuestions.map((question: any) => [String(question._id), String(question.module_id || "unknown")]));
+  const completedLearningQuestionIds = [...new Set(learningCompletions.map((item: any) => String(item.question_id)))];
+  const completedLearningQuestions = completedLearningQuestionIds.length
+    ? await mongoCollection("learning_questions").find({ _id: { $in: completedLearningQuestionIds } }, { projection: { module_id: 1 } }).toArray()
+    : [];
+  const allTimeTracks = summarizeAllTimeSolved(
+    sqlSolvedIds.map((questionId: unknown) => String(questionId)),
+    completedLearningQuestions.map((question: any) => ({ question_id: String(question._id), track_id: String(question.module_id || "unknown") }))
+  );
+  const records = [
+    ...sqlAttempts.map((attempt: any) => ({ created_at: attempt.created_at, correct: Boolean(attempt.correct), track_id: "sql-interview-lab", question_id: String(attempt.challenge_id) })),
+    ...learningAttempts.map((attempt: any) => ({ created_at: attempt.created_at, correct: Boolean(attempt.correct), track_id: moduleByQuestionId.get(String(attempt.question_id)) || "unknown", question_id: String(attempt.question_id) }))
+  ];
+  return { ...summarizeDailyAttempts(records, days, timeZone), allTimeTracks };
+}
+
 export async function exportProgress(sessionId: string) {
   const { attempts, questions } = await sessionAttempts(sessionId);
   return attempts.flatMap((attempt: any) => {

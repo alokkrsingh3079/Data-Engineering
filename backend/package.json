@@ -9,7 +9,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "node --import tsx --test test/*.test.mjs",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "seed:sql-levels": "tsx src/seed-sql-levels.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

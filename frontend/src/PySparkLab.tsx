@@ -2,11 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { Bookmark, Check, Clock3, Code2, Database, ExternalLink, History, Layers3, Lightbulb, Play, Send, Sparkles } from "lucide-react";
+import { Bookmark, Check, Clock3, Code2, Database, ExternalLink, Flag, History, Layers3, Lightbulb, Play, Send, Sparkles } from "lucide-react";
+import CopyButton from "./CopyButton";
 import "./pyspark-lab.css";
 import "./pyspark-theme.css";
 import "./pyspark-levels.css";
 import "./pyspark-level-expansion.css";
+import "./solution-copy.css";
+import "./revision-bookmark.css";
 
 type Question = {
   id: string;
@@ -251,7 +254,7 @@ export default function PySparkLab() {
     const response = await fetch(`${API}/api/learning/questions/${question.id}/review`, { credentials: "include" });
     const body = await response.json();
     if (response.ok) setReview(body);
-    else setError(body.error || "Submit a solution before opening the reference answer.");
+    else setError(body.error || "Reference solution is unavailable.");
   }
 
   const example = question?.public_examples?.[0];
@@ -268,15 +271,15 @@ export default function PySparkLab() {
     <div className="sparkLabLayout">
       <aside className="sparkQuestionRail" aria-label="PySpark question bank">
         <div className="sparkRailHead"><strong>{revisionOnly ? "REVISION ONLY" : "QUESTION BANK"}</strong><span>{visibleQuestions.length}</span></div>
-        <button className={`sparkRevisionToggle ${revisionOnly ? "active" : ""}`} onClick={() => { setRevisionOnly(!revisionOnly); if (!revisionOnly) setFilter("all"); }}><Bookmark size={13} />{revisionOnly ? "Show all questions" : "Revision only"}</button>
+        <button className={`sparkRevisionToggle ${revisionOnly ? "active" : ""}`} onClick={() => { setRevisionOnly(!revisionOnly); if (!revisionOnly) setFilter("all"); }}><Flag size={13} />{revisionOnly ? "Show all questions" : "Revision only"}</button>
         <div className="sparkLevelSelector" role="tablist" aria-label="PySpark learning levels">{[...levels, "all"].map((level) => <button key={level} role="tab" aria-label={level === "all" ? "All levels" : `Level ${level}, ${levelBand(level)}`} title={level === "all" ? "All levels" : `Level ${level} · ${levelBand(level)}`} aria-selected={filter === level} className={`${filter === level ? "active" : ""} level-${level.toLowerCase()}`} onClick={() => setFilter(level)}><strong>{level === "all" ? "All" : level}</strong><span>{level === "all" ? questions.length : levelCounts[level]}</span></button>)}</div>
         <div className={`sparkLevelIntro level-${filter.toLowerCase()}`}><strong>{filter === "all" ? "FULL QUESTION BANK" : `LEVEL ${filter} · ${levelBand(filter)}`}</strong><p>{levelDescription(filter)}</p></div>
-        {visibleQuestions.map((item, index) => <button key={item.id} className={`sparkQuestionItem ${question?.id === item.id ? "selected" : ""}`} onClick={() => void chooseQuestion(item)}><span className="sparkQuestionTitle"><em>{String(index + 1).padStart(2, "0")}</em>{item.title}</span><span className="sparkQuestionMeta">{item.topic} · {item.learning_level ? `Level ${item.learning_level}` : item.difficulty}{item.completed && <Check size={13} />}{item.bookmarked && <Bookmark size={12} />}</span></button>)}
+        {visibleQuestions.map((item, index) => <button key={item.id} className={`sparkQuestionItem ${question?.id === item.id ? "selected" : ""}`} onClick={() => void chooseQuestion(item)}><span className="sparkQuestionTitle"><em>{String(index + 1).padStart(2, "0")}</em>{item.title}</span><span className="sparkQuestionMeta">{item.topic} · {item.learning_level ? `Level ${item.learning_level}` : item.difficulty}{item.completed && <Check size={13} />}{item.revisionMarked && <Flag size={12} aria-label="Marked for revision" />}{item.bookmarked && <Bookmark size={12} aria-label="Bookmarked" />}</span></button>)}
         {!visibleQuestions.length && <p className="sparkRailEmpty">{revisionOnly ? "No questions are marked for revision." : "No Spark exercises match this filter."}</p>}
       </aside>
 
       {question && <section className="sparkWorkspace">
-        <div className="sparkChallengeHead"><div><div className="sparkQuestionMetaLine"><span className={`levelPill level-${question.learning_level || "A"}`}>{question.level_title || `Level ${question.learning_level || "A"}`}</span>{question.topic}{question.subtopic ? ` / ${question.subtopic}` : ""}<span>{question.difficulty_label || question.difficulty}</span></div><h2>{question.title}</h2></div><div className="sparkQuestionActions"><button className={question.revisionMarked ? "saved" : ""} onClick={() => void toggleRevisionMark()} aria-label={question.revisionMarked ? "Remove revision mark" : "Mark for revision"} title={question.revisionMarked ? "Remove revision mark" : "Mark for revision"}><Bookmark size={16} /></button><button className={question.bookmarked ? "saved" : ""} onClick={() => void toggleBookmark()} aria-label={question.bookmarked ? "Remove bookmark" : "Bookmark question"} title={question.bookmarked ? "Remove bookmark" : "Bookmark question"}><Bookmark size={16} /></button></div></div>
+        <div className="sparkChallengeHead"><div><div className="sparkQuestionMetaLine"><span className={`levelPill level-${question.learning_level || "A"}`}>{question.level_title || `Level ${question.learning_level || "A"}`}</span>{question.topic}{question.subtopic ? ` / ${question.subtopic}` : ""}<span>{question.difficulty_label || question.difficulty}</span></div><h2>{question.title}</h2></div><div className="sparkQuestionActions"><button className={`revision-action ${question.revisionMarked ? "active" : ""}`} aria-pressed={question.revisionMarked} onClick={() => void toggleRevisionMark()} aria-label={question.revisionMarked ? "Remove revision mark" : "Mark for revision"} title={question.revisionMarked ? "Remove revision mark" : "Mark for revision"}><Flag size={16} /></button><button className={`bookmark-action ${question.bookmarked ? "active" : ""}`} aria-pressed={question.bookmarked} onClick={() => void toggleBookmark()} aria-label={question.bookmarked ? "Remove bookmark" : "Bookmark question"} title={question.bookmarked ? "Remove bookmark" : "Bookmark question"}><Bookmark size={16} /></button></div></div>
         <p className="sparkPrompt">{question.prompt}</p>
         <div className="sparkDatasetStrip"><strong>Input</strong><span>{question.input_description}</span><strong>Required output</strong><span>{question.output_description}</span></div>
 
@@ -294,7 +297,7 @@ export default function PySparkLab() {
             {tab === "Expected Output" && (example ? <><DataTable rows={example.expected} /><p className="sparkExpectedNote">Public example only. Hidden test data and expected results stay on the runner.</p></> : <p>No public expected output.</p>)}
             {tab === "Hints" && <div className="sparkHintList">{question.hints?.length ? question.hints.map((hint, index) => <p key={index}><Lightbulb size={15} /><span><strong>Hint {index + 1}</strong>{hint}</span></p>) : <p>No hints are available.</p>}</div>}
             {tab === "Explanation" && <div className="sparkReviewContent">{review ? <><p>{review.explanation}</p><h3>Common mistakes</h3><ul>{review.commonMistakes.map((mistake) => <li key={mistake}>{mistake}</li>)}</ul></> : <p>Submit a solution to unlock the explanation and review notes.</p>}</div>}
-            {tab === "Solution" && <div className="sparkReviewContent">{review ? <pre><code>{review.referenceSolution}</code></pre> : <p>Submit a solution to unlock the reference implementation.</p>}</div>}
+            {tab === "Solution" && <div className="sparkReviewContent">{review ? <><div className="solutionCodeHeader"><strong>Reference solution</strong><CopyButton value={review.referenceSolution} /></div><pre><code>{review.referenceSolution}</code></pre></> : <p>Select Solution to view the reference implementation.</p>}</div>}
           </div>
         </section>
 

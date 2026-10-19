@@ -50,7 +50,7 @@ test('external runner adapter authenticates requests and validates returned test
     assert.equal(payload.language, 'python');
     assert.equal(payload.code, 'def solve(): return 1');
     response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({
-      status: 'passed', executionMs: 12, tests: payload.testCases.map((testCase) => ({ name: testCase.name, passed: true }))
+      status: 'passed', executionMs: 12, tests: payload.testCases.map((testCase) => ({ name: testCase.name, passed: true })), message: null
     }));
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

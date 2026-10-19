@@ -1,0 +1,10 @@
+.revisionQueuePanel .revisionQueueCount{display:grid;min-width:26px;height:26px;place-items:center;border:1px solid #27617b;border-radius:6px;background:#0c2b42;color:#71dff2;font:700 12px Arial,sans-serif}
+.revisionQueueList{display:grid;gap:5px}
+.revisionQueueList>button{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid #183b55;border-radius:5px;background:#0a2035;color:#dcebf5;text-align:left}
+.revisionQueueList>button:hover{border-color:#2a7894;background:#102b43}
+.revisionQueueList>button>span{display:grid;min-width:0;gap:5px}
+.revisionQueueList strong,.revisionQueueList small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.revisionQueueList strong{font-size:12px}
+.revisionQueueList small,.revisionQueueMore{color:#91a8bc;font-size:10px}
+.revisionQueueList svg{flex:none;color:#59cfe7}
+.revisionQueueEmpty{margin:0;color:#91a8bc;font-size:12px;line-height:1.6}

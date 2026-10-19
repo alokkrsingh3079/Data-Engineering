@@ -2,13 +2,17 @@ import { useDeferredValue, useEffect, useState, type CSSProperties } from "react
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { Activity, ArrowRight, BarChart3, BookOpen, Bookmark, Check, Circle, Clock3, Code2, Database, Layers3, Lightbulb, LogOut, RefreshCw, Sparkles, Target } from "lucide-react";
+import { Activity, ArrowRight, BarChart3, BookOpen, Bookmark, Check, Circle, Clock3, Code2, Database, Flag, Layers3, Lightbulb, LogOut, RefreshCw, Sparkles, Target } from "lucide-react";
+import CopyButton from "./CopyButton";
+import TodayTrackRings from "./TodayTrackRings";
 import "./learning-studio.css";
 import "./learning-engine.css";
 import "./studio-polish.css";
 import "./studio-theme.css";
 import "./studio-sidebar.css";
 import "./revision-queue.css";
+import "./solution-copy.css";
+import "./revision-bookmark.css";
 
 type Lesson = {
   id: string;
@@ -60,7 +64,7 @@ type QuestionResult = {
   referenceAnswer: string;
   commonMistakes: string[];
 };
-
+type QuestionReview = { explanation: string; commonMistakes: string[]; referenceAnswer: string; referenceSolution: string };
 type TopicProgress = { module_id: string; topic: string; total: number; completed: number };
 type RecentLearningAttempt = { question_id: string; correct: boolean; question?: Question };
 type RunnerStatus = { configured: boolean; available: boolean };
@@ -93,6 +97,9 @@ export default function LearningStudio() {
   const [questionLoading, setQuestionLoading] = useState(false);
   const [answerId, setAnswerId] = useState("");
   const [answerResult, setAnswerResult] = useState<QuestionResult | null>(null);
+  const [questionReview, setQuestionReview] = useState<QuestionReview | null>(null);
+  const [questionReviewVisible, setQuestionReviewVisible] = useState(false);
+  const [questionReviewLoading, setQuestionReviewLoading] = useState(false);
   const [hintsOpen, setHintsOpen] = useState(false);
   const [attempts, setAttempts] = useState<any[]>([]);
   const [topics, setTopics] = useState<TopicProgress[]>([]);
@@ -235,6 +242,8 @@ export default function LearningStudio() {
     const controller = new AbortController();
     setAnswerId("");
     setAnswerResult(null);
+    setQuestionReview(null);
+    setQuestionReviewVisible(false);
     setCodeDraft("");
     setCodeResult(null);
     setHintsOpen(false);
@@ -403,6 +412,31 @@ export default function LearningStudio() {
     await refreshRevisionQueue();
   }
 
+  async function toggleQuestionReview() {
+    if (questionReviewVisible) {
+      setQuestionReviewVisible(false);
+      return;
+    }
+    if (questionReview) {
+      setQuestionReviewVisible(true);
+      return;
+    }
+    if (!question) return;
+    setQuestionReviewLoading(true);
+    try {
+      const response = await fetch(`${API}/api/learning/questions/${question.id}/review`, { credentials: "include" });
+      if (response.status === 401) { location.href = "/login"; return; }
+      const review = await response.json();
+      if (!response.ok) throw new Error(review.error || "Reference solution is unavailable.");
+      setQuestionReview(review);
+      setQuestionReviewVisible(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Reference solution is unavailable.");
+    } finally {
+      setQuestionReviewLoading(false);
+    }
+  }
+
   function openRevisionItem(item: RevisionItem) {
     if (item.kind === "sql") {
       const params = new URLSearchParams({ databaseId: item.database_id || "", revision: "1", questionId: item.id });
@@ -456,6 +490,7 @@ export default function LearningStudio() {
           {recentAttempt?.question && <button className="studioContinue" onClick={() => resumeQuestion(recentAttempt.question!)}><span className="continueIcon"><Activity size={18} /></span><span><small>CONTINUE LEARNING</small><strong>{recentAttempt.question.title}</strong><em>{recentAttempt.correct ? "Last result: passed" : "Last result: ready to retry"}</em></span><ArrowRight size={17} /></button>}
         </div>
         <div className="studioWelcomeProgress"><div className="progressRing" style={{ "--progress": `${completionPercent}%` } as CSSProperties}><div><strong>{completionPercent}%</strong><span>complete</span></div></div><span>OVERALL PROGRESS</span></div>
+        <TodayTrackRings />
       </section>}
 
       {error && <div className="studioAlert" role="alert">{error}</div>}
@@ -515,7 +550,7 @@ export default function LearningStudio() {
               <label>Topic<select value={questionTopic} onChange={(event) => { setQuestionTopic(event.target.value); setQuestionPage(1); }}><option value="">All topics</option>{availableTopics.map((topic) => <option key={topic} value={topic}>{topic}</option>)}</select></label>
               <label>Progress<select value={questionState} onChange={(event) => { setQuestionState(event.target.value); setQuestionPage(1); }}><option value="all">All questions</option><option value="completed">Completed</option><option value="incorrect">Retry incorrect</option><option value="bookmarked">Bookmarks</option><option value="revision">Revision only</option></select></label>
             </div>
-            <div className="questionBankList">{questions.map((item) => <button key={item.id} className={questionId === item.id ? "active" : ""} onClick={() => setQuestionId(item.id)}><span><strong>{item.title}</strong><small>{item.topic} · {item.difficulty} · {item.type}</small></span><span className="questionMarks">{item.completed ? <Check size={14} aria-label="Completed" /> : null}{item.revisionMarked ? <Bookmark size={13} aria-label="Marked for revision" /> : null}{item.bookmarked ? "Saved" : ""}</span></button>)}{!questionLoading && !questions.length && <p className="studioEmpty">No questions match these filters yet.</p>}</div>
+            <div className="questionBankList">{questions.map((item) => <button key={item.id} className={questionId === item.id ? "active" : ""} onClick={() => setQuestionId(item.id)}><span><strong>{item.title}</strong><small>{item.topic} · {item.difficulty} · {item.type}</small></span><span className="questionMarks">{item.completed ? <Check size={14} aria-label="Completed" /> : null}{item.revisionMarked ? <Flag size={13} aria-label="Marked for revision" /> : null}{item.bookmarked ? <Bookmark size={13} aria-label="Bookmarked" /> : null}</span></button>)}{!questionLoading && !questions.length && <p className="studioEmpty">No questions match these filters yet.</p>}</div>
             <div className="questionPager"><button onClick={() => setQuestionPage((page) => Math.max(1, page - 1))} disabled={questionPage <= 1}>Previous</button><span>{questionPage} / {Math.max(questionPages, 1)}</span><button onClick={() => setQuestionPage((page) => Math.min(questionPages, page + 1))} disabled={questionPage >= questionPages}>Next</button></div>
           </section>}
 
@@ -523,17 +558,19 @@ export default function LearningStudio() {
             <div className="lessonMeta"><span>{question.topic}{question.subtopic ? ` · ${question.subtopic}` : ""}</span><span>{question.difficulty.toUpperCase()} · {question.type.toUpperCase()}</span></div>
             <h2>{question.title}</h2>
             <p className="lessonObjective">{question.prompt}</p>
+            <div className="questionActions"><button className="questionAction" onClick={() => void toggleQuestionReview()} disabled={questionReviewLoading}>{questionReviewLoading ? "Loading reference…" : questionReviewVisible ? "Hide reference solution" : "Show reference solution"}</button></div>
             {question.type === "coding" ? <div className="codingWorkspace">
               <div className="codingSpec"><div><strong>Input</strong><span>{question.input_description}</span></div><div><strong>Required output</strong><span>{question.output_description}</span></div></div>
               <div className="pythonCodingColumns"><div className="pythonCodingMain">
                 <label className="codeEditorLabel">{question.language === "pyspark" ? "PySpark" : "Python"} solution<CodeMirror className="learningCodeMirror" value={codeDraft} height="310px" extensions={[python(), oneDark]} onChange={(value) => setCodeDraft(value.slice(0, 32000))} editable={!codeRunning} basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }} /></label>
-                <div className="questionActions"><button className="lessonComplete" onClick={() => void runCode()} disabled={!runnerStatus[question.language || "python"].available || codeRunning || !codeDraft.trim()}>{codeRunning ? "Running…" : "Submit solution"}</button><button className="questionAction" onClick={() => { setCodeDraft(question.starter_code || ""); setCodeResult(null); }}>Reset</button><button className="questionAction" onClick={() => void toggleRevisionMark()}>{question.revisionMarked ? "Remove revision mark" : "Mark for revision"}</button><button className="questionAction" onClick={() => void toggleBookmark()}>{question.bookmarked ? "Remove bookmark" : "Bookmark"}</button><button className="questionAction" onClick={() => setHintsOpen((open) => !open)}>{hintsOpen ? "Hide hints" : "Hints"}</button></div>
+                <div className="questionActions"><button className="lessonComplete" onClick={() => void runCode()} disabled={!runnerStatus[question.language || "python"].available || codeRunning || !codeDraft.trim()}>{codeRunning ? "Running…" : "Submit solution"}</button><button className="questionAction" onClick={() => { setCodeDraft(question.starter_code || ""); setCodeResult(null); }}>Reset</button><button className="questionAction revisionAction" aria-pressed={question.revisionMarked} onClick={() => void toggleRevisionMark()}><Flag size={14} />{question.revisionMarked ? "Remove revision mark" : "Mark for revision"}</button><button className="questionAction bookmarkAction" aria-pressed={question.bookmarked} onClick={() => void toggleBookmark()}><Bookmark size={14} />{question.bookmarked ? "Remove bookmark" : "Bookmark"}</button><button className="questionAction" onClick={() => setHintsOpen((open) => !open)}>{hintsOpen ? "Hide hints" : "Hints"}</button></div>
                 {!runnerStatus[question.language || "python"].available && <div className="runnerNotice"><Code2 size={16} /><span><strong>Isolated runner unavailable</strong>{runnerStatus[question.language || "python"].configured ? "The configured runner did not pass its health check." : "No isolated execution service is configured. The code is not sent to or executed by this API."}</span></div>}
                 {codeResult && <div className={`questionFeedback ${codeResult.correct ? "correct" : "incorrect"}`}><strong>{codeResult.correct ? "All tests passed" : "Some tests failed"}</strong><p>Execution time: {codeResult.executionMs} ms</p><ul>{codeResult.tests.map((item) => <li key={item.name}>{item.name}: {item.passed ? "passed" : "failed"}</li>)}</ul></div>}
               </div><aside className="pythonCodingPreview"><strong>Input / Output Preview</strong>{question.public_examples?.map((example, index) => <div className="codingExample" key={index}><span>Sample input</span><pre>{JSON.stringify(example.input, null, 2)}</pre><span>Expected output</span><pre>{JSON.stringify(example.expected, null, 2)}</pre></div>)}{!question.public_examples?.length && <p>Sample datasets are provided to the isolated runner.</p>}</aside></div>
             </div> : <div className="questionOptions" role="radiogroup" aria-label="Answer options">{question.options.map((option) => <label key={option.id} className={answerId === option.id ? "selected" : ""}><input type="radio" name="learning-answer" value={option.id} checked={answerId === option.id} onChange={() => setAnswerId(option.id)} disabled={Boolean(answerResult)} /><span>{option.text}</span></label>)}</div>}
-            {question.type !== "coding" && <div className="questionActions"><button className="lessonComplete" onClick={() => void submitAnswer()} disabled={!answerId || Boolean(answerResult)}>Check answer</button>{answerResult && !answerResult.correct && <button className="questionAction" onClick={() => { setAnswerId(""); setAnswerResult(null); }}>Try again</button>}<button className="questionAction" onClick={() => void toggleRevisionMark()}>{question.revisionMarked ? "Remove revision mark" : "Mark for revision"}</button><button className="questionAction" onClick={() => void toggleBookmark()}>{question.bookmarked ? "Remove bookmark" : "Bookmark"}</button><button className="questionAction" onClick={() => setHintsOpen((open) => !open)}>{hintsOpen ? "Hide hints" : "Show hints"}</button></div>}
+            {question.type !== "coding" && <div className="questionActions"><button className="lessonComplete" onClick={() => void submitAnswer()} disabled={!answerId || Boolean(answerResult)}>Check answer</button>{answerResult && !answerResult.correct && <button className="questionAction" onClick={() => { setAnswerId(""); setAnswerResult(null); }}>Try again</button>}<button className="questionAction revisionAction" aria-pressed={question.revisionMarked} onClick={() => void toggleRevisionMark()}><Flag size={14} />{question.revisionMarked ? "Remove revision mark" : "Mark for revision"}</button><button className="questionAction bookmarkAction" aria-pressed={question.bookmarked} onClick={() => void toggleBookmark()}><Bookmark size={14} />{question.bookmarked ? "Remove bookmark" : "Bookmark"}</button><button className="questionAction" onClick={() => setHintsOpen((open) => !open)}>{hintsOpen ? "Hide hints" : "Show hints"}</button></div>}
             {hintsOpen && <div className="questionHints">{question.hints.map((hint, index) => <p key={index}><strong>Hint {index + 1}</strong>{hint}</p>)}</div>}
+            {questionReviewVisible && questionReview && <div className="questionFeedback">{questionReview.referenceSolution ? <><div className="solutionCodeHeader"><h3>Reference solution</h3><CopyButton value={questionReview.referenceSolution} /></div><pre><code>{questionReview.referenceSolution}</code></pre></> : <><h3>Reference answer</h3><p>{questionReview.referenceAnswer}</p></>}{questionReview.explanation && <><h3>Explanation</h3><p>{questionReview.explanation}</p></>}{questionReview.commonMistakes.length > 0 && <><h3>Common mistakes</h3><ul>{questionReview.commonMistakes.map((mistake) => <li key={mistake}>{mistake}</li>)}</ul></>}</div>}
             {answerResult && <div className={`questionFeedback ${answerResult.correct ? "correct" : "incorrect"}`}><strong>{answerResult.correct ? "Correct" : "Not quite"}</strong><p>{answerResult.explanation}</p><h3>Reference answer</h3><p>{answerResult.referenceAnswer}</p><h3>Common mistakes</h3><ul>{answerResult.commonMistakes.map((mistake) => <li key={mistake}>{mistake}</li>)}</ul></div>}
             {attempts.length > 0 && <div className="questionHistory"><h3>Recent attempts</h3>{attempts.map((attempt) => <p key={attempt.id}><span>{attempt.correct ? "Correct" : "Incorrect"}</span><time>{new Date(attempt.created_at).toLocaleString()}</time></p>)}</div>}
             {topics.some((topic) => topic.module_id === question.module_id) && <div className="topicProgressList"><h3>Topic progress</h3>{topics.filter((topic) => topic.module_id === question.module_id).map((topic) => <p key={topic.topic}><span>{topic.topic}</span><strong>{topic.completed}/{topic.total}</strong></p>)}</div>}

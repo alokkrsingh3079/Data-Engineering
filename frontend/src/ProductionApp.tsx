@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import "./admin-console.css";
+import DailyProgressCalendar from "./DailyProgressCalendar";
 const API = "";
 export function Login() {
   const [email, setEmail] = useState(""),
@@ -326,7 +327,7 @@ export function AdminApp() {
   );
 }
 export function Analytics() {
-  const [x, setX] = useState<any>({ topics: [], activeDays: [] });
+  const [x, setX] = useState<any>({ topics: [] });
   useEffect(() => {
     fetch(API + "/api/analytics/overview", { credentials: "include" })
       .then((r) => {
@@ -365,14 +366,7 @@ export function Analytics() {
           </div>
         ))}
       </div>
-      <div className="activityCard">
-        <h2>Active practice days</h2>
-        <div className="days">
-          {x.activeDays.map((d: string) => (
-            <span title={d} key={d} />
-          ))}
-        </div>
-      </div>
+      <DailyProgressCalendar />
     </div>
   );
 }

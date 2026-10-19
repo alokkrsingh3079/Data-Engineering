@@ -1,0 +1,15 @@
+.sparkQuestionActions .revision-action{color:#f0c36f}
+.sparkQuestionActions .revision-action.active{border-color:#a37a31;background:#3c301c;color:#ffd36e}
+.sparkQuestionActions .bookmark-action{color:#9bb8c8}
+.sparkQuestionActions .bookmark-action.active{border-color:#2b8069;background:#103b35;color:#7ae0b7}
+.sparkQuestionMeta .lucide-flag,.trackQuestionList .lucide-flag,.questionMarks .lucide-flag{color:#f0c36f}
+.sparkQuestionMeta .lucide-bookmark,.trackQuestionList .lucide-bookmark,.questionMarks .lucide-bookmark{color:#75dcb6}
+.questionMarks .lucide-check,.questionMarks .lucide-check-circle{color:#4ade80}
+.trackQuestionMeta button.revision-action{color:#f0c36f}
+.trackQuestionMeta button.revision-action.active{border-color:#a37a31;background:#3c301c;color:#ffd36e}
+.trackQuestionMeta button.bookmark-action{color:#9bb8c8}
+.trackQuestionMeta button.bookmark-action.active{border-color:#2b8069;background:#103b35;color:#7ae0b7}
+.questionActions .revisionAction[aria-pressed="true"]{border-color:#a37a31;background:#3c301c;color:#ffd36e}
+.questionActions .bookmarkAction[aria-pressed="true"]{border-color:#2b8069;background:#103b35;color:#7ae0b7}
+.revisionMark{color:#f0c36f}
+.revisionMark.isMarked{border-color:#a37a31;background:#3c301c;color:#ffd36e}

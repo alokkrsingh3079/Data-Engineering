@@ -1,0 +1,13 @@
+.todayTrackRings{gap:18px;padding-top:15px}
+.todayTrackRingsTitle{gap:6px;min-width:120px}
+.todayTrackRingsTitle>small{font-size:10px}
+.todayTrackStreak{gap:4px;padding:4px 6px;font-size:9px}
+.todayTrackRingList{gap:8px}
+.todayTrackRingItem{min-height:68px;gap:10px;padding:7px 9px}
+.todayTrackRing{width:52px;height:52px}
+.todayTrackRing strong{width:41px;height:41px;font-size:15px}
+.todayTrackRingLabel{gap:4px}
+.todayTrackRingLabel b{font-size:11px}
+.todayTrackRingLabel small{font-size:9px}
+@media(max-width:980px){.todayTrackRingItem{min-height:70px}}
+@media(max-width:520px){.todayTrackRing{width:48px;height:48px}.todayTrackRing strong{width:38px;height:38px;font-size:14px}.todayTrackRingItem{gap:8px;padding:6px}}

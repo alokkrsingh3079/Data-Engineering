@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeQuestionFilters, publicLearningQuestion, validateLearningQuestion } from '../src/learning-engine.ts';
+import { normalizeQuestionFilters, publicLearningQuestion, publicLearningQuestionReview, validateLearningQuestion } from '../src/learning-engine.ts';
 import { foundationalSparkQuestions } from '../src/pyspark-questions.ts';
 import { cloudTrackQuestions, databricksTrackQuestions, pythonTrackQuestions } from '../src/track-question-seeds.ts';
 
@@ -43,6 +43,21 @@ test('public coding challenge data excludes hidden tests, evaluator function, an
   assert.equal('reference_solution' in visible, false);
   assert.equal('reference_answer' in visible, false);
   assert.equal('explanation' in visible, false);
+});
+
+test('published question reviews expose reference answers without grading data', () => {
+  const review = publicLearningQuestionReview({
+    reference_answer: 'Use a deterministic merge.', reference_solution: 'def merge(): pass',
+    explanation: 'Keep the operation idempotent.', common_mistakes: ['Skipping retries'],
+    answer_id: 'hidden-choice', test_cases: [{ expected: 'secret' }], function_name: 'private_checker'
+  });
+  assert.equal(review.referenceAnswer, 'Use a deterministic merge.');
+  assert.equal(review.referenceSolution, 'def merge(): pass');
+  assert.equal(review.explanation, 'Keep the operation idempotent.');
+  assert.deepEqual(review.commonMistakes, ['Skipping retries']);
+  assert.equal('answer_id' in review, false);
+  assert.equal('test_cases' in review, false);
+  assert.equal('function_name' in review, false);
 });
 
 test('PySpark curriculum has 15 validated, schema-documented exercises at each A-R level', () => {

@@ -795,19 +795,20 @@ export async function executeLearningExample(questionId: string, code: string) {
   };
 }
 
-export async function getLearningQuestionReview(userId: string, questionId: string) {
-  const [question, attempt] = await Promise.all([
-    mongoCollection("learning_questions").findOne({ _id: questionId, status: "published", type: "coding" }),
-    mongoCollection("learning_attempts").findOne({ user_id: userId, question_id: questionId }, { projection: { _id: 1 } })
-  ]);
-  if (!question) return { status: "not_found" as const };
-  if (!attempt) return { status: "locked" as const };
+export function publicLearningQuestionReview(question: any) {
   return {
     status: "ok" as const,
-    explanation: question.explanation,
+    explanation: question.explanation || "",
     commonMistakes: question.common_mistakes || [],
-    referenceSolution: question.reference_solution
+    referenceAnswer: question.reference_answer || "",
+    referenceSolution: question.reference_solution || ""
   };
+}
+
+export async function getLearningQuestionReview(questionId: string) {
+  const question = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published" });
+  if (!question) return { status: "not_found" as const };
+  return publicLearningQuestionReview(question);
 }
 
 export async function learningRunnerStatus() {

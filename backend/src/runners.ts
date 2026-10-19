@@ -6,7 +6,7 @@ const runnerResultSchema = z.object({
   status: z.enum(["passed", "failed", "timeout", "error", "resource_limit_exceeded", "cancelled"]),
   executionMs: z.number().int().min(0).max(120_000),
   tests: z.array(z.object({ name: z.string().min(1).max(120), passed: z.boolean() }).strict()).max(100),
-  message: z.string().max(500).optional(),
+  message: z.string().max(500).nullable().optional(),
   output: z.object({
     columns: z.array(z.string().max(128)).max(100).optional(),
     schema: z.array(z.object({ name: z.string().max(128), type: z.string().max(80) }).strict()).max(100).optional(),

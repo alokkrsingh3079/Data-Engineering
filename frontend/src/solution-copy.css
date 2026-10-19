@@ -1,0 +1,6 @@
+.solutionCodeHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 8px}
+.solutionCodeHeader h3,.solutionCodeHeader strong{margin:0}
+.solutionCopyButton{display:inline-flex;min-height:32px;align-items:center;justify-content:center;gap:7px;padding:6px 10px;border:1px solid #315b70;border-radius:5px;background:#102c40;color:#cce8f0;font:600 11px Arial,sans-serif;cursor:pointer}
+.solutionCopyButton:hover{border-color:#54c6dc;background:#173a4e;color:#fff}
+.solutionCopyButton:focus-visible{outline:2px solid #65d5e8;outline-offset:2px}
+.solutionPanel .solutionCopyButton{margin:0 7px 0 0}
