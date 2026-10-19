@@ -1,0 +1,280 @@
+.askAiShell {
+  --ask-bg: #081728;
+  --ask-panel: #0d2032;
+  --ask-line: #1c3a50;
+  --ask-muted: #89a4b7;
+  --ask-text: #e4f1fa;
+  --ask-accent: #57d1e5;
+  min-height: 100vh;
+  color: var(--ask-text);
+}
+
+.askAiPage {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  padding: 24px 32px 18px !important;
+  background-color: var(--ask-bg) !important;
+  background-image: radial-gradient(circle at 50% 0, rgba(39, 113, 142, .15), transparent 38%), linear-gradient(rgba(45, 132, 176, .025) 1px, transparent 1px), linear-gradient(90deg, rgba(45, 132, 176, .025) 1px, transparent 1px) !important;
+  background-size: auto, 36px 36px, 36px 36px !important;
+}
+
+.askAiHeader {
+  display: flex;
+  min-height: 66px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--ask-line);
+}
+
+.askAiHeader>div:first-child>span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ask-accent);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.askAiHeader h1 {
+  margin: 7px 0 12px;
+  color: var(--ask-text);
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.askAiStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ask-muted);
+  font-size: 10px;
+}
+
+.askAiStatus i,
+.askAiThinking i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #71889a;
+}
+
+.askAiStatus.ready i { background: #65ce9a; box-shadow: 0 0 10px rgba(101, 206, 154, .4); }
+.askAiStatus.offline i { background: #e38c75; }
+.askAiStatus.checking i { animation: askAiPulse 1.2s ease-in-out infinite; }
+
+.askAiWorkspace {
+  display: grid;
+  width: min(1160px, 100%);
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: 218px minmax(0, 1fr);
+  gap: 20px;
+  align-self: center;
+  margin-top: 14px;
+}
+
+.askAiHistory {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--ask-line);
+  padding: 0 12px 8px 0;
+}
+
+.askAiHistoryHead { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px 10px; }
+.askAiHistoryHead strong { color: #7894a8; font-size: 9px; letter-spacing: .7px; }
+.askAiHistoryHead button,.askAiHistoryItem button { display: grid; flex: none; place-items: center; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #8da7b8; cursor: pointer; }
+.askAiHistoryHead button { width: 29px; height: 29px; border-color: #29475c; background: #10273a; color: var(--ask-accent); }
+.askAiHistoryHead button:hover,.askAiHistoryItem button:hover:not(:disabled) { border-color: #367b91; color: #d8edf5; }
+.askAiHistoryHead button:disabled,.askAiHistoryItem button:disabled { cursor: not-allowed; opacity: .5; }
+.askAiHistoryList { display: grid; align-content: start; gap: 4px; overflow: auto; scrollbar-color: #29475c transparent; scrollbar-width: thin; }
+.askAiHistoryItem { display: flex; min-width: 0; align-items: center; gap: 3px; border: 1px solid transparent; border-radius: 6px; }
+.askAiHistoryItem.selected { border-color: #29546b; background: #10283c; }
+.askAiHistoryItem>button:first-child { display: flex; min-width: 0; flex: 1; align-items: center; gap: 8px; padding: 9px 7px; text-align: left; }
+.askAiHistoryItem>button:first-child svg { flex: none; color: #7c9caf; }
+.askAiHistoryItem>button:first-child span { overflow: hidden; color: #bfd0dc; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.askAiHistoryItem.selected>button:first-child span { color: #e1f1f8; }
+.askAiHistoryItem .askAiDelete { width: 28px; height: 29px; margin-right: 3px; }
+.askAiHistoryEmpty { padding: 10px 5px; color: #738c9d; font-size: 10px; line-height: 1.6; }
+.askAiChat { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
+
+.askAiThread {
+  display: flex;
+  width: min(900px, 100%);
+  flex: 1;
+  flex-direction: column;
+  align-self: center;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #29475c transparent;
+  scrollbar-width: thin;
+}
+
+.askAiThread.emptyThread { justify-content: center; }
+
+.askAiWelcome {
+  width: 100%;
+  max-width: 700px;
+  align-self: center;
+  padding: 42px 0 52px;
+  animation: askAiRise .35s ease-out both;
+}
+
+.askAiWelcomeMark {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid #28677b;
+  border-radius: 12px;
+  background: #0c2a3a;
+  color: var(--ask-accent);
+}
+
+.askAiWelcome h2 {
+  margin: 22px 0 8px;
+  color: var(--ask-text);
+  font-size: clamp(23px, 3vw, 30px);
+  font-weight: 600;
+}
+
+.askAiWelcome>p {
+  margin: 0 0 28px;
+  color: var(--ask-muted);
+  font-size: 13px;
+}
+
+.askAiPrompts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.askAiPrompts button {
+  display: flex;
+  min-height: 66px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 13px;
+  border: 1px solid var(--ask-line);
+  border-radius: 7px;
+  background: rgba(13, 32, 50, .84);
+  color: #c3d5e0;
+  font: 12px/1.5 Arial, sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease, transform .16s ease;
+}
+
+.askAiPrompts button svg { flex: none; color: var(--ask-accent); transform: rotate(45deg); }
+.askAiPrompts button:hover:not(:disabled) { transform: translateY(-1px); border-color: #367b91; background: #102a40; }
+.askAiPrompts button:disabled { cursor: not-allowed; opacity: .55; }
+
+.askAiMessages {
+  display: grid;
+  gap: 25px;
+  padding: 28px 0 35px;
+}
+
+.askAiMessage {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 12px;
+  animation: askAiRise .2s ease-out both;
+}
+
+.askAiMessage.user { grid-template-columns: minmax(0, 1fr) 30px; }
+.askAiMessage.user .askAiAvatar { grid-column: 2; grid-row: 1; }
+.askAiMessage.user>div { grid-column: 1; grid-row: 1; justify-self: end; max-width: 82%; }
+
+.askAiAvatar {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid #28677b;
+  border-radius: 8px;
+  background: #0c2a3a;
+  color: var(--ask-accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.askAiMessage.user .askAiAvatar { border-color: #385d78; background: #183149; color: #d3e5ef; }
+.askAiMessage small { display: block; margin: 2px 0 7px; color: #7894a8; font-size: 8px; font-weight: 700; }
+.askAiMessage p { margin: 0; color: #ccdae4; font-size: 13px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.askAiMessage.user p { padding: 11px 13px; border: 1px solid #26445b; border-radius: 9px 2px 9px 9px; background: #10283d; color: #e1edf4; }
+.askAiAttachedImages,.askAiDraftImages { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.askAiAttachedImages a { display: block; width: min(210px, 48%); overflow: hidden; border: 1px solid #34536a; border-radius: 6px; background: #091725; }
+.askAiAttachedImages img { display: block; width: 100%; max-height: 180px; object-fit: contain; }
+.askAiThinking { display: flex; gap: 5px; padding: 7px 0; }
+.askAiThinking i { animation: askAiPulse .9s ease-in-out infinite; }
+.askAiThinking i:nth-child(2) { animation-delay: .15s; }
+.askAiThinking i:nth-child(3) { animation-delay: .3s; }
+
+.askAiComposeWrap {
+  position: relative;
+  width: min(900px, 100%);
+  align-self: center;
+  padding-top: 14px;
+}
+
+.askAiDraftImages { margin: 0 0 8px; }
+.askAiDraftImages>div { position: relative; display: grid; width: 78px; gap: 4px; }
+.askAiDraftImages img { width: 78px; height: 66px; border: 1px solid #34536a; border-radius: 5px; background: #091725; object-fit: cover; }
+.askAiDraftImages span { overflow: hidden; color: #8ea6b7; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.askAiDraftImages button { position: absolute; top: -5px; right: -5px; display: grid; width: 21px; height: 21px; place-items: center; border: 1px solid #3a586d; border-radius: 50%; background: #183149; color: #e2eef4; cursor: pointer; }
+.askAiFileInput { display: none; }
+.askAiComposer {
+  padding: 12px;
+  border: 1px solid #2b4c62;
+  border-radius: 10px;
+  background: #0d2032;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, .16);
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+
+.askAiComposer:focus-within { border-color: #42859a; box-shadow: 0 0 0 2px rgba(65, 154, 178, .12); }
+.askAiComposer textarea { display: block; width: 100%; min-height: 44px; max-height: 180px; resize: vertical; border: 0; outline: 0; background: transparent; color: var(--ask-text); font: 13px/1.6 Arial, sans-serif; }
+.askAiComposer textarea::placeholder { color: #7893a6; }
+.askAiComposer textarea:disabled { opacity: .6; }
+.askAiComposer>div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.askAiComposer>div>span { color: #6e8799; font-size: 9px; }
+.askAiComposer button { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border: 0; border-radius: 7px; background: #36aac0; color: #06202a; cursor: pointer; }
+.askAiComposer button:disabled { background: #203b4d; color: #71889a; cursor: not-allowed; }
+.askAiComposer .askAiAttachButton { margin-right: 5px; border: 1px solid #34536a; background: #132a3d; color: #afd2df; }
+.askAiComposer .askAiAttachButton:hover:not(:disabled) { border-color: #42859a; color: var(--ask-accent); }
+.askAiComposer .askAiAttachButton:disabled { border-color: #263d50; background: #172b3b; color: #647d90; }
+.askAiFootnote { margin: 9px 0 0; color: #71899a; font-size: 9px; text-align: center; }
+.askAiError,.askAiUnavailable { margin-bottom: 8px; padding: 9px 11px; border: 1px solid #71483f; border-radius: 6px; background: #281c20; color: #f0b2a0; font-size: 11px; }
+.askAiUnavailable { border-color: #6d5b3c; background: #282417; color: #e6ca8c; }
+.askAiClear { position: absolute; right: 0; bottom: 3px; display: flex; align-items: center; gap: 5px; border: 0; background: none; color: #8ca4b4; font-size: 9px; cursor: pointer; }
+.askAiClear:disabled { opacity: .5; cursor: not-allowed; }
+.askAiSpinner { width: 15px; height: 15px; border: 2px solid rgba(6, 32, 42, .35); border-top-color: #06202a; border-radius: 50%; animation: askAiSpin .7s linear infinite; }
+
+@keyframes askAiRise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes askAiPulse { 50% { opacity: .35; transform: scale(.8); } }
+@keyframes askAiSpin { to { transform: rotate(360deg); } }
+
+@media (max-width: 700px) {
+  .askAiPage { min-height: calc(100vh - 58px); padding: 14px 14px 12px !important; }
+  .askAiWorkspace { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); gap: 8px; }
+  .askAiHistory { max-height: 130px; border-right: 0; border-bottom: 1px solid var(--ask-line); padding: 0 0 8px; }
+  .askAiHistoryHead { padding: 0 2px 5px; }
+  .askAiHistoryList { grid-auto-columns: minmax(130px, 1fr); grid-auto-flow: column; grid-template-rows: 1fr; overflow-x: auto; }
+  .askAiHistoryItem { min-width: 130px; }
+  .askAiChat { min-height: 0; }
+  .askAiThread { min-height: 220px; }
+  .askAiWelcome { padding: 24px 0; }
+  .askAiPrompts { grid-template-columns: 1fr; gap: 7px; }
+  .askAiPrompts button { min-height: 54px; }
+  .askAiMessage.user>div { max-width: 92%; }
+  .askAiHeader h1 { font-size: 20px; }
+  .askAiStatus { max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .askAiClear { position: static; margin: 7px auto 0; }
+  .askAiComposer>div { flex-wrap: wrap; }
+  .askAiComposer>div>span { flex: 1; }
+}

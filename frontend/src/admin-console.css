@@ -1,0 +1,47 @@
+.adminTopActions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.adminTopActions .adminPracticeLink {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid #32627a;
+  border-radius: 6px;
+  background: #10283b;
+  color: #bfe5ef;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.adminTopActions .adminPracticeLink:hover {
+  border-color: #4ca5bd;
+  background: #15344a;
+  color: #effbff;
+}
+
+.adminTopActions button {
+  min-height: 34px;
+}
+
+@media (max-width: 540px) {
+  .adminTop {
+    height: auto;
+    min-height: 62px;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  .adminTopActions {
+    gap: 5px;
+  }
+
+  .adminTopActions .adminPracticeLink {
+    padding: 6px 7px;
+    font-size: 10px;
+  }
+}

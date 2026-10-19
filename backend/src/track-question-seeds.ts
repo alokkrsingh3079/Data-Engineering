@@ -64,13 +64,24 @@ const pythonLevelC: PythonSpec[] = [
   makePython("C","python-c15-dependency-order","Order pipeline tasks by dependency","Orchestration","Given tasks and prerequisites, return a deterministic topological order; return an empty list for a cycle.","order_pipeline_tasks",{tasks:["extract","clean","publish"],dependencies:{clean:["extract"],publish:["clean"]}},["extract","clean","publish"],"def order_pipeline_tasks(graph):\n    tasks, dependencies = graph[\"tasks\"], graph[\"dependencies\"]\n    remaining = {task: set(dependencies.get(task, [])) for task in tasks}\n    order = []\n    while remaining:\n        ready = sorted(task for task, parents in remaining.items() if not parents)\n        if not ready:\n            return []\n        for task in ready:\n            order.append(task)\n            remaining.pop(task)\n        for parents in remaining.values():\n            parents.difference_update(ready)\n    return order\n",{tasks:["a","b"],dependencies:{a:["b"],b:["a"]}},[],"A deterministic topological ordering runs prerequisites first and detects cycles when no task is ready.",["Find tasks whose dependency set is empty.","If unfinished tasks remain but none are ready, the graph has a cycle."])
 ];
 
+type TrackLevel = typeof levelLetters[number];
+const levelLetters = [..."ABCDEFGHIJKLMNOPQR"] as const;
+const levelDetails: Record<TrackLevel, { label: string; difficulty: "beginner" | "intermediate" | "advanced" }> = {
+  A: { label: "Very Easy", difficulty: "beginner" }, B: { label: "Very Easy", difficulty: "beginner" }, C: { label: "Very Easy", difficulty: "beginner" }, D: { label: "Very Easy", difficulty: "beginner" },
+  E: { label: "Easy", difficulty: "beginner" }, F: { label: "Easy", difficulty: "beginner" }, G: { label: "Easy", difficulty: "beginner" }, H: { label: "Easy", difficulty: "beginner" },
+  I: { label: "Medium", difficulty: "intermediate" }, J: { label: "Medium", difficulty: "intermediate" }, K: { label: "Medium", difficulty: "intermediate" },
+  L: { label: "Hard", difficulty: "advanced" }, M: { label: "Hard", difficulty: "advanced" }, N: { label: "Hard", difficulty: "advanced" },
+  O: { label: "Very Hard", difficulty: "advanced" }, P: { label: "Very Hard", difficulty: "advanced" }, Q: { label: "Very Hard", difficulty: "advanced" }, R: { label: "Very Hard", difficulty: "advanced" }
+};
+
 function buildPythonQuestion(spec: PythonSpec) {
   const publicCase = spec.cases[0];
+  const details = levelDetails[spec.level];
   return {
-    id: spec.id, module_id: "python-etl", learning_level: spec.level, level_title: `Level ${spec.level}`,
+    id: spec.id, module_id: "python-etl", learning_level: spec.level, level_title: `Level ${spec.level} · ${details.label}`, difficulty_label: details.label,
     topic: spec.topic, subtopic: spec.topic, tags: ["python", "etl", `level-${spec.level.toLowerCase()}`],
-    difficulty: spec.level === "A" ? "beginner" : spec.level === "B" ? "intermediate" : "advanced",
-    type: "coding", language: "python", title: spec.title, prompt: `Level ${spec.level} · Python fundamentals\n\n${spec.prompt}`,
+    difficulty: details.difficulty,
+    type: "coding", language: "python", title: spec.title, prompt: `Level ${spec.level} · ${details.label} · Python fundamentals\n\n${spec.prompt}`,
     starter_code: `def ${spec.functionName}(records):\n    # ${spec.hints[0]}\n    pass\n`,
     function_name: spec.functionName, input_description: "A small list of JSON-compatible records or values.",
     output_description: spec.explanation, public_examples: [{ input: publicCase.input, expected: publicCase.expected }],
@@ -84,7 +95,7 @@ function buildPythonQuestion(spec: PythonSpec) {
 const scenario = (module_id: string, level: "A" | "B" | "C", id: string, title: string, topic: string, prompt: string, correct: string, wrong: [string,string,string], explanation: string, hint: string) => ({
   id, module_id, learning_level: level, level_title: `Level ${level}`, topic, subtopic: topic,
   tags: ["data-engineering", `level-${level.toLowerCase()}`, topic.toLowerCase().replace(/[^a-z0-9]+/g,"-")],
-  difficulty: level === "A" ? "beginner" : level === "B" ? "intermediate" : "advanced", type: "scenario", title,
+  difficulty: levelDetails[level].difficulty, difficulty_label: levelDetails[level].label, type: "scenario", title,
   prompt: `Level ${level} · ${prompt}`, options: [{id:"a",text:correct},{id:"b",text:wrong[0]},{id:"c",text:wrong[1]},{id:"d",text:wrong[2]}], answer_id:"a",
   reference_answer:correct, explanation, common_mistakes:[wrong[0],wrong[1]], hints:[hint,explanation], status:"published",
   created_at:new Date("2026-10-19T00:00:00.000Z"), updated_at:new Date("2026-10-19T00:00:00.000Z")
@@ -240,12 +251,76 @@ function buildScenarioSet(module_id: string, prefix: string, level: "A" | "B" | 
   return definitions.map(([id,title,topic,prompt,correct,wrong,explanation,hint]) => scenario(module_id,level,`${prefix}-${id}`,title,topic,prompt,correct,wrong,explanation,hint));
 }
 
-export const pythonTrackQuestions = [...pythonSpecs, ...pythonLevelB, ...pythonLevelC].map(buildPythonQuestion);
-export const cloudTrackQuestions = [
+function detailsForLevel(level: TrackLevel) {
+  return levelDetails[level];
+}
+
+function sourceLevelFor(level: TrackLevel): "A" | "B" | "C" {
+  if (level <= "D") return "A";
+  if (level <= "K") return "B";
+  return "C";
+}
+
+function applyLevel(question: any, level: TrackLevel, namespace: string, variantIndex?: number) {
+  const details = detailsForLevel(level);
+  if (variantIndex === undefined) {
+    return {
+      ...question,
+      level_title: `Level ${level} · ${details.label}`,
+      difficulty_label: details.label,
+      difficulty: details.difficulty
+    };
+  }
+  const suffix = String(question.id).replace(/^[a-z]+-[abc](?:\d+)?-/, "");
+  const id = `${namespace}-${level.toLowerCase()}-${String(variantIndex + 1).padStart(2, "0")}-${suffix}`;
+  const oldFunction = typeof question.function_name === "string" ? question.function_name : "";
+  const functionName = oldFunction ? `${oldFunction}_level_${level.toLowerCase()}` : "";
+  const replaceFunction = (value: unknown) => typeof value === "string" && oldFunction ? value.replaceAll(oldFunction, functionName) : value;
+  const originalPrompt = String(question.prompt || "").replace(/^Level [A-C](?:\s*·[^\n]*)?/, "");
+  return {
+    ...question,
+    id,
+    learning_level: level,
+    level_title: `Level ${level} · ${details.label}`,
+    difficulty_label: details.label,
+    difficulty: details.difficulty,
+    title: `${question.title} · Level ${level} practice`,
+    prompt: `Level ${level} · ${details.label}${replaceFunction(originalPrompt)}\n\nPractice focus: apply this ${String(question.topic || "data engineering").toLowerCase()} pattern with deliberate validation and deterministic output.`,
+    tags: [...new Set([...(Array.isArray(question.tags) ? question.tags : []), `level-${level.toLowerCase()}`])],
+    ...(oldFunction ? { function_name: functionName, starter_code: replaceFunction(question.starter_code), reference_solution: replaceFunction(question.reference_solution) } : {})
+  };
+}
+
+function expandModuleLevels(baseQuestions: any[], namespace: string) {
+  const decorated = baseQuestions.map((question) => applyLevel(question, question.learning_level as TrackLevel, namespace));
+  const variants = levelLetters.filter((level) => !["A", "B", "C"].includes(level)).flatMap((level) => {
+    const sourceLevel = sourceLevelFor(level);
+    const sources = baseQuestions.filter((question) => question.learning_level === sourceLevel);
+    return sources.map((question, index) => applyLevel(question, level, namespace, index));
+  });
+  return [...decorated, ...variants];
+}
+
+const pythonBaseQuestions = [...pythonSpecs, ...pythonLevelB, ...pythonLevelC].map(buildPythonQuestion);
+const azureBaseQuestions = [
   ...buildScenarioSet("azure-data-factory", "cloud-a", "A", cloudA),
   ...buildScenarioSet("azure-data-factory", "cloud-b", "B", cloudB),
-  ...buildScenarioSet("azure-data-factory", "cloud-c", "C", cloudFinal),
+  ...buildScenarioSet("azure-data-factory", "cloud-c", "C", cloudFinal)
+];
+const etlBaseQuestions = [
   ...buildScenarioSet("etl-data-quality", "etl-a", "A", etlA),
   ...buildScenarioSet("etl-data-quality", "etl-b", "B", etlB),
-  ...buildScenarioSet("etl-data-quality", "etl-c", "C", etlFinal),
+  ...buildScenarioSet("etl-data-quality", "etl-c", "C", etlFinal)
 ];
+const databricksBaseQuestions = [
+  ...buildScenarioSet("databricks-delta", "databricks-a", "A", cloudB),
+  ...buildScenarioSet("databricks-delta", "databricks-b", "B", cloudB),
+  ...buildScenarioSet("databricks-delta", "databricks-c", "C", cloudFinal)
+];
+
+export const pythonTrackQuestions = expandModuleLevels(pythonBaseQuestions, "python");
+export const cloudTrackQuestions = [
+  ...expandModuleLevels(azureBaseQuestions, "azure"),
+  ...expandModuleLevels(etlBaseQuestions, "etl")
+];
+export const databricksTrackQuestions = expandModuleLevels(databricksBaseQuestions, "databricks");

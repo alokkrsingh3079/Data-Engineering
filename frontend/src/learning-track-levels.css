@@ -1,0 +1,84 @@
+.trackLevelBar {
+  display: block;
+  margin: 9px 0;
+  padding: 8px 10px;
+}
+
+.trackLevelTabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 2px 1px 5px;
+  scrollbar-color: #29475c transparent;
+  scrollbar-width: thin;
+}
+
+.trackLevelTabs button {
+  flex: 0 0 43px;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 5px;
+}
+
+.trackLevelTabs button span {
+  font-size: 9px;
+}
+
+.trackLevelIntro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.trackLevelIntro span {
+  font-size: 8px;
+  text-align: right;
+}
+
+.trackLevelTabs button.level-a.selected,
+.trackLevelTabs button.level-b.selected,
+.trackLevelTabs button.level-c.selected,
+.trackLevelTabs button.level-d.selected { border-color: #35bfd8; }
+.trackLevelTabs button.level-e.selected,
+.trackLevelTabs button.level-f.selected,
+.trackLevelTabs button.level-g.selected,
+.trackLevelTabs button.level-h.selected { border-color: #5dc995; }
+.trackLevelTabs button.level-i.selected,
+.trackLevelTabs button.level-j.selected,
+.trackLevelTabs button.level-k.selected { border-color: #d4b36a; }
+.trackLevelTabs button.level-l.selected,
+.trackLevelTabs button.level-m.selected,
+.trackLevelTabs button.level-n.selected { border-color: #e29171; }
+.trackLevelTabs button.level-o.selected,
+.trackLevelTabs button.level-p.selected,
+.trackLevelTabs button.level-q.selected,
+.trackLevelTabs button.level-r.selected { border-color: #df7e84; }
+
+@media (max-width: 700px) {
+  .trackLevelBar {
+    padding: 7px 8px;
+  }
+
+  .trackLevelTabs button {
+    flex-basis: 40px;
+  }
+
+  .trackLevelIntro {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .trackLevelIntro span {
+    text-align: left;
+  }
+
+  .trackQuestionRail {
+    max-height: 160px;
+  }
+}

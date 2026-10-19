@@ -1,28 +1,65 @@
 type Test = { input: unknown; expected: Record<string, unknown>[]; ordered?: boolean };
+type SparkLevel = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R";
 type SparkQuestion = {
-  id: string; learning_level: "A" | "B" | "C"; title: string; topic: string; subtopic: string;
+  id: string; learning_level: SparkLevel; title: string; topic: string; subtopic: string;
   function_name: string; params: string[]; input_description: string; output_description: string;
   reference_solution: string; explanation: string; hints: string[];
   public_input: unknown; public_expected: Record<string, unknown>[]; cases: Test[];
 };
 
+const levelDifficulty: Record<SparkLevel, { label: string; difficulty: "beginner" | "intermediate" | "advanced" }> = {
+  A: { label: "Very Easy", difficulty: "beginner" }, B: { label: "Very Easy", difficulty: "beginner" }, C: { label: "Very Easy", difficulty: "beginner" }, D: { label: "Very Easy", difficulty: "beginner" },
+  E: { label: "Easy", difficulty: "beginner" }, F: { label: "Easy", difficulty: "beginner" }, G: { label: "Easy", difficulty: "beginner" }, H: { label: "Easy", difficulty: "beginner" },
+  I: { label: "Medium", difficulty: "intermediate" }, J: { label: "Medium", difficulty: "intermediate" }, K: { label: "Medium", difficulty: "intermediate" },
+  L: { label: "Hard", difficulty: "intermediate" }, M: { label: "Hard", difficulty: "intermediate" }, N: { label: "Hard", difficulty: "intermediate" },
+  O: { label: "Very Hard", difficulty: "advanced" }, P: { label: "Very Hard", difficulty: "advanced" }, Q: { label: "Very Hard", difficulty: "advanced" }, R: { label: "Very Hard", difficulty: "advanced" }
+};
+
+function inferSparkType(values: unknown[]): string {
+  const present = values.filter((value) => value !== null && value !== undefined);
+  if (!present.length) return "string";
+  if (present.every((value) => typeof value === "boolean")) return "boolean";
+  if (present.every((value) => typeof value === "number" && Number.isInteger(value))) return "long";
+  if (present.every((value) => typeof value === "number")) return "double";
+  if (present.every((value) => typeof value === "string")) return "string";
+  if (present.every(Array.isArray)) return `array<${inferSparkType(present.flatMap((value) => value as unknown[]))}>`;
+  if (present.every((value) => value && typeof value === "object" && !Array.isArray(value))) {
+    const records = present as Record<string, unknown>[];
+    const keys = [...new Set(records.flatMap((record) => Object.keys(record)))].sort();
+    return `struct<${keys.map((key) => `${key}:${inferSparkType(records.map((record) => record[key]))}`).join(", ")}>`;
+  }
+  return "string";
+}
+
+function inputSchema(input: unknown) {
+  const datasets = Array.isArray(input) ? [{ name: "input", rows: input }] : input && typeof input === "object" ? Object.entries(input).map(([name, rows]) => ({ name, rows: Array.isArray(rows) ? rows : [] })) : [];
+  return datasets.map(({ name, rows }) => {
+    const records = rows as Record<string, unknown>[];
+    const columns = [...new Set(records.flatMap((record) => Object.keys(record)))].sort();
+    return { dataset: name, columns: columns.map((column) => ({ name: column, type: inferSparkType(records.map((record) => record[column])) })) };
+  });
+}
+
 function buildQuestion(question: SparkQuestion, index: number) {
   const signature = question.params.join(", ");
+  const difficulty = levelDifficulty[question.learning_level];
   const starter = `from pyspark.sql import functions as F\n\ndef ${question.function_name}(${signature}):\n    # ${question.hints[0]}\n    pass\n`;
   return {
     id: question.id,
     module_id: "pyspark-foundations",
     learning_level: question.learning_level,
-    level_title: `Level ${question.learning_level}`,
+    level_title: `Level ${question.learning_level} · ${difficulty.label}`,
+    difficulty_label: difficulty.label,
+    input_schema: inputSchema(question.public_input),
     topic: question.topic,
     subtopic: question.subtopic,
     tags: ["pyspark", `level-${question.learning_level.toLowerCase()}`, ...question.topic.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)],
-    difficulty: question.learning_level === "A" ? "beginner" : question.learning_level === "B" ? "intermediate" : "advanced",
+    difficulty: difficulty.difficulty,
     type: "coding",
     language: "pyspark",
     function_name: question.function_name,
     title: question.title,
-    prompt: `Level ${question.learning_level} · Exercise ${String(index).padStart(2, "0")}\n\n${question.explanation}`,
+    prompt: `Level ${question.learning_level} · Exercise ${String(index).padStart(2, "0")} · ${difficulty.label}\n\nTask: ${question.explanation}\n\nInput contract: ${question.input_description}\nRequired result: ${question.output_description}`,
     starter_code: starter,
     input_description: question.input_description,
     output_description: question.output_description,
@@ -95,4 +132,40 @@ const levelC: SparkQuestion[] = [
 export const beginnerSparkQuestions = levelA.map(buildQuestion);
 export const intermediateSparkQuestions = levelB.map(buildQuestion);
 export const advancedSparkQuestions = levelC.map(buildQuestion);
-export const foundationalSparkQuestions = [...beginnerSparkQuestions, ...intermediateSparkQuestions, ...advancedSparkQuestions];
+const levelScenarios: Record<SparkLevel, string> = {
+  A: "Very Easy", B: "Very Easy", C: "Very Easy", D: "Very Easy",
+  E: "Easy", F: "Easy", G: "Easy", H: "Easy",
+  I: "Medium", J: "Medium", K: "Medium",
+  L: "Hard", M: "Hard", N: "Hard",
+  O: "Very Hard", P: "Very Hard", Q: "Very Hard", R: "Very Hard"
+};
+const levelsToGenerate: SparkLevel[] = ["D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R"];
+const levelSources: Record<SparkLevel, SparkQuestion[]> = {
+  A: levelA, B: levelB, C: levelC, D: levelA,
+  E: levelB, F: levelB, G: levelB, H: levelB,
+  I: levelC, J: levelC, K: levelC,
+  L: levelC, M: levelC, N: levelC,
+  O: levelC, P: levelC, Q: levelC, R: levelC
+};
+
+function buildPracticeVariant(level: SparkLevel, source: SparkQuestion[], index: number) {
+  const original = source[index];
+  const levelToken = level.toLowerCase();
+  const suffix = original.id.replace(/^pyspark-[a-z]\d*-/, "");
+  const id = `pyspark-${levelToken}-${suffix}`;
+  const function_name = `level_${levelToken}_${String(index + 1).padStart(2, "0")}_${original.function_name.replace(/^level_[a-z]_\d+_/, "")}`;
+  const reference_solution = original.reference_solution.replaceAll(original.function_name, function_name);
+  const scenario = levelScenarios[level];
+  return buildQuestion({
+    ...original,
+    id,
+    learning_level: level,
+    title: `${scenario} practice: ${original.title}`,
+    function_name,
+    reference_solution,
+    explanation: `${original.explanation} This ${scenario.toLowerCase()} exercise includes a full input contract, sample DataFrame, expected output, hints, and reference solution.`
+  }, index + 1);
+}
+
+export const extendedSparkQuestions = levelsToGenerate.flatMap((level) => levelSources[level].map((question, index) => buildPracticeVariant(level, levelSources[level], index)));
+export const foundationalSparkQuestions = [...beginnerSparkQuestions, ...intermediateSparkQuestions, ...advancedSparkQuestions, ...extendedSparkQuestions];

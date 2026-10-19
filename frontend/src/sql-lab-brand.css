@@ -1,0 +1,46 @@
+.topbar .brand {
+  flex: 0 0 205px;
+  min-width: 0;
+  gap: 9px;
+  color: #eaf4fb;
+  text-decoration: none;
+}
+
+.topbar .brand:hover .brandMark {
+  border-color: #4289a4;
+  background: #123149;
+  color: #9ae5f0;
+}
+
+.brandMark {
+  flex: none;
+  border: 1px solid #2a637a;
+  background: #0d2a40;
+  color: #67d3e6;
+}
+
+.brandCopy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.topbar .brandCopy b {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brandCopy small {
+  color: #7795aa;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .4px;
+}
+
+@media (max-width: 900px) {
+  .topbar .brand {
+    flex-basis: auto;
+  }
+}

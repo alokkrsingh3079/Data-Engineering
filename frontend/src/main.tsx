@@ -8,6 +8,7 @@ const App = lazy(() => import('./App'));
 const DataEngineeringInterview = lazy(() => import('./DataEngineeringInterview'));
 const LearningStudio = lazy(() => import('./LearningStudio'));
 const LearningTrackLab = lazy(() => import('./LearningTrackLab'));
+const AskAI = lazy(() => import('./AskAI'));
 const PySparkLab = lazy(() => import('./PySparkLab'));
 const AdminApp = lazy(() => import('./ProductionApp').then((module) => ({ default: module.AdminApp })));
 const Analytics = lazy(() => import('./ProductionApp').then((module) => ({ default: module.Analytics })));
@@ -16,7 +17,8 @@ const Interview = lazy(() => import('./ProductionApp').then((module) => ({ defau
 
 const path = location.pathname;
 const isFocusedLearningTrack = ['/learn/python-etl', '/learn/azure-data-factory', '/learn/databricks-delta', '/learn/etl-data-quality'].includes(path);
-const Page = path === '/admin' ? AdminApp
+const Page = path === '/ask-ai' ? AskAI
+	: path === '/admin' ? AdminApp
 	: path === '/login' ? Login
 		: path === '/analytics' ? Analytics
 			: path === '/interview' ? Interview

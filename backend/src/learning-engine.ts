@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { mongoCollection } from "./mongo.js";
 import { cancelSparkJob, createSparkJob, executeOnRunner, getSparkJob, runnerHealth, type RunnerLanguage } from "./runners.js";
 import { foundationalSparkQuestions } from "./pyspark-questions.js";
-import { cloudTrackQuestions, pythonTrackQuestions } from "./track-question-seeds.js";
+import { cloudTrackQuestions, databricksTrackQuestions, pythonTrackQuestions } from "./track-question-seeds.js";
 
 const seedQuestions = [
   {
@@ -421,7 +421,8 @@ const seedQuestions = [
   },
   ...foundationalSparkQuestions,
   ...pythonTrackQuestions,
-  ...cloudTrackQuestions
+  ...cloudTrackQuestions,
+  ...databricksTrackQuestions
 ].map((question) => ({ ...question, created_at: new Date("2026-10-19T00:00:00.000Z"), updated_at: new Date("2026-10-19T00:00:00.000Z") }));
 
 export type LearningQuestionFilters = {
@@ -441,7 +442,7 @@ export function normalizeQuestionFilters(filters: LearningQuestionFilters) {
     topic: filters.topic?.trim().slice(0, 80) || "",
     difficulty: ["beginner", "intermediate", "advanced"].includes(filters.difficulty || "") ? filters.difficulty! : "",
     type: ["mcq", "conceptual", "sql", "coding", "debugging", "scenario"].includes(filters.type || "") ? filters.type! : "",
-    state: ["completed", "incorrect", "bookmarked"].includes(filters.state || "") ? filters.state! : "all",
+    state: ["completed", "incorrect", "bookmarked", "revision"].includes(filters.state || "") ? filters.state! : "all",
     search: filters.search?.trim().slice(0, 100) || "",
     page: Math.min(Math.max(Math.floor(Number(filters.page) || 1), 1), 100000),
     pageSize: Math.min(Math.max(Math.floor(Number(filters.pageSize) || 20), 1), 50)
@@ -486,26 +487,38 @@ function escapedRegex(value: string) {
 }
 
 async function userQuestionState(userId: string, questionIds: string[]) {
-  if (!questionIds.length) return { bookmarks: new Set<string>(), completed: new Set<string>() };
-  const [bookmarks, progress] = await Promise.all([
+  if (!questionIds.length) return { bookmarks: new Set<string>(), completed: new Set<string>(), revisions: new Set<string>() };
+  const [bookmarks, progress, revisions] = await Promise.all([
     mongoCollection("learning_bookmarks").find({ user_id: userId, question_id: { $in: questionIds } }, { projection: { question_id: 1 } }).toArray(),
-    mongoCollection("learning_question_progress").find({ user_id: userId, question_id: { $in: questionIds }, completed: true }, { projection: { question_id: 1 } }).toArray()
+    mongoCollection("learning_question_progress").find({ user_id: userId, question_id: { $in: questionIds }, completed: true }, { projection: { question_id: 1 } }).toArray(),
+    mongoCollection("learning_revision_marks").find({ user_id: userId, question_id: { $in: questionIds } }, { projection: { question_id: 1 } }).toArray()
   ]);
   return {
     bookmarks: new Set(bookmarks.map((item) => String(item.question_id))),
-    completed: new Set(progress.map((item) => String(item.question_id)))
+    completed: new Set(progress.map((item) => String(item.question_id))),
+    revisions: new Set(revisions.map((item) => String(item.question_id)))
   };
 }
 
 export async function seedLearningQuestions(): Promise<void> {
-  const invalid = seedQuestions.flatMap((question) => validateLearningQuestion(question).map((error) => `${question.id}: ${error}`));
+  const retiredSparkSeedIds = new Set(["pyspark-event-counts", "pyspark-fill-null-scores", "pyspark-filter-active-employees", "pyspark-join-department-payroll", "pyspark-window-salary-rank"]);
+  const publishableQuestions = seedQuestions.filter((question) => !retiredSparkSeedIds.has(question.id));
+  const invalid = publishableQuestions.flatMap((question) => validateLearningQuestion(question).map((error) => `${question.id}: ${error}`));
   if (invalid.length) throw new Error(`Learning question seed validation failed: ${invalid.join("; ")}`);
   const questions = mongoCollection("learning_questions");
-  await questions.bulkWrite(seedQuestions.map((question) => ({
+  await questions.updateMany({ _id: { $in: [...retiredSparkSeedIds] }, status: "published" }, { $set: { status: "archived" } });
+  await questions.bulkWrite(publishableQuestions.map((question) => ({
     updateOne: {
       filter: { _id: question.id },
       update: { $setOnInsert: { ...question, _id: question.id } },
       upsert: true
+    }
+  })), { ordered: false });
+  const canonicalTrackQuestions = [...foundationalSparkQuestions, ...pythonTrackQuestions, ...cloudTrackQuestions, ...databricksTrackQuestions];
+  await questions.bulkWrite(canonicalTrackQuestions.map(({ id, ...question }) => ({
+    updateOne: {
+      filter: { _id: id },
+      update: { $set: question }
     }
   })), { ordered: false });
 }
@@ -528,6 +541,9 @@ export async function listLearningQuestions(userId: string, input: LearningQuest
   } else if (filters.state === "bookmarked") {
     const rows = await mongoCollection("learning_bookmarks").find({ user_id: userId }, { projection: { question_id: 1 } }).toArray();
     query._id = { $in: rows.map((row) => String(row.question_id)) };
+  } else if (filters.state === "revision") {
+    const rows = await mongoCollection("learning_revision_marks").find({ user_id: userId }, { projection: { question_id: 1 } }).toArray();
+    query._id = { $in: rows.map((row) => String(row.question_id)) };
   } else if (filters.state === "incorrect") {
     const rows = await mongoCollection("learning_attempts").find({ user_id: userId }).sort({ created_at: -1 }).limit(5000).toArray();
     const latest = new Map<string, boolean>();
@@ -539,7 +555,7 @@ export async function listLearningQuestions(userId: string, input: LearningQuest
   const [total, questions] = await Promise.all([
     collection.countDocuments(query),
     collection.find(query, { projection: { answer_id: 0, reference_answer: 0, explanation: 0, common_mistakes: 0 } })
-      .sort({ module_id: 1, topic: 1, created_at: -1 })
+      .sort({ module_id: 1, topic: 1, created_at: -1, _id: 1 })
       .skip((filters.page - 1) * filters.pageSize)
       .limit(filters.pageSize)
       .toArray()
@@ -551,7 +567,8 @@ export async function listLearningQuestions(userId: string, input: LearningQuest
       ...publicLearningQuestion(question),
       id: String(question._id),
       bookmarked: state.bookmarks.has(String(question._id)),
-      completed: state.completed.has(String(question._id))
+      completed: state.completed.has(String(question._id)),
+      revisionMarked: state.revisions.has(String(question._id))
     })),
     page: filters.page,
     pageSize: filters.pageSize,
@@ -568,7 +585,8 @@ export async function getLearningQuestion(questionId: string, userId: string) {
     ...publicLearningQuestion(question),
     id: questionId,
     bookmarked: state.bookmarks.has(questionId),
-    completed: state.completed.has(questionId)
+    completed: state.completed.has(questionId),
+    revisionMarked: state.revisions.has(questionId)
   };
 }
 
@@ -596,6 +614,7 @@ export async function submitLearningAnswer(userId: string, questionId: string, o
       { $set: { completed: true, completion_source: "correct_answer", updated_at: createdAt }, $setOnInsert: { created_at: createdAt } },
       { upsert: true }
     );
+    await mongoCollection("learning_revision_marks").deleteOne({ user_id: userId, question_id: questionId });
   }
   return {
     status: "ok" as const,
@@ -640,6 +659,7 @@ export async function submitLearningCode(userId: string, questionId: string, cod
       { $set: { completed: true, completion_source: "runner_tests", updated_at: createdAt }, $setOnInsert: { created_at: createdAt } },
       { upsert: true }
     );
+    await mongoCollection("learning_revision_marks").deleteOne({ user_id: userId, question_id: questionId });
   }
   return { status: "ok" as const, attemptId, correct, executionMs: result.executionMs, tests: result.tests };
 }
@@ -721,6 +741,7 @@ export async function getLearningExecution(userId: string, jobId: string) {
           { $set: { completed: true, completion_source: "runner_tests", updated_at: completedAt }, $setOnInsert: { created_at: completedAt } },
           { upsert: true }
         );
+        await mongoCollection("learning_revision_marks").deleteOne({ user_id: userId, question_id: stored.question_id });
       }
     }
     const savedResult = runnerResult ? {
@@ -808,6 +829,47 @@ export async function setLearningBookmark(userId: string, questionId: string, ma
     );
   }
   return true;
+}
+
+export async function setLearningRevisionMark(userId: string, questionId: string, marked: boolean) {
+  const questionExists = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published" }, { projection: { _id: 1 } });
+  if (!questionExists) return false;
+  const marks = mongoCollection("learning_revision_marks");
+  if (!marked) {
+    await marks.deleteOne({ user_id: userId, question_id: questionId });
+  } else {
+    const markedAt = new Date();
+    await marks.updateOne(
+      { user_id: userId, question_id: questionId },
+      { $setOnInsert: { user_id: userId, question_id: questionId, marked_at: markedAt } },
+      { upsert: true }
+    );
+  }
+  return true;
+}
+
+export async function listRevisionQueue(userId: string) {
+  const [learningMarks, sqlMarks] = await Promise.all([
+    mongoCollection("learning_revision_marks").find({ user_id: userId }).sort({ marked_at: -1 }).limit(500).toArray(),
+    mongoCollection("question_revision_marks").find({ session_id: userId }).sort({ created_at: -1 }).limit(500).toArray()
+  ]);
+  const learningIds = learningMarks.map((mark) => String(mark.question_id));
+  const sqlIds = sqlMarks.map((mark) => String(mark.challenge_id));
+  const [learningQuestions, sqlQuestions] = await Promise.all([
+    learningIds.length ? mongoCollection("learning_questions").find({ _id: { $in: learningIds }, status: "published" }, { projection: { title: 1, module_id: 1, topic: 1 } }).toArray() : Promise.resolve([]),
+    sqlIds.length ? mongoCollection("challenges").find({ _id: { $in: sqlIds } }, { projection: { id: 1, title: 1, topic: 1, database_id: 1 } }).toArray() : Promise.resolve([])
+  ]);
+  const learningById = new Map(learningQuestions.map((question) => [String(question._id), question]));
+  const sqlById = new Map(sqlQuestions.map((question) => [String(question._id), question]));
+  const learningItems = learningMarks.flatMap((mark) => {
+    const question: any = learningById.get(String(mark.question_id));
+    return question ? [{ id: String(question._id), title: question.title, topic: question.topic, module_id: question.module_id, kind: "learning", marked_at: mark.marked_at }] : [];
+  });
+  const sqlItems = sqlMarks.flatMap((mark) => {
+    const question: any = sqlById.get(String(mark.challenge_id));
+    return question ? [{ id: String(question.id || question._id), title: question.title, topic: question.topic, module_id: "sql-interview-lab", database_id: String(question.database_id), kind: "sql", marked_at: mark.created_at }] : [];
+  });
+  return [...learningItems, ...sqlItems].sort((left, right) => new Date(right.marked_at || 0).getTime() - new Date(left.marked_at || 0).getTime());
 }
 
 export async function listLearningAttempts(userId: string, questionId?: string, limit = 50) {

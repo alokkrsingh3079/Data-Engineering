@@ -1,0 +1,85 @@
+.trackCodePanel .cm-editor {
+  height: 480px !important;
+  background: #0a1725;
+  color: #d9e7f2;
+  font: 13px/1.7 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.trackCodePanel .cm-scroller {
+  padding: 10px 0;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.trackCodePanel .cm-gutters {
+  min-width: 48px;
+  border-right: 1px solid #20364a;
+  background: #0d1d2d;
+  color: #73899d;
+}
+
+.trackCodePanel .cm-lineNumbers .cm-gutterElement {
+  min-width: 34px;
+  padding: 0 8px 0 4px;
+}
+
+.trackCodePanel .cm-activeLine {
+  background: #13283a;
+}
+
+.trackCodePanel .cm-activeLineGutter {
+  background: #172e42;
+  color: #d4e7f3;
+}
+
+.trackCodePanel .cm-cursor {
+  border-left-color: #64d5e9;
+}
+
+.trackCodePanel .cm-selectionBackground,
+.trackCodePanel .cm-focused .cm-selectionBackground {
+  background: #214d67 !important;
+}
+
+.trackCodePanel .cm-editor.cm-focused {
+  outline: 1px solid #38b8d5;
+  outline-offset: -1px;
+}
+
+.trackPanelHead {
+  min-height: 40px;
+  padding: 8px 12px;
+  color: #8edced;
+  font-size: 10px;
+  letter-spacing: 0.7px;
+}
+
+.trackPanelHead button {
+  padding: 6px 10px;
+  border-color: #34536a;
+  background: #132a3d;
+  color: #c0d1de;
+  font-size: 10px;
+}
+
+.trackRunBar {
+  min-height: 50px;
+  padding: 9px 11px;
+  background: #091725;
+}
+
+.trackRunBar button {
+  min-height: 34px;
+  padding: 8px 13px;
+  font-size: 11px;
+}
+
+.trackRunBar span {
+  font-size: 10px;
+}
+
+@media (max-width: 700px) {
+  .trackCodePanel .cm-editor {
+    height: 380px !important;
+    font-size: 12px;
+  }
+}

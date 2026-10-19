@@ -6,6 +6,7 @@ import { Bookmark, Check, Clock3, Code2, Database, ExternalLink, History, Layers
 import "./pyspark-lab.css";
 import "./pyspark-theme.css";
 import "./pyspark-levels.css";
+import "./pyspark-level-expansion.css";
 
 type Question = {
   id: string;
@@ -13,8 +14,10 @@ type Question = {
   prompt: string;
   topic: string;
   subtopic?: string;
-  learning_level?: "A" | "B" | "C";
+  learning_level?: string;
   level_title?: string;
+  difficulty_label?: string;
+  input_schema?: { dataset: string; columns: { name: string; type: string }[] }[];
   difficulty: string;
   starter_code: string;
   input_description: string;
@@ -23,6 +26,7 @@ type Question = {
   hints: string[];
   bookmarked: boolean;
   completed: boolean;
+  revisionMarked: boolean;
 };
 
 type RunnerState = { configured: boolean; available: boolean };
@@ -38,12 +42,19 @@ type RunResult = {
 const API = "";
 const TABS = ["Test Cases", "Expected Output", "Hints", "Explanation", "Solution"] as const;
 type Tab = typeof TABS[number];
-const levelDescriptions: Record<string, string> = {
-  A: "First steps: read a DataFrame, select columns, filter rows, and build simple expressions.",
-  B: "Core patterns: group and join data, clean nulls, and introduce window functions.",
-  C: "Interview practice: combine transformations, windows, reconciliation, and performance-aware plans.",
-  all: "Browse every PySpark coding question, including the original starter exercises."
-};
+const levels = Array.from({ length: 18 }, (_, index) => String.fromCharCode(65 + index));
+function levelBand(level: string) {
+  if (level <= "D") return "VERY EASY";
+  if (level <= "H") return "EASY";
+  if (level <= "K") return "MEDIUM";
+  if (level <= "N") return "HARD";
+  return "VERY HARD";
+}
+function levelDescription(level: string) {
+  if (level === "all") return "Browse all 270 coding exercises, grouped from foundational through very hard.";
+  const band = levelBand(level);
+  return `${band}: Level ${level} practice with a complete input contract, schema, sample output, hints, and reference solution.`;
+}
 
 function renderDatasets(input: unknown) {
   if (Array.isArray(input)) return [{ name: "input", rows: input }];
@@ -74,13 +85,10 @@ export default function PySparkLab() {
   const [tutorBusy, setTutorBusy] = useState(false);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("A");
+  const [revisionOnly, setRevisionOnly] = useState(() => new URLSearchParams(location.search).get("revision") === "1");
 
-  const visibleQuestions = useMemo(() => filter === "all" ? questions : questions.filter((item) => item.learning_level === filter), [questions, filter]);
-  const levelCounts = useMemo(() => ({
-    A: questions.filter((item) => item.learning_level === "A").length,
-    B: questions.filter((item) => item.learning_level === "B").length,
-    C: questions.filter((item) => item.learning_level === "C").length,
-  }), [questions]);
+  const visibleQuestions = useMemo(() => questions.filter((item) => (filter === "all" || item.learning_level === filter) && (!revisionOnly || item.revisionMarked)), [questions, filter, revisionOnly]);
+  const levelCounts = useMemo(() => Object.fromEntries(levels.map((level) => [level, questions.filter((item) => item.learning_level === level).length])), [questions]);
 
   useEffect(() => {
     if (!busy) { setElapsedSeconds(0); return; }
@@ -110,19 +118,29 @@ export default function PySparkLab() {
   useEffect(() => {
     let mounted = true;
     Promise.all([
-      fetch(`${API}/api/learning/questions?moduleId=pyspark-foundations&type=coding&pageSize=50`, { credentials: "include" }).then(async (response) => {
-        if (response.status === 401) { location.href = "/login"; return null; }
-        if (!response.ok) throw new Error("PySpark questions could not be loaded.");
-        return response.json();
-      }),
+      (async () => {
+        const query = "moduleId=pyspark-foundations&type=coding&pageSize=50";
+        const firstResponse = await fetch(`${API}/api/learning/questions?${query}&page=1`, { credentials: "include" });
+        if (firstResponse.status === 401) { location.href = "/login"; return null; }
+        if (!firstResponse.ok) throw new Error("PySpark questions could not be loaded.");
+        const firstPage = await firstResponse.json();
+        const rest = await Promise.all(Array.from({ length: Math.max(0, firstPage.totalPages - 1) }, async (_, index) => {
+          const response = await fetch(`${API}/api/learning/questions?${query}&page=${index + 2}`, { credentials: "include" });
+          if (!response.ok) throw new Error("Some PySpark questions could not be loaded.");
+          return response.json();
+        }));
+        return { ...firstPage, items: [firstPage, ...rest].flatMap((page) => page.items || []) };
+      })(),
       fetch(`${API}/api/learning/runners/status`, { credentials: "include" }).then((response) => response.ok ? response.json() : null),
     ]).then(([bank, status]) => {
       if (!mounted) return;
-      const levelOrder: Record<string, number> = { A: 0, B: 1, C: 2 };
       const items = (bank?.items || []).filter((item: Question & { language?: string }) => item.language === "pyspark")
-        .sort((left: Question, right: Question) => (levelOrder[left.learning_level || "C"] - levelOrder[right.learning_level || "C"]) || left.id.localeCompare(right.id));
+        .sort((left: Question, right: Question) => (left.learning_level || "Z").localeCompare(right.learning_level || "Z") || left.id.localeCompare(right.id));
       setQuestions(items);
-      const firstLevelQuestion = items.find((item: Question) => item.learning_level === "A") || items[0];
+      const params = new URLSearchParams(location.search);
+      const requestedQuestion = params.get("questionId");
+      if (params.get("revision") === "1") { setRevisionOnly(true); setFilter("all"); }
+      const firstLevelQuestion = items.find((item: Question) => item.id === requestedQuestion) || items.find((item: Question) => item.learning_level === "A") || items[0];
       if (firstLevelQuestion) void chooseQuestion(firstLevelQuestion);
       if (status?.pyspark) setRunner(status.pyspark);
     }).catch((cause) => { if (mounted) setError(cause instanceof Error ? cause.message : "PySpark Lab is unavailable."); });
@@ -161,7 +179,10 @@ export default function PySparkLab() {
       const jobResult = completedJob.result || {};
       setResult({ ...jobResult, correct: jobResult.status === "passed" });
       if (submit) {
-        if (jobResult.status === "passed") setQuestion((current) => current ? { ...current, completed: true } : current);
+        if (jobResult.status === "passed") {
+          setQuestion((current) => current ? { ...current, completed: true, revisionMarked: false } : current);
+          setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, completed: true, revisionMarked: false } : item));
+        }
         await Promise.all([loadHistory(question.id), fetch(`${API}/api/learning/questions/${question.id}/review`, { credentials: "include" }).then(async (reviewResponse) => {
           if (reviewResponse.ok) setReview(await reviewResponse.json());
         })]);
@@ -197,6 +218,16 @@ export default function PySparkLab() {
     setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, bookmarked: marked } : item));
   }
 
+  async function toggleRevisionMark() {
+    if (!question) return;
+    const marked = !question.revisionMarked;
+    const response = await fetch(`${API}/api/learning/questions/${question.id}/revision`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ marked }) });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) { setError(body?.error || "Revision mark could not be saved."); return; }
+    setQuestion({ ...question, revisionMarked: marked });
+    setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, revisionMarked: marked } : item));
+  }
+
   async function askTutor(action: string, errorText?: string) {
     if (!question) return;
     setTutorBusy(true);
@@ -229,26 +260,27 @@ export default function PySparkLab() {
   return <main className="sparkLabPage">
     <header className="sparkLabHeader">
       <a className="sparkLabBrand" href="/"><span><Layers3 size={17} /></span><strong>Data Engineering Studio</strong></a>
-      <nav aria-label="Main navigation"><a href="/">Learning path</a><a href="/sql"><Database size={15} /> SQL Lab</a><a className="active" href="/pyspark"><Code2 size={15} /> PySpark Lab</a><a href="/interview">Interview</a></nav>
+      <nav aria-label="Main navigation"><a href="/">Learning path</a><a href="/sql"><Database size={15} /> SQL Lab</a><a className="active" href="/pyspark"><Code2 size={15} /> PySpark Lab</a><a href="/ask-ai"><Sparkles size={15} /> Ask AI</a><a href="/interview">Interview</a></nav>
       <a className="sparkLabExit" href="/learn/pyspark-foundations">Learning module <ExternalLink size={14} /></a>
     </header>
     <section className="sparkLabTitle"><div><p>REAL SPARK EXECUTION · LOCAL MODE</p><h1>PySpark Lab</h1><span>Interview exercises against a pinned Spark runtime.</span></div><div className={`sparkRunnerBadge ${runner.available ? "ready" : "offline"}`}><span />{runner.available ? "Spark runner ready" : runner.configured ? "Runner health check failed" : "Runner not configured"}</div></section>
     {error && <div className="sparkLabError" role="alert">{error}</div>}
     <div className="sparkLabLayout">
       <aside className="sparkQuestionRail" aria-label="PySpark question bank">
-        <div className="sparkRailHead"><strong>QUESTION BANK</strong><span>{visibleQuestions.length}</span></div>
-        <div className="sparkLevelSelector" role="tablist" aria-label="PySpark learning levels">{(["A", "B", "C", "all"] as const).map((level) => <button key={level} role="tab" aria-selected={filter === level} className={`${filter === level ? "active" : ""} level-${level.toLowerCase()}`} onClick={() => setFilter(level)}><strong>{level === "all" ? "All" : `Level ${level}`}</strong><span>{level === "all" ? questions.length : levelCounts[level]}</span></button>)}</div>
-        <div className={`sparkLevelIntro level-${filter.toLowerCase()}`}><strong>{filter === "all" ? "FULL QUESTION BANK" : `LEVEL ${filter} · ${filter === "A" ? "FIRST STEPS" : filter === "B" ? "CORE PATTERNS" : "INTERVIEW PRACTICE"}`}</strong><p>{levelDescriptions[filter]}</p></div>
+        <div className="sparkRailHead"><strong>{revisionOnly ? "REVISION ONLY" : "QUESTION BANK"}</strong><span>{visibleQuestions.length}</span></div>
+        <button className={`sparkRevisionToggle ${revisionOnly ? "active" : ""}`} onClick={() => { setRevisionOnly(!revisionOnly); if (!revisionOnly) setFilter("all"); }}><Bookmark size={13} />{revisionOnly ? "Show all questions" : "Revision only"}</button>
+        <div className="sparkLevelSelector" role="tablist" aria-label="PySpark learning levels">{[...levels, "all"].map((level) => <button key={level} role="tab" aria-label={level === "all" ? "All levels" : `Level ${level}, ${levelBand(level)}`} title={level === "all" ? "All levels" : `Level ${level} · ${levelBand(level)}`} aria-selected={filter === level} className={`${filter === level ? "active" : ""} level-${level.toLowerCase()}`} onClick={() => setFilter(level)}><strong>{level === "all" ? "All" : level}</strong><span>{level === "all" ? questions.length : levelCounts[level]}</span></button>)}</div>
+        <div className={`sparkLevelIntro level-${filter.toLowerCase()}`}><strong>{filter === "all" ? "FULL QUESTION BANK" : `LEVEL ${filter} · ${levelBand(filter)}`}</strong><p>{levelDescription(filter)}</p></div>
         {visibleQuestions.map((item, index) => <button key={item.id} className={`sparkQuestionItem ${question?.id === item.id ? "selected" : ""}`} onClick={() => void chooseQuestion(item)}><span className="sparkQuestionTitle"><em>{String(index + 1).padStart(2, "0")}</em>{item.title}</span><span className="sparkQuestionMeta">{item.topic} · {item.learning_level ? `Level ${item.learning_level}` : item.difficulty}{item.completed && <Check size={13} />}{item.bookmarked && <Bookmark size={12} />}</span></button>)}
-        {!visibleQuestions.length && <p className="sparkRailEmpty">No Spark exercises match this filter.</p>}
+        {!visibleQuestions.length && <p className="sparkRailEmpty">{revisionOnly ? "No questions are marked for revision." : "No Spark exercises match this filter."}</p>}
       </aside>
 
       {question && <section className="sparkWorkspace">
-        <div className="sparkChallengeHead"><div><div className="sparkQuestionMetaLine"><span className={`levelPill level-${question.learning_level || "A"}`}>{question.level_title || `Level ${question.learning_level || "A"}`}</span>{question.topic}{question.subtopic ? ` / ${question.subtopic}` : ""}<span>{question.difficulty}</span></div><h2>{question.title}</h2></div><button className={question.bookmarked ? "saved" : ""} onClick={() => void toggleBookmark()} aria-label={question.bookmarked ? "Remove bookmark" : "Bookmark question"} title={question.bookmarked ? "Remove bookmark" : "Bookmark question"}><Bookmark size={17} /></button></div>
+        <div className="sparkChallengeHead"><div><div className="sparkQuestionMetaLine"><span className={`levelPill level-${question.learning_level || "A"}`}>{question.level_title || `Level ${question.learning_level || "A"}`}</span>{question.topic}{question.subtopic ? ` / ${question.subtopic}` : ""}<span>{question.difficulty_label || question.difficulty}</span></div><h2>{question.title}</h2></div><div className="sparkQuestionActions"><button className={question.revisionMarked ? "saved" : ""} onClick={() => void toggleRevisionMark()} aria-label={question.revisionMarked ? "Remove revision mark" : "Mark for revision"} title={question.revisionMarked ? "Remove revision mark" : "Mark for revision"}><Bookmark size={16} /></button><button className={question.bookmarked ? "saved" : ""} onClick={() => void toggleBookmark()} aria-label={question.bookmarked ? "Remove bookmark" : "Bookmark question"} title={question.bookmarked ? "Remove bookmark" : "Bookmark question"}><Bookmark size={16} /></button></div></div>
         <p className="sparkPrompt">{question.prompt}</p>
         <div className="sparkDatasetStrip"><strong>Input</strong><span>{question.input_description}</span><strong>Required output</strong><span>{question.output_description}</span></div>
 
-        <div className="sparkDatasetPreview"><div className="sparkSectionHeading"><strong>Sample DataFrames</strong><span>Public example</span></div>{example ? renderDatasets(example.input).map((dataset) => <div className="sparkDataset" key={dataset.name}><h3>{dataset.name}</h3><DataTable rows={dataset.rows} /></div>) : <p className="sparkEmptyData">No public input preview is available.</p>}</div>
+        <div className="sparkDatasetPreview"><div className="sparkSectionHeading"><strong>Sample DataFrames</strong><span>Public example</span></div>{example ? renderDatasets(example.input).map((dataset) => { const schema = question.input_schema?.find((item) => item.dataset === dataset.name); return <div className="sparkDataset" key={dataset.name}><h3>{dataset.name}</h3>{schema && <div className="sparkSchemaPreview"><strong>Schema</strong><span>{schema.columns.map((column) => `${column.name}: ${column.type}`).join(" · ")}</span></div>}<DataTable rows={dataset.rows} /></div>; }) : <p className="sparkEmptyData">No public input preview is available.</p>}</div>
 
         <section className="sparkEditorPanel" aria-label="PySpark coding workspace">
           <div className="sparkEditorToolbar"><span><Code2 size={15} /> Python</span><div><button onClick={() => setCode(question.starter_code || "")}>Reset</button><button className="sparkRunButton" disabled={!runner.available || !!busy || !code.trim()} onClick={() => void execute(false)}><Play size={14} />{busy === "run" ? "Queued / running" : "Run Code"}</button><button className="sparkSubmitButton" disabled={!runner.available || !!busy || !code.trim()} onClick={() => void execute(true)}><Send size={14} />{busy === "submit" ? "Queued / evaluating" : "Submit Solution"}</button>{activeJobId && <button onClick={() => void cancelExecution()}>Cancel</button>}</div></div>

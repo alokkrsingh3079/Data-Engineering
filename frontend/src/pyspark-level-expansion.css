@@ -1,0 +1,119 @@
+.sparkLevelSelector {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.sparkLevelSelector button {
+  min-width: 0;
+  padding: 6px 7px;
+}
+
+.sparkLevelSelector button strong {
+  font-size: 10px;
+}
+
+.sparkLevelSelector button.level-a.active,
+.sparkLevelSelector button.level-b.active,
+.sparkLevelSelector button.level-c.active,
+.sparkLevelSelector button.level-d.active,
+.sparkLevelSelector button.level-a.active span,
+.sparkLevelSelector button.level-b.active span,
+.sparkLevelSelector button.level-c.active span,
+.sparkLevelSelector button.level-d.active span {
+  border-color: #35bfd8;
+  background-color: #124155;
+  color: #8be5f0;
+}
+
+.sparkLevelSelector button.level-e.active,
+.sparkLevelSelector button.level-f.active,
+.sparkLevelSelector button.level-g.active,
+.sparkLevelSelector button.level-h.active,
+.sparkLevelSelector button.level-e.active span,
+.sparkLevelSelector button.level-f.active span,
+.sparkLevelSelector button.level-g.active span,
+.sparkLevelSelector button.level-h.active span {
+  border-color: #5dc995;
+  background-color: #123e35;
+  color: #8ce5b4;
+}
+
+.sparkLevelSelector button.level-i.active,
+.sparkLevelSelector button.level-j.active,
+.sparkLevelSelector button.level-k.active,
+.sparkLevelSelector button.level-i.active span,
+.sparkLevelSelector button.level-j.active span,
+.sparkLevelSelector button.level-k.active span {
+  border-color: #d4b36a;
+  background-color: #40351e;
+  color: #f0d58f;
+}
+
+.sparkLevelSelector button.level-l.active,
+.sparkLevelSelector button.level-m.active,
+.sparkLevelSelector button.level-n.active,
+.sparkLevelSelector button.level-l.active span,
+.sparkLevelSelector button.level-m.active span,
+.sparkLevelSelector button.level-n.active span {
+  border-color: #e29171;
+  background-color: #482d28;
+  color: #f3b29a;
+}
+
+.sparkLevelSelector button.level-o.active,
+.sparkLevelSelector button.level-p.active,
+.sparkLevelSelector button.level-q.active,
+.sparkLevelSelector button.level-r.active,
+.sparkLevelSelector button.level-o.active span,
+.sparkLevelSelector button.level-p.active span,
+.sparkLevelSelector button.level-q.active span,
+.sparkLevelSelector button.level-r.active span {
+  border-color: #df7e84;
+  background-color: #472932;
+  color: #f2a6ad;
+}
+
+.sparkSchemaPreview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: baseline;
+  margin: 0 0 8px;
+  padding: 7px 9px;
+  border-left: 2px solid #3e8292;
+  background: #0b1d2c;
+}
+
+.sparkSchemaPreview strong {
+  color: #75cfe0;
+  font: 700 8px Arial, sans-serif;
+  text-transform: uppercase;
+}
+
+.sparkSchemaPreview span {
+  color: #a9bdca;
+  font: 10px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.sparkLevelIntro.level-d,
+.sparkLevelIntro.level-e,
+.sparkLevelIntro.level-f,
+.sparkLevelIntro.level-g,
+.sparkLevelIntro.level-h { border-left-color: #5dc995; }
+.sparkLevelIntro.level-i,
+.sparkLevelIntro.level-j,
+.sparkLevelIntro.level-k { border-left-color: #d4b36a; }
+.sparkLevelIntro.level-l,
+.sparkLevelIntro.level-m,
+.sparkLevelIntro.level-n { border-left-color: #e29171; }
+.sparkLevelIntro.level-o,
+.sparkLevelIntro.level-p,
+.sparkLevelIntro.level-q,
+.sparkLevelIntro.level-r { border-left-color: #df7e84; }
+
+@media (max-width: 650px) {
+  .sparkLevelSelector {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}

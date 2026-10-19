@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  ArrowLeft,
   BarChart3,
   Shield,
   Users,
@@ -15,28 +16,54 @@ import {
   Layers3,
   Sparkles,
 } from "lucide-react";
+import "./admin-console.css";
 const API = "";
 export function Login() {
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
     [name, setName] = useState(""),
     [register, setRegister] = useState(false),
-    [msg, setMsg] = useState("");
+    [msg, setMsg] = useState(""),
+    [busy, setBusy] = useState(false);
   async function go() {
-    const r = await fetch(
-      API + (register ? "/api/auth/register" : "/api/auth/login"),
-      {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          register ? { name, email, password } : { email, password },
-        ),
-      },
-    );
-    const x = await r.json();
-    if (!r.ok) return setMsg(x.error || "Authentication failed");
-    location.href = register || x.user.role !== "admin" ? "/" : "/admin";
+    setMsg("");
+    setBusy(true);
+    try {
+      const r = await fetch(
+        API + (register ? "/api/auth/register" : "/api/auth/login"),
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            register ? { name, email, password } : { email, password },
+          ),
+        },
+      );
+      const responseText = await r.text();
+      let result: any = null;
+      try {
+        result = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        result = null;
+      }
+      if (!r.ok) {
+        setMsg(
+          result?.error ||
+            `The server returned HTTP ${r.status}. Check the backend logs.`,
+        );
+        return;
+      }
+      if (!result?.user?.role) {
+        setMsg("The server returned an invalid authentication response.");
+        return;
+      }
+      location.href = register || result.user.role !== "admin" ? "/" : "/admin";
+    } catch {
+      setMsg("Could not reach the authentication server. Check that the backend is running.");
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <div className="authPage">
@@ -75,8 +102,8 @@ export function Login() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <button className="primary" onClick={go}>
-          {register ? "Create account" : "Sign in"}
+        <button className="primary" onClick={() => void go()} disabled={busy}>
+          {busy ? "Please wait…" : register ? "Create account" : "Sign in"}
         </button>
         {msg && <div className="errorBox">{msg}</div>}
         <button className="linkBtn" onClick={() => setRegister(!register)}>
@@ -133,17 +160,20 @@ export function AdminApp() {
           <b>SQL Practice · Production Console</b>
           <small>Administration, moderation, analytics and operations</small>
         </div>
-        <button
-          onClick={async () => {
-            await fetch(API + "/api/auth/logout", {
-              method: "POST",
-              credentials: "include",
-            });
-            location.href = "/login";
-          }}
-        >
-          <LogOut size={15} /> Sign out
-        </button>
+        <div className="adminTopActions">
+          <a href="/" className="adminPracticeLink"><ArrowLeft size={15} /> Go to Practice</a>
+          <button
+            onClick={async () => {
+              await fetch(API + "/api/auth/logout", {
+                method: "POST",
+                credentials: "include",
+              });
+              location.href = "/login";
+            }}
+          >
+            <LogOut size={15} /> Sign out
+          </button>
+        </div>
       </header>
       <div className="adminBody">
         <aside className="adminNav">
@@ -162,9 +192,6 @@ export function AdminApp() {
               {l}
             </button>
           ))}
-          <a href="/" className="backLink">
-            ← Practice app
-          </a>
         </aside>
         <main className="adminMain">
           {msg && <div className="successBox">{msg}</div>}
