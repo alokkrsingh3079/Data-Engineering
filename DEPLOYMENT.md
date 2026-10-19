@@ -14,6 +14,36 @@ Browser -> Cloudflare Worker (frontend assets and /api proxy)
 
 Deploy the backend to a Node.js host with managed MongoDB and PostgreSQL services reachable from that host. Keep both database URIs, `PRACTICE_ROLE_SECRET`, and OpenAI credentials on the backend host. `DATABASE_URL` currently provisions workspace schemas and dedicated per-workspace SQL roles, so its PostgreSQL identity needs schema/role provisioning privileges; do not give it to the practice runner. The Worker only needs the public HTTPS origin of the deployed API.
 
+## GitHub production deployment: Render + Cloudflare
+
+This repository includes a Render Blueprint at [`render.yaml`](render.yaml) and a GitHub Actions workflow at [`.github/workflows/deploy-cloudflare.yml`](.github/workflows/deploy-cloudflare.yml). Render deploys the Express API and managed PostgreSQL from GitHub. The workflow builds the Vite app and deploys its Cloudflare Worker whenever `main` changes. Provider setup and secrets are still required; never commit access tokens or database credentials.
+
+### 1. Create MongoDB Atlas
+
+Create a production Atlas cluster, a dedicated database user with access only to the `sql_software` database, and a database named `sql_software`. Copy the Atlas application connection string and replace its username, password, and host. In Atlas Network Access, allow connections from the Render service's outbound IPs when available. If your Render plan does not provide stable outbound IPs, Atlas may require a broader IP allowlist; use a strong database password, TLS, and a least-privilege database user, and understand that `0.0.0.0/0` allows connection attempts from any IP.
+
+### 2. Deploy the backend and PostgreSQL on Render
+
+1. Push this repository to GitHub and choose **New > Blueprint** in Render. Connect the repository and select the branch you deploy from (the Cloudflare workflow currently deploys `main`). Render reads `render.yaml`, creates the Node web service and PostgreSQL database, and links both PostgreSQL URL variables to that database.
+2. Enter `MONGODB_URI`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and a temporary `ALLOWED_ORIGIN` when Render prompts for the Blueprint's unsynced values. Use a unique initial admin password. The Blueprint generates `AUTH_SECRET` and `PRACTICE_ROLE_SECRET`; keep the latter stable because it derives credentials for existing SQL workspace roles.
+3. Wait for the first Render deploy to finish. Copy the service's public HTTPS origin, such as `https://sql-software-api.onrender.com`. Confirm `https://<render-host>/api/health` returns `ok: true` with both database stores healthy. Then test authenticated database/schema creation. Runtime role provisioning requires the PostgreSQL identity to be allowed to create roles and schemas; if this fails, adjust the database privilege strategy before launch.
+4. The Blueprint uses a paid Starter web service and Basic PostgreSQL plan, not an ephemeral free database. Choose a database size appropriate for expected data and traffic, enable/verify backups, and keep the service and database in the same region. MongoDB Atlas is provisioned separately.
+
+PostgreSQL remains required even though user accounts and platform records are stored in MongoDB: current startup migrations, the SQL editor, and isolated SQL practice workspaces still use PostgreSQL. `DATABASE_URL` and `PRACTICE_DATABASE_URL` initially use the same managed database URL, but remain separate settings. The app creates a separate PostgreSQL role for each practice schema, so test this permission requirement with the chosen Render database before launch.
+
+### 3. Deploy the frontend Worker through GitHub
+
+1. In Cloudflare, create a custom API token limited to the deployment account with **Account > Workers Scripts > Edit** and **Account > Account Settings > Read**. Add it as the GitHub repository Actions secret `CLOUDFLARE_API_TOKEN`; add the account ID as `CLOUDFLARE_ACCOUNT_ID`. Do not paste either value into chat, source files, or `.env`.
+2. Before deploying the frontend, set the Worker's `API_ORIGIN` secret to the Render API origin, without `/api` or a trailing slash. In the Worker dashboard, open **Settings > Variables and Secrets > Add**, mark it as a secret, and use the origin from the previous section. Alternatively, use `npx wrangler secret put API_ORIGIN` from a trusted local terminal.
+3. Set Render's `ALLOWED_ORIGIN` to the Cloudflare `workers.dev` origin after the first Worker deploy (for example, `https://sql-software.<your-subdomain>.workers.dev`), then redeploy/restart the API. The browser calls `/api` on the Worker origin, and the Worker forwards requests and session cookies to Render.
+4. Push or merge to `main`. GitHub Actions builds and deploys the Worker; Render auto-deploys the API from its connected Git branch. Visit the Worker URL and verify login, registration, SQL schema import, SQL execution, and persistence after refresh.
+
+The Worker proxies API requests to Render; it does not host the Express API or databases. MongoDB writes persist directly to Atlas and are read back through the API. This app does not currently implement MongoDB change streams or WebSocket push, so it provides live database-backed requests, not cross-client live notifications.
+
+### 4. Python and Spark execution
+
+Python and PySpark execution are not hosted by this Render Blueprint. Their controllers require Docker socket access to launch isolated job containers, which the regular Render web service and Cloudflare Worker do not provide. The API, MongoDB-backed accounts and learning data, PostgreSQL SQL editor, and other features can deploy without them; execution features report unavailable until the separately documented runner services are hosted on a Docker-compatible machine and configured with HTTPS URLs and server-side tokens.
+
 ## Repository layout
 
 The app now has one project root; `frontend/`, `backend/`, and `worker/` are siblings. The previous nested app directory and placeholder README are retained in `archive/` for reference. The original ZIP is retained in `archive/` as well.

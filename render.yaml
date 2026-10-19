@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: sql-software-api
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm ci --prefix backend && npm run build --prefix backend
+    startCommand: npm start --prefix backend
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DATABASE
+        value: sql_software
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sql-software-postgres
+          property: connectionString
+      - key: PRACTICE_DATABASE_URL
+        fromDatabase:
+          name: sql-software-postgres
+          property: connectionString
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: PRACTICE_ROLE_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ALLOWED_ORIGIN
+        sync: false
+
+databases:
+  - name: sql-software-postgres
+    databaseName: sql_software
+    user: sql_software
+    plan: basic-256mb
+    region: oregon
