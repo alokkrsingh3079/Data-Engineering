@@ -1,6 +1,8 @@
+import "dotenv/config";
 import crypto from "node:crypto";
 import pg from "pg";
 import type { PoolClient, FieldDef } from "pg";
+import { connectMongo, mongoCollection } from "./mongo.js";
 const { Pool } = pg;
 
 export const pool = new Pool({
@@ -10,9 +12,18 @@ export const pool = new Pool({
   connectionTimeoutMillis: 5_000
 });
 
+let practicePool: any;
+function getPracticePool(){
+ const connectionString=process.env.PRACTICE_DATABASE_URL;
+ if(!connectionString)throw new Error('PRACTICE_DATABASE_URL must be configured for isolated SQL execution');
+ if(!practicePool)practicePool=new Pool({connectionString,max:Number(process.env.DB_POOL_SIZE??10),idleTimeoutMillis:30_000,connectionTimeoutMillis:5_000});
+ return practicePool;
+}
+
 export async function withClient<T>(fn:(client:PoolClient)=>Promise<T>):Promise<T>{const c=await pool.connect();try{return await fn(c)}finally{c.release()}}
 
 export async function initDb(){
+ await connectMongo();
  if(!process.env.DATABASE_URL)return;
  await pool.query(`
  CREATE TABLE IF NOT EXISTS app_databases(id UUID PRIMARY KEY,name TEXT NOT NULL,slug TEXT UNIQUE NOT NULL,schema_name TEXT UNIQUE NOT NULL,dialect TEXT NOT NULL DEFAULT 'postgresql',description TEXT DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT now());
@@ -35,6 +46,7 @@ export async function initDb(){
  CREATE INDEX IF NOT EXISTS challenges_database_idx ON challenges(database_id);
  CREATE TABLE IF NOT EXISTS users(id UUID PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'student',status TEXT NOT NULL DEFAULT 'active',created_at TIMESTAMPTZ NOT NULL DEFAULT now(),last_login_at TIMESTAMPTZ);
   ALTER TABLE app_databases ADD COLUMN IF NOT EXISTS owner_user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+  ALTER TABLE app_databases DROP CONSTRAINT IF EXISTS app_databases_owner_user_id_fkey;
  CREATE TABLE IF NOT EXISTS sessions(id UUID PRIMARY KEY,user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,token_hash TEXT UNIQUE NOT NULL,expires_at TIMESTAMPTZ NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now());
  CREATE INDEX IF NOT EXISTS sessions_token_idx ON sessions(token_hash);
  CREATE TABLE IF NOT EXISTS audit_logs(id UUID PRIMARY KEY,actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,action TEXT NOT NULL,resource_type TEXT,resource_id TEXT,metadata JSONB NOT NULL DEFAULT '{}'::jsonb,ip TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT now());
@@ -47,9 +59,11 @@ export async function initDb(){
  CREATE TABLE IF NOT EXISTS refresh_jobs(id UUID PRIMARY KEY,job_type TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'queued',payload JSONB NOT NULL DEFAULT '{}'::jsonb,progress INTEGER NOT NULL DEFAULT 0,error TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),finished_at TIMESTAMPTZ);
 
  `);
+ await getPracticePool().query('SELECT 1');
 }
 
-export async function createPracticeSchema(schemaName:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error("Invalid schema name");await pool.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`)}
+export async function grantPracticeSchema(schemaName:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error("Invalid schema name");const schema=quoteIdent(schemaName),role=quoteIdent(process.env.PRACTICE_DATABASE_ROLE||'practice_executor');await pool.query(`GRANT USAGE, CREATE ON SCHEMA ${schema} TO ${role}`);await pool.query(`GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA ${schema} TO ${role}`);await pool.query(`GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA ${schema} TO ${role}`)}
+export async function createPracticeSchema(schemaName:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error("Invalid schema name");await pool.query(`CREATE SCHEMA IF NOT EXISTS ${quoteIdent(schemaName)}`);await grantPracticeSchema(schemaName)}
 export function quoteIdent(v:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(v))throw new Error("Invalid identifier");return `"${v}"`}
 
 export async function listTables(schemaName:string){
@@ -67,15 +81,15 @@ export async function executeReadOnly(schemaName:string,sql:string){
  if(cleaned.includes(';'))throw new Error("Only one SQL statement is allowed per practice run.");
  if(!/^(SELECT|WITH)\b/i.test(cleaned))throw new Error("Practice execution only permits SELECT/WITH queries.");
  if(/\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|COPY|VACUUM|CALL|DO|SET|RESET|SHOW|EXPLAIN\s+ANALYZE)\b/i.test(cleaned))throw new Error("Read-only query required.");
- const client=await pool.connect();const started=Date.now();try{await client.query('BEGIN');await client.query("SET LOCAL statement_timeout='5000ms'");await client.query("SET LOCAL idle_in_transaction_session_timeout='6000ms'");await client.query("SET LOCAL transaction_read_only=on");await client.query("SET LOCAL work_mem='16MB'");await client.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}, public`);const r=await client.query(cleaned);await client.query('ROLLBACK');return{columns:r.fields.map((f:FieldDef)=>f.name),rows:r.rows,rowCount:r.rowCount??r.rows.length,executionMs:Date.now()-started};}catch(e){try{await client.query('ROLLBACK')}catch{}throw e}finally{client.release()}
+ const client=await getPracticePool().connect();const started=Date.now();try{await client.query('BEGIN');await client.query("SET LOCAL statement_timeout='5000ms'");await client.query("SET LOCAL idle_in_transaction_session_timeout='6000ms'");await client.query("SET LOCAL transaction_read_only=on");await client.query("SET LOCAL work_mem='16MB'");await client.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);const r=await client.query(cleaned);await client.query('ROLLBACK');return{columns:r.fields.map((f:FieldDef)=>f.name),rows:r.rows,rowCount:r.rowCount??r.rows.length,executionMs:Date.now()-started};}catch(e){try{await client.query('ROLLBACK')}catch{}throw e}finally{client.release()}
 }
 
-export async function executeImport(schemaName:string,sql:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error("Invalid schema");const c=await pool.connect();try{await c.query('BEGIN');await c.query("SET LOCAL statement_timeout='30000ms'");await c.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}, public`);await c.query(sql);await c.query('COMMIT')}catch(e){try{await c.query('ROLLBACK')}catch{}throw e}finally{c.release()}}
+export async function executeImport(schemaName:string,sql:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error("Invalid schema");const c=await getPracticePool().connect();try{await c.query('BEGIN');await c.query("SET LOCAL statement_timeout='30000ms'");await c.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);await c.query(sql);await c.query('COMMIT')}catch(e){try{await c.query('ROLLBACK')}catch{}throw e}finally{c.release()}}
 
 export async function clearPracticeSchema(schemaName:string){await pool.query(`DROP SCHEMA IF EXISTS ${quoteIdent(schemaName)} CASCADE`);await createPracticeSchema(schemaName)}
 export async function schemaDDL(schemaName:string){const tables=await listTables(schemaName);const lines:string[]=[];for(const t of tables){lines.push(`CREATE TABLE ${quoteIdent(t.name)} (`);lines.push(t.columns.map((c:any)=>`  ${quoteIdent(c.column_name)} ${c.data_type.toUpperCase()}${c.is_nullable==='NO'?' NOT NULL':''}${c.is_primary_key?' PRIMARY KEY':''}`).join(',\n'));lines.push(');')}const snap=await schemaSnapshot(schemaName);for(const fk of snap.relationships)lines.push(`ALTER TABLE ${quoteIdent(fk.table_name)} ADD CONSTRAINT ${quoteIdent(fk.constraint_name)} FOREIGN KEY (${quoteIdent(fk.column_name)}) REFERENCES ${quoteIdent(fk.foreign_table_name)} (${quoteIdent(fk.foreign_column_name)});`);return lines.join('\n')}
 export async function dataSQL(schemaName:string){const tables=await listTables(schemaName),relationships=(await schemaSnapshot(schemaName)).relationships,pending=new Set(tables.map(table=>table.name)),order:string[]=[];while(pending.size){const ready=[...pending].filter(table=>relationships.filter((relation:any)=>relation.table_name===table&&relation.foreign_table_name!==table).every((relation:any)=>!pending.has(relation.foreign_table_name)));if(!ready.length)throw new Error('Cannot export data with circular foreign-key dependencies');for(const table of ready){pending.delete(table);order.push(table)}}const byName=new Map(tables.map(table=>[table.name,table])),out:string[]=[];for(const name of order){const table=byName.get(name)!;const r=await pool.query(`SELECT * FROM ${quoteIdent(schemaName)}.${quoteIdent(table.name)}`);if(!r.rows.length)continue;const cols=r.fields.map(f=>quoteIdent(f.name)).join(', ');for(const row of r.rows){const vals=r.fields.map(f=>{const v=row[f.name];if(v===null)return 'NULL';if(typeof v==='number'&&!Number.isNaN(v))return String(v);if(v instanceof Date)return `'${v.toISOString().replace(/'/g,"''")}'`;return `'${String(v).replace(/'/g,"''")}'`}).join(', ');out.push(`INSERT INTO ${quoteIdent(table.name)} (${cols}) VALUES (${vals});`)}}return out.join('\n')}
-export async function snapshotDatabase(databaseId:string,label:string){const d=(await pool.query('SELECT * FROM app_databases WHERE id=$1',[databaseId])).rows[0];if(!d)throw new Error('Database not found');const schema_sql=await schemaDDL(d.schema_name);const data_sql=await dataSQL(d.schema_name);const id=crypto.randomUUID();await pool.query('INSERT INTO database_snapshots(id,database_id,label,schema_sql,data_sql) VALUES($1,$2,$3,$4,$5)',[id,databaseId,label,schema_sql,data_sql]);return{id,label}}
-export async function restoreSnapshot(databaseId:string,snapshotId:string){const d=(await pool.query('SELECT * FROM app_databases WHERE id=$1',[databaseId])).rows[0];const s=(await pool.query('SELECT * FROM database_snapshots WHERE id=$1 AND database_id=$2',[snapshotId,databaseId])).rows[0];if(!d||!s)throw new Error('Snapshot not found');await clearPracticeSchema(d.schema_name);await executeImport(d.schema_name,s.schema_sql+'\n'+s.data_sql);return schemaSnapshot(d.schema_name)}
+export async function snapshotDatabase(databaseId:string,label:string){const d=(await pool.query('SELECT * FROM app_databases WHERE id=$1',[databaseId])).rows[0];if(!d)throw new Error('Database not found');const schema_sql=await schemaDDL(d.schema_name);const data_sql=await dataSQL(d.schema_name);const id=crypto.randomUUID();await mongoCollection('database_snapshots').insertOne({_id:id,id,database_id:databaseId,label,schema_sql,data_sql,created_at:new Date()});return{id,label}}
+export async function restoreSnapshot(databaseId:string,snapshotId:string){const d=(await pool.query('SELECT * FROM app_databases WHERE id=$1',[databaseId])).rows[0],s=await mongoCollection('database_snapshots').findOne({_id:snapshotId,database_id:databaseId});if(!d||!s)throw new Error('Snapshot not found');await clearPracticeSchema(d.schema_name);await executeImport(d.schema_name,String(s.schema_sql)+'\n'+String(s.data_sql));return schemaSnapshot(d.schema_name)}
 
 export async function ensureDemoDatabase(){const e=await pool.query('SELECT * FROM app_databases WHERE slug=$1',['demo-ecommerce']);if(e.rowCount)return e.rows[0];const id=crypto.randomUUID(),schema='demo_ecommerce';await createPracticeSchema(schema);await pool.query('INSERT INTO app_databases(id,name,slug,schema_name,description) VALUES($1,$2,$3,$4,$5)',[id,'Demo E-Commerce','demo-ecommerce',schema,'Built-in practice database for first-run testing']);await executeImport(schema,`CREATE TABLE departments(department_id INT PRIMARY KEY,department_name TEXT NOT NULL,location TEXT);CREATE TABLE jobs(job_id TEXT PRIMARY KEY,job_title TEXT NOT NULL,min_salary NUMERIC,max_salary NUMERIC);CREATE TABLE employees(employee_id INT PRIMARY KEY,first_name TEXT,last_name TEXT,email TEXT,department_id INT,job_id TEXT,salary NUMERIC,FOREIGN KEY(department_id) REFERENCES departments(department_id),FOREIGN KEY(job_id) REFERENCES jobs(job_id));CREATE TABLE exclusion_rules(rule_id INT PRIMARY KEY,blocked_job_id TEXT,reason TEXT);INSERT INTO departments VALUES(1,'Engineering','Kolkata'),(2,'HR','Delhi'),(3,'Sales','Mumbai');INSERT INTO jobs VALUES('ENG_DEV','Developer',40000,120000),('HR_REP','HR Representative',30000,90000),('SALES_REP','Sales Representative',25000,100000),('DATA_ENG','Data Engineer',50000,140000);INSERT INTO employees VALUES(1,'Chris','Anderson','chris@example.com',3,'SALES_REP',65000),(2,'Emma','Thomas','emma@example.com',2,'HR_REP',72000),(3,'Jane','Smith','jane@example.com',2,'HR_REP',68000),(4,'Lisa','Davis','lisa@example.com',2,'HR_REP',75000),(5,'Sarah','Williams','sarah@example.com',3,'SALES_REP',71000),(6,'Tom','Wilson','tom@example.com',3,'SALES_REP',62000),(7,'Amit','Kumar','amit@example.com',1,'DATA_ENG',105000),(8,'Neha','Roy','neha@example.com',1,'ENG_DEV',98000);INSERT INTO exclusion_rules VALUES(1,'ENG_DEV','Restricted'),(2,NULL,'Legacy rule');`);return(await pool.query('SELECT * FROM app_databases WHERE id=$1',[id])).rows[0]}

@@ -192,14 +192,19 @@ The final architecture must be based on repository inspection and deployment con
 
 Preserve the current frontend, backend, database, authentication, SQL execution, AI integrations, and deployment/proxy configuration where they are verified and suitable.
 
+### Persistence target for this roadmap
+
+Use MongoDB for platform records: user accounts, sessions, questions, question sets, attempts, progress, bookmarks, imports/reviews, interview sessions, audit records, and related application data. Keep MongoDB access in the backend and require explicit connection configuration. Preserve SQL Software by retaining PostgreSQL (or another explicitly verified SQL engine) for isolated practice schemas and actual submitted SQL execution. Store each practice workspace's ownership and SQL schema mapping in MongoDB. Do not move SQL datasets into MongoDB or describe MongoDB as the SQL execution engine. Plan and verify an explicit, resumable migration of existing application records before any production cutover; never drop existing PostgreSQL data automatically.
+
 The prior project description suggests a React/Vite frontend, a Node.js/Express backend, PostgreSQL, and an AI integration, with possible Cloudflare Worker deployment or proxying. Confirm these details against the actual repository before making architectural decisions.
 
 ### Recommended logical boundaries
 
 - **Frontend:** dashboard, modules, editors, questions, progress, and interview UI.
 - **Backend API:** authentication, authorization, question services, progress, interview orchestration, and validated API contracts.
-- **PostgreSQL:** users, questions, topics, attempts, bookmarks, progress, and interview sessions, using the existing schema where practical.
-- **SQL execution:** a constrained, isolated SQL practice environment with database-level permissions and query limits.
+- **MongoDB:** user profiles, password hashes, sessions, workspace metadata, questions, question sets, attempts, revision marks, imports, snapshots, collections, audit records, feature flags, and operational learning data.
+- **PostgreSQL:** a dedicated practice executor connection for user-created SQL practice schemas and SQL query execution. Platform metadata remains in MongoDB; PostgreSQL has a compatibility shadow for legacy foreign keys during migration.
+- **SQL execution:** a separate non-superuser PostgreSQL role with per-workspace schema grants, a schema-only search path, read-only practice queries, statement timeouts, and bounded result behavior.
 - **Python runner:** a separate, sandboxed execution service.
 - **Spark runner:** a separate Spark-compatible execution environment.
 - **AI service:** server-side integration with validated inputs/outputs, usage limits, and protected credentials.
@@ -413,6 +418,8 @@ Fix verified high-priority bugs and security vulnerabilities while preserving ex
 Do not rewrite the frontend, backend, authentication system, or database without a documented technical reason.
 
 ## 2. Prioritize security
+
+For this project, application records are being migrated to MongoDB while PostgreSQL remains the SQL practice runtime. Enforce ownership against MongoDB workspace metadata before any SQL runtime operation. Do not weaken SQL execution isolation during the storage migration.
 
 Address verified issues involving:
 - Missing or inconsistent authentication.
@@ -1555,22 +1562,22 @@ Update this section after each implementation phase.
 
 ### Current status
 
-- **Current phase:** Not started
-- **Last completed phase:** None
-- **Repository commit / checkpoint:** Not recorded
-- **Build status:** Not verified
-- **Automated tests:** Not verified
-- **Security review:** Not verified
-- **Production readiness:** Not assessed
+- **Current phase:** MongoDB persistence migration and security stabilization (in progress)
+- **Last completed phase:** Phase 1 audit and roadmap
+- **Repository commit / checkpoint:** Pending GitHub checkpoint
+- **Backend build status:** Verified locally
+- **Automated backend tests:** 13 passed; the suite includes source-level assertions and is not a replacement for full integration coverage
+- **Security review:** Multipart ownership fixed; restricted SQL role verified locally; further review remains
+- **Production readiness:** Not assessed; do not deploy this in-progress migration
 
 ### Feature status
 
 | Feature | Status | Evidence / notes |
 |---|---|---|
-| Existing SQL functionality | Not verified | Confirm during Phase 1 |
-| Authentication and authorization | Not verified | Confirm during Phase 1 |
-| Learning dashboard | Not implemented / not verified | Phase 3 target |
-| Shared question engine | Not verified | Audit existing implementation |
+| Existing SQL functionality | Partially verified | Local smoke test passed against the restricted PostgreSQL role; existing editor remains in place |
+| Authentication and authorization | Partially verified | Accounts/sessions/audit moved to Mongo; signed-session behavior and full cross-user API coverage remain |
+| Learning dashboard | Not implemented | Phase 3 UI is not yet built |
+| Shared question engine | Partially migrated | Question reads, generation, reviews, collections, and attempts use Mongo; legacy PostgreSQL copies remain for compatibility |
 | Python Lab | Not implemented / not verified | Phase 4 target |
 | Isolated Python execution | Not implemented / not verified | Requires verified runner |
 | PySpark Lab | Not implemented / not verified | Phase 5 target |
@@ -1579,7 +1586,7 @@ Update this section after each implementation phase.
 | Databricks learning content | Not implemented / not verified | Phase 6 target |
 | ETL and warehouse content | Not implemented / not verified | Phase 6 target |
 | AI Mock Interviews | Not implemented / not verified | Phase 6 target |
-| Final deployment documentation | Not verified | Phase 7 target |
+| Final deployment documentation | In progress | MongoDB and isolated PostgreSQL configuration documented; rollout/rollback still needs full verification |
 
 Update statuses only when supported by repository inspection, tests, or manual verification. Replace this template with actual evidence as work progresses.
 

@@ -2,15 +2,16 @@
 
 ## Hosting layout
 
-The Cloudflare Worker serves the built React/Vite frontend and forwards `/api/*` requests to the Express API. The API and PostgreSQL database remain separate services: this repository's backend starts an Express server and uses the Node `pg` package, so it cannot be deployed unchanged as a Workers function.
+The Cloudflare Worker serves the built React/Vite frontend and forwards `/api/*` requests to the Express API. The Node API uses MongoDB for platform records and PostgreSQL for the existing SQL practice workspaces and query execution. The backend is an Express server, so it cannot be deployed unchanged as a Workers function.
 
 ```text
 Browser -> Cloudflare Worker (frontend assets and /api proxy)
-                          -> HTTPS -> Node/Express API -> PostgreSQL
-                                         -> OpenAI (optional)
+                          -> HTTPS -> Node/Express API -> MongoDB (platform data)
+                                                     -> PostgreSQL (SQL practice)
+                                                     -> OpenAI (optional)
 ```
 
-Deploy the backend to a Node.js host and use a managed PostgreSQL database reachable from that host. Keep the database and OpenAI credentials on the backend host. The Worker only needs the public HTTPS origin of the deployed API.
+Deploy the backend to a Node.js host with managed MongoDB and PostgreSQL services reachable from that host. Keep both database URIs and OpenAI credentials on the backend host. The Worker only needs the public HTTPS origin of the deployed API.
 
 ## Repository layout
 
@@ -66,13 +67,13 @@ Prerequisites: Node.js 20+, npm, a Cloudflare account, and a deployed HTTPS API 
 
    Wrangler prints the public `workers.dev` URL.
 
-5. Set the backend's `ALLOWED_ORIGIN` to that Worker URL (for example, `https://sql-software.<your-subdomain>.workers.dev`) and restart the backend. Configure the backend's database URL, `AUTH_SECRET`, admin credentials, and optional `OPENAI_API_KEY` in the backend host's secret/environment settings.
+5. Set the backend's `ALLOWED_ORIGIN` to that Worker URL (for example, `https://sql-software.<your-subdomain>.workers.dev`) and restart the backend. Configure `MONGODB_URI`, `MONGODB_DATABASE`, `DATABASE_URL`, `AUTH_SECRET`, admin credentials, and optional `OPENAI_API_KEY` in the backend host's secret/environment settings.
 
-6. Open the Worker URL and verify `/api/health` reports healthy. The backend health check depends on PostgreSQL being available.
+6. Open the Worker URL and verify `/api/health` reports healthy. Backend startup currently requires both database services; the health endpoint checks PostgreSQL.
 
 ## Local development
 
-The regular development flow still uses Docker Compose for PostgreSQL, the Express backend, and Vite. See the root [README](README.md). To exercise the Worker locally after building the frontend, set `API_ORIGIN` in Wrangler's local environment or use a local `.dev.vars` file (which must not be committed), then run:
+Start the local MongoDB and PostgreSQL services with `docker compose up -d mongodb postgres`, then run the Express API and Vite frontend using the commands in the root [README](README.md). The local MongoDB port is bound to loopback only. To exercise the Worker locally after building the frontend, set `API_ORIGIN` in Wrangler's local environment or use a local `.dev.vars` file (which must not be committed), then run:
 
 ```bash
 npm run build
@@ -81,7 +82,7 @@ npx wrangler dev
 
 ## Before production
 
-- Use a managed PostgreSQL service with backups, TLS, and restricted network access.
+- Use managed MongoDB and PostgreSQL services with backups, TLS, and restricted network access.
 - Use strong, unique `AUTH_SECRET` and admin credentials; do not use example values.
 - Set the backend's `ALLOWED_ORIGIN` to the deployed frontend origin.
 - Keep `OPENAI_API_KEY`, database credentials, and Cloudflare API tokens in provider secret stores.

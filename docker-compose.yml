@@ -1,18 +1,35 @@
 services:
+  mongodb:
+    image: mongo:8.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: sql_software
+    volumes:
+      - sql_software_mongo:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
   postgres:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: sql_practice
+      PRACTICE_DATABASE_PASSWORD: ${PRACTICE_DATABASE_PASSWORD:-local-only-practice-password}
     ports:
       - "5432:5432"
     volumes:
       - sql_practice_pg:/var/lib/postgresql/data
+      - ./backend/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d sql_practice"]
       interval: 5s
       timeout: 5s
       retries: 10
 volumes:
+  sql_software_mongo:
   sql_practice_pg:
