@@ -5,6 +5,7 @@ dist/
 coverage/
 .env
 .env.*
+deploy/runners/.env
 !.env.example
 !**/.env.example
 !.env.production.example

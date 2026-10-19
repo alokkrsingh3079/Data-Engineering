@@ -1,0 +1,7 @@
+{$SPARK_RUNNER_DOMAIN} {
+	reverse_proxy spark_runner:4021
+}
+
+{$PYTHON_RUNNER_DOMAIN} {
+	reverse_proxy python_runner:4020
+}

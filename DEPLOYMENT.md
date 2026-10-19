@@ -42,7 +42,7 @@ The Worker proxies API requests to Render; it does not host the Express API or d
 
 ### 4. Python and Spark execution
 
-Python and PySpark execution are not hosted by this Render Blueprint. Their controllers require Docker socket access to launch isolated job containers, which the regular Render web service and Cloudflare Worker do not provide. The API, MongoDB-backed accounts and learning data, PostgreSQL SQL editor, and other features can deploy without them; execution features report unavailable until the separately documented runner services are hosted on a Docker-compatible machine and configured with HTTPS URLs and server-side tokens.
+Python and PySpark execution are not hosted by this Render Blueprint. Their controllers require Docker socket access to launch isolated job containers, which the regular Render web service and Cloudflare Worker do not provide. The API, MongoDB-backed accounts and learning data, PostgreSQL SQL editor, and other features can deploy without them; execution features report unavailable until the separately documented runner services are hosted on a Docker-compatible machine and configured with HTTPS URLs and server-side tokens. For a dedicated runner VM that keeps the API and databases on their current providers, follow [the self-hosted runner guide](docs/SELF_HOSTED_RUNNERS.md).
 
 ## Repository layout
 

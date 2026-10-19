@@ -1,0 +1,82 @@
+services:
+  spark_runner:
+    image: dataengineering-spark-runner:3.5.6
+    build: ./worker/spark
+    restart: unless-stopped
+    environment:
+      SPARK_RUNNER_TOKEN: ${SPARK_RUNNER_TOKEN:?Set SPARK_RUNNER_TOKEN}
+      SPARK_JOB_IMAGE: dataengineering-spark-runner:3.5.6
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    group_add:
+      - "${DOCKER_GID:?Set DOCKER_GID to the Docker socket group ID}"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,exec,nosuid,nodev,size=256m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    cpus: 1
+    mem_limit: 512m
+    networks: [runner_private]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4021/health', timeout=2)"]
+      interval: 20s
+      timeout: 3s
+      start_period: 60s
+      retries: 3
+
+  python_runner:
+    image: dataengineering-python-runner:3.11
+    build: ./worker/python
+    restart: unless-stopped
+    environment:
+      PYTHON_RUNNER_TOKEN: ${PYTHON_RUNNER_TOKEN:?Set PYTHON_RUNNER_TOKEN}
+      PYTHON_JOB_IMAGE: dataengineering-python-runner:3.11
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    group_add:
+      - "${DOCKER_GID:?Set DOCKER_GID to the Docker socket group ID}"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=128m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    cpus: 1
+    mem_limit: 512m
+    networks: [runner_private]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4020/health', timeout=4)"]
+      interval: 20s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SPARK_RUNNER_DOMAIN: ${SPARK_RUNNER_DOMAIN:?Set SPARK_RUNNER_DOMAIN}
+      PYTHON_RUNNER_DOMAIN: ${PYTHON_RUNNER_DOMAIN:?Set PYTHON_RUNNER_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/runners/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [runner_private]
+    depends_on:
+      spark_runner:
+        condition: service_healthy
+      python_runner:
+        condition: service_healthy
+
+networks:
+  runner_private:
+
+volumes:
+  caddy_data:
+  caddy_config:
