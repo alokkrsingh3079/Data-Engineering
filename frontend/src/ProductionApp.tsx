@@ -342,6 +342,7 @@ export function Interview() {
     [db, setDb] = useState(""),
     [questions, setQuestions] = useState<any[]>([]),
     [answers, setAnswers] = useState<Record<string, string>>({}),
+    [sessionId, setSessionId] = useState(""),
     [started, setStarted] = useState(false),
     [score, setScore] = useState<any>(null),
     [loading, setLoading] = useState(false);
@@ -365,6 +366,11 @@ export function Interview() {
       }),
     });
     const x = await r.json();
+    if (!r.ok) {
+      setLoading(false);
+      return;
+    }
+    setSessionId(x.sessionId);
     setQuestions(x.questions);
     setStarted(true);
     setLoading(false);
@@ -375,7 +381,7 @@ export function Interview() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        sessionId: crypto.randomUUID(),
+        sessionId,
         answers: questions.map((q) => ({
           questionId: q.id,
           sql: answers[q.id] || "",

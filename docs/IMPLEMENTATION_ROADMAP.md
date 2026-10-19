@@ -10,6 +10,8 @@ This roadmap refines the project phases for the requested MongoDB application st
 
 ## Phase order and gates
 
+Verified status as of 2026-10-19: Phase 1 is complete. Phase 2 through Phase 6 have partial implementation only; Phase 7 is blocked on live database and deployment validation. Detailed evidence is in `PROJECT_AUDIT.md` and `FINAL_QA_REPORT.md`. Do not treat the planned milestones below as completed work.
+
 1. Audit (complete): document the existing architecture, verified features, test limits, risks, and migration boundary in `docs/PROJECT_AUDIT.md`.
 2. Security stabilization: fix multipart ownership checks, constrain SQL imports, remove insecure secret defaults, and add behavior tests. Gate: backend build and security tests pass in an environment with installed dependencies and isolated databases.
 3. Mongo foundation: add MongoDB driver, connection lifecycle, indexes, configuration validation, health checks, and local Compose service. Keep the existing PostgreSQL service for SQL execution. Gate: clean startup/shutdown, unavailable-store behavior, unique user email/session token indexes.

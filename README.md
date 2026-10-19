@@ -37,6 +37,22 @@ Evolve the existing **SQL Software** application into a **Data Engineering Inter
 
 The platform should help learners prepare for Data Engineering interviews through practical exercises, verified explanations, coding challenges, scenario-based questions, progress tracking, and AI-powered mock interviews.
 
+### Implementation status
+
+Status last checked: 2026-10-19. “Partial” means some useful functionality exists, but the phase acceptance criteria are not met. Only verified completion is marked done.
+
+| Phase | Status | Evidence and remaining gate |
+|---|---|---|
+| 1. Repository audit | Done | See [the audit report](docs/PROJECT_AUDIT.md). |
+| 2. Stabilize and secure | Partial | Multipart ownership and parser-backed SQL restrictions exist; live authorization tests and per-workspace PostgreSQL roles remain required. |
+| 3. Dashboard and question engine | Partial | Mongo-backed learning modules and per-user lesson completion are available; the full generalized module/question workflow is not complete. |
+| 4. Python Interview Lab | Partial | Original Python learning content is available; code editor, execution service, automated test cases, and submission history are not implemented. |
+| 5. PySpark and Spark Lab | Partial | Spark learning content is available; no Spark runtime or execution service is configured. |
+| 6. Azure, Databricks, ETL, and AI interviews | Partial | Scenario lessons and persistent SQL interview sessions exist; no cloud deployment integrations or AI rubric-based interview feedback are implemented. |
+| 7. Final QA and production readiness | Blocked | Builds and unit/source tests pass, but MongoDB/PostgreSQL integration, migration reconciliation, and end-to-end deployment checks have not run. |
+
+Platform records are intended for MongoDB; PostgreSQL still contains legacy application tables used by startup and account/workspace provisioning, as well as the SQL-practice schemas. Do not remove those PostgreSQL tables or deploy a Mongo-only configuration until a resumable migration and runtime cutover are implemented and verified. See [environment variables](docs/ENVIRONMENT_VARIABLES.md) and the [current QA report](docs/FINAL_QA_REPORT.md).
+
 The project should grow incrementally. Each phase must be audited, implemented, tested, and reviewed before the next phase begins.
 
 ### Core goals

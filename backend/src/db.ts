@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import pg from "pg";
 import type { PoolClient, FieldDef } from "pg";
 import { connectMongo, mongoCollection } from "./mongo.js";
+import { validatePracticeImport, validatePracticeRead } from "./sql-guard.js";
 const { Pool } = pg;
 
 export const pool = new Pool({
@@ -75,16 +76,12 @@ export async function schemaSnapshot(schemaName:string){
 }
 
 export async function executeReadOnly(schemaName:string,sql:string){
- if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error("Invalid schema");
- const cleaned=sql.trim().replace(/;\s*$/,'');
- if(!cleaned)throw new Error("Query is empty");
+ const cleaned=validatePracticeRead(schemaName,sql);
  if(cleaned.includes(';'))throw new Error("Only one SQL statement is allowed per practice run.");
- if(!/^(SELECT|WITH)\b/i.test(cleaned))throw new Error("Practice execution only permits SELECT/WITH queries.");
- if(/\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|COPY|VACUUM|CALL|DO|SET|RESET|SHOW|EXPLAIN\s+ANALYZE)\b/i.test(cleaned))throw new Error("Read-only query required.");
- const client=await getPracticePool().connect();const started=Date.now();try{await client.query('BEGIN');await client.query("SET LOCAL statement_timeout='5000ms'");await client.query("SET LOCAL idle_in_transaction_session_timeout='6000ms'");await client.query("SET LOCAL transaction_read_only=on");await client.query("SET LOCAL work_mem='16MB'");await client.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);const r=await client.query(cleaned);await client.query('ROLLBACK');return{columns:r.fields.map((f:FieldDef)=>f.name),rows:r.rows,rowCount:r.rowCount??r.rows.length,executionMs:Date.now()-started};}catch(e){try{await client.query('ROLLBACK')}catch{}throw e}finally{client.release()}
+ const client=await getPracticePool().connect();const started=Date.now();try{await client.query('BEGIN');await client.query("SET LOCAL statement_timeout='5000ms'");await client.query("SET LOCAL idle_in_transaction_session_timeout='6000ms'");await client.query("SET LOCAL transaction_read_only=on");await client.query("SET LOCAL work_mem='16MB'");await client.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);const r=await client.query(`SELECT * FROM (${cleaned}) AS practice_result LIMIT 1000`);await client.query('ROLLBACK');return{columns:r.fields.map((f:FieldDef)=>f.name),rows:r.rows,rowCount:r.rowCount??r.rows.length,executionMs:Date.now()-started};}catch(e){try{await client.query('ROLLBACK')}catch{}throw e}finally{client.release()}
 }
 
-export async function executeImport(schemaName:string,sql:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error("Invalid schema");const c=await getPracticePool().connect();try{await c.query('BEGIN');await c.query("SET LOCAL statement_timeout='30000ms'");await c.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);await c.query(sql);await c.query('COMMIT')}catch(e){try{await c.query('ROLLBACK')}catch{}throw e}finally{c.release()}}
+export async function executeImport(schemaName:string,sql:string){const validated=validatePracticeImport(schemaName,sql);const c=await getPracticePool().connect();try{await c.query('BEGIN');await c.query("SET LOCAL statement_timeout='30000ms'");await c.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);await c.query(validated);await c.query('COMMIT')}catch(e){try{await c.query('ROLLBACK')}catch{}throw e}finally{c.release()}}
 
 export async function clearPracticeSchema(schemaName:string){await pool.query(`DROP SCHEMA IF EXISTS ${quoteIdent(schemaName)} CASCADE`);await createPracticeSchema(schemaName)}
 export async function schemaDDL(schemaName:string){const tables=await listTables(schemaName);const lines:string[]=[];for(const t of tables){lines.push(`CREATE TABLE ${quoteIdent(t.name)} (`);lines.push(t.columns.map((c:any)=>`  ${quoteIdent(c.column_name)} ${c.data_type.toUpperCase()}${c.is_nullable==='NO'?' NOT NULL':''}${c.is_primary_key?' PRIMARY KEY':''}`).join(',\n'));lines.push(');')}const snap=await schemaSnapshot(schemaName);for(const fk of snap.relationships)lines.push(`ALTER TABLE ${quoteIdent(fk.table_name)} ADD CONSTRAINT ${quoteIdent(fk.constraint_name)} FOREIGN KEY (${quoteIdent(fk.column_name)}) REFERENCES ${quoteIdent(fk.foreign_table_name)} (${quoteIdent(fk.foreign_column_name)});`);return lines.join('\n')}

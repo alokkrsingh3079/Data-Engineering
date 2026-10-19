@@ -1,2 +1,2 @@
-import React from 'react';import ReactDOM from 'react-dom/client';import App from './App';import {AdminApp,Analytics,Login,Interview} from './ProductionApp';import './styles.css';
-const path=location.pathname;const C=path==='/admin'?AdminApp:path==='/login'?Login:path==='/analytics'?Analytics:path==='/interview'?Interview:App;ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><C/></React.StrictMode>);
+import React from 'react';import ReactDOM from 'react-dom/client';import App from './App';import LearningStudio from './LearningStudio';import {AdminApp,Analytics,Login,Interview} from './ProductionApp';import './styles.css';
+const path=location.pathname;const C=path==='/admin'?AdminApp:path==='/login'?Login:path==='/analytics'?Analytics:path==='/interview'?Interview:path==='/sql'?App:LearningStudio;ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><C/></React.StrictMode>);
