@@ -90,7 +90,28 @@ export async function initDb(){
  await pool.query('SELECT 1');
 }
 
-export async function grantPracticeSchema(schemaName:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error("Invalid schema name");const schema=quoteIdent(schemaName),roleData=derivePracticeRoleCredentials(schemaName),role=quoteIdent(roleData.name),password=roleData.password;await pool.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${roleData.name}') THEN CREATE ROLE ${role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT; END IF; END $$`);await pool.query(`ALTER ROLE ${role} WITH LOGIN NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD '${password}'`);await configurePracticeRoleTempFileLimit(role);await pool.query(`REVOKE ALL ON SCHEMA ${schema} FROM PUBLIC`);const legacyRole=await pool.query("SELECT 1 FROM pg_roles WHERE rolname='practice_executor'");if(legacyRole.rowCount){await pool.query(`REVOKE ALL ON SCHEMA ${schema} FROM practice_executor`);await pool.query(`REVOKE ALL ON ALL TABLES IN SCHEMA ${schema} FROM practice_executor`);await pool.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA ${schema} FROM practice_executor`)}await pool.query(`GRANT USAGE, CREATE ON SCHEMA ${schema} TO ${role}`);await pool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${schema} TO ${role}`);await pool.query(`GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA ${schema} TO ${role}`);const tables=await pool.query('SELECT tablename FROM pg_tables WHERE schemaname=$1',[schemaName]);for(const table of tables.rows)await pool.query(`ALTER TABLE ${schema}.${quoteIdent(table.tablename)} OWNER TO ${role}`);const sequences=await pool.query("SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema=$1",[schemaName]);for(const sequence of sequences.rows)await pool.query(`ALTER SEQUENCE ${schema}.${quoteIdent(sequence.sequence_name)} OWNER TO ${role}`)}
+export async function grantPracticeSchema(schemaName: string) {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName)) throw new Error("Invalid schema name");
+  const schema = quoteIdent(schemaName);
+  const roleData = derivePracticeRoleCredentials(schemaName);
+  const role = quoteIdent(roleData.name);
+
+  await pool.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${roleData.name}') THEN CREATE ROLE ${role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT; END IF; END $$`);
+  await pool.query(`ALTER ROLE ${role} WITH LOGIN NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD '${roleData.password}'`);
+  await configurePracticeRoleTempFileLimit(role);
+  await pool.query(`REVOKE ALL ON SCHEMA ${schema} FROM PUBLIC`);
+
+  const legacyRole = await pool.query("SELECT 1 FROM pg_roles WHERE rolname='practice_executor'");
+  if (legacyRole.rowCount) {
+    await pool.query(`REVOKE ALL ON SCHEMA ${schema} FROM practice_executor`);
+    await pool.query(`REVOKE ALL ON ALL TABLES IN SCHEMA ${schema} FROM practice_executor`);
+    await pool.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA ${schema} FROM practice_executor`);
+  }
+
+  await pool.query(`GRANT USAGE, CREATE ON SCHEMA ${schema} TO ${role}`);
+  await pool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${schema} TO ${role}`);
+  await pool.query(`GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA ${schema} TO ${role}`);
+}
 export async function createPracticeSchema(schemaName:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error("Invalid schema name");await pool.query(`CREATE SCHEMA IF NOT EXISTS ${quoteIdent(schemaName)}`);await grantPracticeSchema(schemaName)}
 export function quoteIdent(v:string){if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(v))throw new Error("Invalid identifier");return `"${v}"`}
 
