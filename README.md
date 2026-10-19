@@ -2,14 +2,21 @@
 
 > **A phased, security-first roadmap for evolving the existing SQL Software project into a comprehensive Data Engineering learning and interview-preparation platform.**
 
-**Repository:** https://github.com/kumaralok9876543/Sql-Software
+**Repository:** https://github.com/sameep20252026/Data-Engineering
 
 This README contains the complete seven-phase implementation plan, acceptance criteria, and copy-ready prompts for an AI coding agent. Keep this file in the repository as the long-term project specification and source of truth.
+
+## Run Locally
+
+For a complete copy-paste setup—including MongoDB, PostgreSQL, Python and Spark runners, backend/frontend startup, admin and learner login, testing, and optional SQL A–R question generation—see the [Local Development Guide](docs/LOCAL_DEVELOPMENT.md).
+
+Quick prerequisites: Node.js 20+, npm, Docker Compose, and a working Docker daemon. Do not commit `backend/.env`; it contains local credentials.
 
 ---
 
 ## Table of Contents
 
+- [Run Locally](#run-locally)
 1. [Project Vision](#1-project-vision)
 2. [Guiding Principles](#2-guiding-principles)
 3. [Target Modules](#3-target-modules)
