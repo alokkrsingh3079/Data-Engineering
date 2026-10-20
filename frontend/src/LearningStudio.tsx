@@ -481,6 +481,7 @@ export default function LearningStudio() {
           <a href="/pyspark"><Layers3 size={15} /> PySpark lab</a>
           <a href="/learn/azure-data-factory"><Activity size={15} /> Azure &amp; Databricks</a>
           <a href="/learn/etl-data-quality"><Target size={15} /> ETL testing</a>
+          <a href="/notes"><BookOpen size={15} /> Notes &amp; Study Material</a>
           <a href="/interview"><BookOpen size={15} /> Interview</a>
           <a href="/ask-ai"><Sparkles size={15} /> Ask AI</a>
           <a href="/analytics"><BarChart3 size={15} /> Progress &amp; Analytics</a>

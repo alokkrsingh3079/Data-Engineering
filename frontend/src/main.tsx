@@ -14,10 +14,12 @@ const AdminApp = lazy(() => import('./ProductionApp').then((module) => ({ defaul
 const Analytics = lazy(() => import('./ProductionApp').then((module) => ({ default: module.Analytics })));
 const Login = lazy(() => import('./ProductionApp').then((module) => ({ default: module.Login })));
 const Interview = lazy(() => import('./ProductionApp').then((module) => ({ default: module.Interview })));
+const NotesStudio = lazy(() => import('./NotesStudio'));
 
 const path = location.pathname;
 const isFocusedLearningTrack = ['/learn/python-etl', '/learn/azure-data-factory', '/learn/databricks-delta', '/learn/etl-data-quality'].includes(path);
 const Page = path === '/ask-ai' ? AskAI
+	: path === '/notes' ? NotesStudio
 	: path === '/admin' ? AdminApp
 	: path === '/login' ? Login
 		: path === '/analytics' ? Analytics
