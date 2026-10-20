@@ -232,28 +232,38 @@ export async function seedCurriculum(): Promise<void> {
 }
 
 export async function getLearningStudio(userId: string) {
-  const workspaces = await listWorkspaces(userId, false);
-  const workspaceIds = workspaces.map((workspace: any) => String(workspace.id || workspace._id));
-  const [storedModules, progress, questionCounts, questionRows, sqlQuestions, recentAttempt] = await Promise.all([
+  const [workspaces, storedModules, progress, questionCounts, questionRows, recentAttempt] = await Promise.all([
+    listWorkspaces(userId, false),
     mongoCollection("learning_modules").find().sort({ order: 1 }).toArray(),
     mongoCollection("learning_progress").find({ user_id: userId }).toArray(),
     mongoCollection("learning_questions").aggregate([{ $match: { status: "published" } }, { $group: { _id: "$module_id", count: { $sum: 1 } } }]).toArray(),
     mongoCollection("learning_question_progress").find({ user_id: userId, completed: true }, { projection: { question_id: 1 } }).toArray(),
-    workspaceIds.length ? mongoCollection("challenges").find({ database_id: { $in: workspaceIds } }, { projection: { id: 1 } }).toArray() : Promise.resolve([]),
     mongoCollection("learning_attempts").findOne({ user_id: userId }, { sort: { created_at: -1 }, projection: { question_id: 1 } })
   ]);
+  const workspaceIds = workspaces.map((workspace: any) => String(workspace.id || workspace._id));
+  const sqlQuestions = workspaceIds.length
+    ? await mongoCollection("challenges").find({ database_id: { $in: workspaceIds } }, { projection: { id: 1 } }).toArray()
+    : [];
   const completed = new Set(progress.filter((item) => item.completed).map((item) => String(item.lesson_id)));
   const counts = new Map(questionCounts.map((row) => [String(row._id), Number(row.count)]));
   const completedQuestionIds = new Set(questionRows.map((item) => String(item.question_id)));
   const completedModules = new Map<string, number>();
-  if (completedQuestionIds.size) {
-    const completedQuestions = await mongoCollection("learning_questions").find({ _id: { $in: [...completedQuestionIds] } }, { projection: { module_id: 1 } }).toArray();
+  const sqlQuestionIds = sqlQuestions.map((question: any) => String(question.id));
+  const recentId = String(recentAttempt?.question_id || "");
+  const [completedQuestions, completedSql, recentQuestion] = await Promise.all([
+    completedQuestionIds.size
+      ? mongoCollection("learning_questions").find({ _id: { $in: [...completedQuestionIds] } }, { projection: { module_id: 1 } }).toArray()
+      : Promise.resolve([]),
+    sqlQuestionIds.length
+      ? mongoCollection("attempts").distinct("challenge_id", { session_id: userId, challenge_id: { $in: sqlQuestionIds }, correct: true })
+      : Promise.resolve([]),
+    recentId
+      ? mongoCollection("learning_questions").findOne({ _id: recentId }, { projection: { module_id: 1 } })
+      : Promise.resolve(null)
+  ]);
+  if (completedQuestions.length) {
     for (const question of completedQuestions) completedModules.set(String(question.module_id), (completedModules.get(String(question.module_id)) || 0) + 1);
   }
-  const sqlQuestionIds = sqlQuestions.map((question: any) => String(question.id));
-  const completedSql = sqlQuestionIds.length ? await mongoCollection("attempts").distinct("challenge_id", { session_id: userId, challenge_id: { $in: sqlQuestionIds }, correct: true }) : [];
-  const recentId = String(recentAttempt?.question_id || "");
-  const recentQuestion = recentId ? await mongoCollection("learning_questions").findOne({ _id: recentId }, { projection: { module_id: 1 } }) : null;
   return storedModules.map((module) => ({
     ...module,
     questionCount: module.id === "sql-interview-lab" ? sqlQuestionIds.length : counts.get(String(module.id)) || 0,

@@ -86,6 +86,14 @@ export default function LearningTrackLab() {
 
   useEffect(() => {
     const controller = new AbortController();
+    void Promise.all([
+      fetch(`${API}/api/learning/runners/status`, { credentials: "include", signal: controller.signal }).then((response) => response.ok ? response.json() : null),
+      fetch(`${API}/api/auth/me`, { credentials: "include", signal: controller.signal }).then((response) => response.ok ? response.json() : null),
+    ]).then(([runnerState, account]) => {
+      if (controller.signal.aborted) return;
+      if (runnerState) setRunner(runnerState);
+      setUserName(account?.user?.name || "Learner");
+    }).catch(() => {});
     Promise.all([
       fetch(`${API}/api/learning/studio`, { credentials: "include", signal: controller.signal }).then(async (response) => { if (response.status === 401) { location.href = "/login"; return null; } if (!response.ok) throw Error("Learning track is unavailable."); return response.json(); }),
       Promise.all(track.moduleIds.map(async (id) => {
@@ -100,15 +108,11 @@ export default function LearningTrackLab() {
         }));
         return { ...firstPage, items: [firstPage, ...rest].flatMap((page) => page.items || []) };
       })),
-      fetch(`${API}/api/learning/runners/status`, { credentials: "include", signal: controller.signal }).then((response) => response.ok ? response.json() : null),
-      fetch(`${API}/api/auth/me`, { credentials: "include", signal: controller.signal }).then((response) => response.ok ? response.json() : null),
-    ]).then(([studio, banks, runnerState, account]) => {
+    ]).then(([studio, banks]) => {
       if (controller.signal.aborted) return;
       setModule(studio?.modules?.find((item: any) => item.id === moduleId) || null);
       const items = banks.flatMap((bank: any) => bank?.items || []);
       setQuestions(items);
-      if (runnerState) setRunner(runnerState);
-      setUserName(account?.user?.name || "Learner");
       items.sort((left: Question, right: Question) => levelFor(left).localeCompare(levelFor(right)) || left.title.localeCompare(right.title));
       const params = new URLSearchParams(location.search);
       const requested = params.get("questionId");

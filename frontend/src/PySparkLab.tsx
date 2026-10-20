@@ -120,6 +120,10 @@ export default function PySparkLab() {
 
   useEffect(() => {
     let mounted = true;
+    void fetch(`${API}/api/learning/runners/status`, { credentials: "include" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((status) => { if (mounted && status?.pyspark) setRunner(status.pyspark); })
+      .catch(() => {});
     Promise.all([
       (async () => {
         const query = "moduleId=pyspark-foundations&type=coding&pageSize=50";
@@ -134,8 +138,7 @@ export default function PySparkLab() {
         }));
         return { ...firstPage, items: [firstPage, ...rest].flatMap((page) => page.items || []) };
       })(),
-      fetch(`${API}/api/learning/runners/status`, { credentials: "include" }).then((response) => response.ok ? response.json() : null),
-    ]).then(([bank, status]) => {
+    ]).then(([bank]) => {
       if (!mounted) return;
       const items = (bank?.items || []).filter((item: Question & { language?: string }) => item.language === "pyspark")
         .sort((left: Question, right: Question) => (left.learning_level || "Z").localeCompare(right.learning_level || "Z") || left.id.localeCompare(right.id));
@@ -145,7 +148,6 @@ export default function PySparkLab() {
       if (params.get("revision") === "1") { setRevisionOnly(true); setFilter("all"); }
       const firstLevelQuestion = items.find((item: Question) => item.id === requestedQuestion) || items.find((item: Question) => item.learning_level === "A") || items[0];
       if (firstLevelQuestion) void chooseQuestion(firstLevelQuestion);
-      if (status?.pyspark) setRunner(status.pyspark);
     }).catch((cause) => { if (mounted) setError(cause instanceof Error ? cause.message : "PySpark Lab is unavailable."); });
     return () => { mounted = false; };
   }, []);
