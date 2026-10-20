@@ -2,6 +2,10 @@
 
 This stack runs only the isolated Python and PySpark execution services. Keep the main API on Render, MongoDB on Atlas, and PostgreSQL on Neon. It does not start duplicate databases or the backend.
 
+## On-demand GitHub Codespaces
+
+For temporary testing instead of a persistent VM, run `bash scripts/start-codespace-runners.sh` from the repository root inside Codespaces. On first run, it generates separate tokens, stores them in the Git-ignored `deploy/runners/.env`, starts both runner containers, and makes ports 4020/4021 public. Copy the printed token values to the matching Render environment variables, then redeploy Render. Later runs reuse the saved tokens and restore the port visibility. The Codespace must remain running; stopping it makes the runners unavailable to Render. This is not an always-on production host and uses Codespaces compute quota.
+
 ## Host requirements
 
 - A dedicated Ubuntu 24.04 Linux VM with Docker Engine and the Compose plugin.
