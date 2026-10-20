@@ -1,3 +1,5 @@
+import { parquetMetadata, parquetReadObjects, parquetSchema } from "hyparquet";
+
 export const MAX_DATASET_BYTES = 5 * 1024 * 1024;
 export const MAX_DATASET_ROWS = 10_000;
 export const MAX_DATASET_COLUMNS = 80;
@@ -99,17 +101,75 @@ function jsonRows(text: string, extension: string): { columns: string[]; rows: R
   return { columns, rows };
 }
 
-export function parseDatasetFile(filename: string, bytes: Buffer): ParsedDataset {
+function parquetCell(value: unknown): unknown {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "bigint") return value.toString();
+  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Uint8Array) return Buffer.from(value).toString("base64");
+  if (typeof value === "number" && !Number.isFinite(value)) return String(value);
+  if (typeof value === "object") {
+    return JSON.stringify(value, (_key, item: unknown) => typeof item === "bigint" ? item.toString() : item);
+  }
+  return value;
+}
+
+async function parquetRows(bytes: Buffer): Promise<{ columns: string[]; rows: Record<string, unknown>[] }> {
+  if (bytes.length < 12 || bytes.subarray(0, 4).toString("ascii") !== "PAR1" || bytes.subarray(-4).toString("ascii") !== "PAR1") {
+    throw new Error("Parquet file is invalid or incomplete.");
+  }
+
+  let metadata: ReturnType<typeof parquetMetadata>;
+  try {
+    metadata = parquetMetadata(bytes);
+  } catch (error) {
+    throw new Error("Parquet file metadata could not be read.", { cause: error });
+  }
+
+  const rowCount = Number(metadata.num_rows);
+  if (!Number.isSafeInteger(rowCount) || rowCount < 1) throw new Error("Parquet datasets must contain at least one data row.");
+  if (rowCount > MAX_DATASET_ROWS) throw new Error(`Datasets are limited to ${MAX_DATASET_ROWS.toLocaleString()} rows.`);
+
+  let sourceColumns: string[];
+  try {
+    sourceColumns = parquetSchema(metadata).children.map(child => child.element.name);
+  } catch (error) {
+    throw new Error("Parquet file schema could not be read.", { cause: error });
+  }
+  const columns = safeColumnNames(sourceColumns);
+
+  let values: Awaited<ReturnType<typeof parquetReadObjects>>;
+  try {
+    const file = Uint8Array.from(bytes).buffer;
+    values = await parquetReadObjects({ file, metadata });
+  } catch (error) {
+    throw new Error("Parquet file data could not be decoded.", { cause: error });
+  }
+  if (values.length !== rowCount) throw new Error("Parquet row data does not match its metadata.");
+
+  const rows = values.map(value => Object.fromEntries(
+    sourceColumns.map((source, index) => [columns[index], parquetCell(value[source])])
+  ));
+  return { columns, rows };
+}
+
+export async function parseDatasetFile(filename: string, bytes: Buffer): Promise<ParsedDataset> {
   if (!bytes.length || bytes.length > MAX_DATASET_BYTES) throw new Error("Upload a non-empty dataset up to 5 MB.");
   const extension = filename.toLowerCase().slice(filename.lastIndexOf("."));
-  if (![".csv", ".json", ".jsonl"].includes(extension)) throw new Error("Supported formats are CSV, JSON, and JSON Lines (.jsonl).");
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    throw new Error("Dataset must be valid UTF-8 text.");
+  if (![".csv", ".json", ".jsonl", ".parquet"].includes(extension)) {
+    throw new Error("Supported formats are CSV, JSON, JSON Lines (.jsonl), and Parquet (.parquet).");
   }
-  const parsed = extension === ".csv" ? csvRows(text) : jsonRows(text, extension);
+  let parsed: { columns: string[]; rows: Record<string, unknown>[] };
+  if (extension === ".parquet") {
+    parsed = await parquetRows(bytes);
+  } else {
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      throw new Error("Dataset must be valid UTF-8 text.");
+    }
+    parsed = extension === ".csv" ? csvRows(text) : jsonRows(text, extension);
+  }
   return { ...parsed, filename: filename.slice(0, 180) };
 }
 

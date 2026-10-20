@@ -198,8 +198,8 @@ export default function QuestionGeneration() {
         <section className="qgCard">
           <h2><FileUp size={18} /> Dataset library</h2>
           <label className="qgUpload" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setFile(event.dataTransfer.files[0] || null); }}>
-            Drop a CSV, JSON, or JSONL file here, or choose a file (up to 5 MB)
-            <input type="file" accept=".csv,.json,.jsonl,application/json,text/csv" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+            Drop a CSV, JSON, JSONL, or Parquet file here, or choose a file (up to 5 MB)
+            <input type="file" accept=".csv,.json,.jsonl,.parquet,application/json,text/csv,application/vnd.apache.parquet" onChange={(event) => setFile(event.target.files?.[0] || null)} />
           </label>
           <button className="qgPrimary" onClick={() => void uploadDataset()} disabled={!file || loading}>{loading ? <LoaderCircle className="qgSpin" size={16} /> : <FileUp size={16} />} Upload dataset</button>
           <label className="qgField">Your datasets<select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option value="">Select a dataset</option>{datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name} · {dataset.row_count} rows</option>)}</select></label>

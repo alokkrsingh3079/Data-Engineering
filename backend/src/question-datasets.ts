@@ -80,7 +80,7 @@ async function insertRows(schemaName: string, parsed: ParsedDataset, tableName: 
 }
 
 export async function createQuestionDataset(userId: string, filename: string, bytes: Buffer) {
-  const parsed = parseDatasetFile(filename, bytes);
+  const parsed = await parseDatasetFile(filename, bytes);
   const id = crypto.randomUUID();
   const databaseId = crypto.randomUUID();
   const { slug, schemaName } = databaseNames(parsed.filename, id);
