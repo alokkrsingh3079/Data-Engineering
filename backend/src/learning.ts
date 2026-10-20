@@ -13,7 +13,7 @@ export async function migrateLegacyLearningData(): Promise<void> {
     await attemptCollection.bulkWrite(batch.map((attempt: any) => ({
       updateOne: {
         filter: { _id: String(attempt.id) },
-        update: { $setOnInsert: { ...attempt, _id: String(attempt.id) } },
+        update: { $set: { ...attempt, id: String(attempt.id) }, $setOnInsert: { _id: String(attempt.id) } },
         upsert: true
       }
     })), { ordered: false });
@@ -24,7 +24,7 @@ export async function migrateLegacyLearningData(): Promise<void> {
     const id = `${mark.session_id}:${mark.challenge_id}`;
     await markCollection.updateOne(
       { _id: id },
-      { $setOnInsert: { ...mark, _id: id } },
+      { $set: mark, $setOnInsert: { _id: id } },
       { upsert: true }
     );
   }
@@ -60,6 +60,15 @@ export async function clearRevisionMark(sessionId: string, questionId: string): 
   await mongoCollection("question_revision_marks").deleteOne({ _id: `${sessionId}:${questionId}` });
 }
 
+export function summarizeQuestionAttempts(attempts: { correct?: boolean; is_revision?: boolean }[]) {
+  return {
+    attempt_count: attempts.length,
+    revision_count: attempts.filter(attempt => attempt.is_revision).length,
+    last_correct: attempts.length ? Boolean(attempts[0].correct) : null,
+    solved: attempts.some(attempt => Boolean(attempt.correct))
+  };
+}
+
 export async function revisionStatus(databaseId: string, sessionId: string) {
   const questionRows = await mongoCollection("challenges")
     .find({ database_id: databaseId }, { projection: { id: 1 } })
@@ -74,23 +83,24 @@ export async function revisionStatus(databaseId: string, sessionId: string) {
     mongoCollection("question_revision_marks").find({ session_id: sessionId, challenge_id: { $in: questionIds } })
       .toArray()
   ]);
-  const counts = new Map<string, { attempts: number; revisions: number; lastCorrect: boolean | null }>();
+  const attemptsByQuestion = new Map<string, { correct: boolean; is_revision?: boolean }[]>();
   for (const attempt of attempts) {
     const id = String(attempt.challenge_id);
-    const item = counts.get(id) || { attempts: 0, revisions: 0, lastCorrect: null };
-    item.attempts += 1;
-    if (attempt.is_revision) item.revisions += 1;
-    if (item.lastCorrect === null) item.lastCorrect = Boolean(attempt.correct);
-    counts.set(id, item);
+    const item = attemptsByQuestion.get(id) || [];
+    if (typeof attempt.correct === "boolean") {
+      item.push({
+        correct: attempt.correct,
+        is_revision: typeof attempt.is_revision === "boolean" ? attempt.is_revision : undefined
+      });
+    }
+    attemptsByQuestion.set(id, item);
   }
   const marked = new Set(marks.map((mark: any) => String(mark.challenge_id)));
   return questionIds.map(id => {
-    const item = counts.get(id);
+    const item = summarizeQuestionAttempts(attemptsByQuestion.get(id) || []);
     return {
       id,
-      attempt_count: item?.attempts || 0,
-      revision_count: item?.revisions || 0,
-      last_correct: item?.lastCorrect ?? null,
+      ...item,
       marked: marked.has(id)
     };
   });

@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeAllTimeSolved, summarizeDailyAttempts, summarizeTrackQuestionTotals } from '../src/learning.ts';
+import { summarizeAllTimeSolved, summarizeDailyAttempts, summarizeQuestionAttempts, summarizeTrackQuestionTotals } from '../src/learning.ts';
+
+test('SQL solved state remains complete after a later incorrect attempt', () => {
+  const status = summarizeQuestionAttempts([
+    { correct: false, is_revision: true },
+    { correct: true, is_revision: false }
+  ]);
+
+  assert.equal(status.attempt_count, 2);
+  assert.equal(status.revision_count, 1);
+  assert.equal(status.last_correct, false);
+  assert.equal(status.solved, true);
+});
 
 test('daily progress groups attempts by local date and track and counts solved streaks', () => {
   const summary = summarizeDailyAttempts([

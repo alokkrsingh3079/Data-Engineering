@@ -13,7 +13,7 @@ type QueryTab={id:string;name:string;sql:string};
 type TablePreview={table:string;columns:string[];rows:any[];total:number;limit:number;offset:number};
 type QuestionSet={id:string;name:string;accepted_count:number;rejected_count:number;status:string};
 type CompanyCollection={id:string;name:string;description:string};
-type RevisionStatus={id:string;attempt_count:number;revision_count:number;last_correct:boolean|null;marked:boolean};
+type RevisionStatus={id:string;attempt_count:number;revision_count:number;last_correct:boolean|null;solved:boolean;marked:boolean};
 type CatalogView='explore'|'topics'|'sets'|'companies';
 const sqlLevelCodes=[..."ABCDEFGHIJKLMNOPQR"];
 function sqlQuestionLevel(question:Q){return (question.learning_level||question.tags?.find(tag=>/^level:[A-R]$/i.test(tag))?.slice(6)||'').toUpperCase()}
@@ -49,7 +49,7 @@ export default function App(){
  const revisionQuestions=questions.filter(q=>revisionStatuses[q.id]?.marked);
  const needsPracticeQuestions=questions.filter(q=>isNeedsPractice(revisionStatuses[q.id]));
  const revisionBreakdown={marked:revisionQuestions.length,unanswered:needsPracticeQuestions.filter(q=>revisionStatuses[q.id]?.attempt_count===0).length,incorrect:needsPracticeQuestions.filter(q=>(revisionStatuses[q.id]?.attempt_count||0)>0&&revisionStatuses[q.id]?.last_correct===false).length};
- const isQuestionSolved=(id:string)=>Boolean(revisionStatuses[id]?.last_correct);
+ const isQuestionSolved=(id:string)=>Boolean(revisionStatuses[id]?.solved);
  function revisionReason(id:string){const status=revisionStatuses[id];if(!status)return 'Loading status';return [status.marked?'Marked':null,status.attempt_count===0?'Unanswered':null,status.attempt_count>0&&status.last_correct===false?'Latest answer incorrect':null].filter(Boolean).join(' · ')}
  const visibleQuestions=revisionMode?revisionQuestions:practiceMode?needsPracticeQuestions:filteredQuestions;
  const selectedQuestionIndex=visibleQuestions.findIndex(q=>q.id===selected?.id);
