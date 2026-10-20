@@ -30,7 +30,9 @@ test('production security controls include bounded code and AI evaluation rates'
 test('Ask AI removes the auth middleware sessionId before strict request validation',()=>{const route=server.slice(server.indexOf("app.post('/api/ai/ask'"),server.indexOf("// ---------------- Production platform services"));assert.match(route,/delete requestBody\.sessionId/);assert.match(route,/askAiRequest\.safeParse\(requestBody\)/)});
 test('authentication and audit routes exist',()=>{assert.match(server,/\/api\/auth\/register/);assert.match(server,/\/api\/auth\/login/);assert.match(server,/\/api\/auth\/logout/);assert.match(server,/\/api\/admin\/audit/)});
 test('sticky reminders are bounded and scoped to the authenticated account',()=>{
-  assert.match(server,/stickyNoteInput=z\.object\(\{text:z\.string\(\)\.trim\(\)\.min\(1\)\.max\(280\)/);
+  assert.match(server,/stickyNoteFields=z\.object\(\{text:z\.string\(\)\.trim\(\)\.min\(1\)\.max\(4000\)/);
+  assert.match(server,/format:z\.enum\(\['text','code'\]\)\.default\('text'\)/);
+  assert.match(server,/input\.format==='text'&&input\.text\.length>280/);
   for(const route of ["app.get('/api/notes/sticky'","app.post('/api/notes/sticky'","app.put('/api/notes/sticky/:stickyNoteId'","app.delete('/api/notes/sticky/:stickyNoteId'"])assert.ok(server.includes(route),`missing ${route}`);
   assert.match(notes,/study_sticky_notes/);
   assert.match(notes,/user_id: userId/);
@@ -43,6 +45,7 @@ test('AI topic note and sticky reminder routes validate bounded input and use au
   assert.match(server,/createNote\(String\(\(req as any\)\.user\.id\)/);
   assert.match(server,/generateNotesFromTopic/);
   assert.match(server,/generateStickyReminder/);
+  assert.match(server,/format:z\.enum\(\['text','code'\]\)\.default\('text'\)/);
   assert.match(server,/createStickyNote\(String\(\(req as any\)\.user\.id\)/);
   assert.match(notes,/user_id: userId/);
 });

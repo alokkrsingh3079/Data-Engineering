@@ -12,15 +12,15 @@ export async function listStickyNotes(userId: string) {
   return stickyNotesCollection().find({ user_id: userId }).sort({ pinned: -1, updated_at: -1 }).toArray();
 }
 
-export async function createStickyNote(userId: string, input: { text: string; color: string }) {
+export async function createStickyNote(userId: string, input: { text: string; color: string; format?: string; language?: string }) {
   const id = crypto.randomUUID();
   const now = new Date();
-  const stickyNote = { _id: id, id, user_id: userId, text: input.text, color: input.color, pinned: true, created_at: now, updated_at: now };
+  const stickyNote = { _id: id, id, user_id: userId, text: input.text, color: input.color, format: input.format || "text", language: input.language || "plaintext", pinned: true, created_at: now, updated_at: now };
   await stickyNotesCollection().insertOne(stickyNote);
   return stickyNote;
 }
 
-export async function updateStickyNote(userId: string, stickyNoteId: string, input: { text: string; color: string; pinned: boolean }) {
+export async function updateStickyNote(userId: string, stickyNoteId: string, input: { text: string; color: string; format?: string; language?: string; pinned: boolean }) {
   return stickyNotesCollection().findOneAndUpdate(
     { _id: stickyNoteId, user_id: userId },
     { $set: { ...input, updated_at: new Date() } },
