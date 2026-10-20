@@ -17,7 +17,15 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 runner_env="$repo_root/deploy/runners/.env"
 mkdir -p "$(dirname -- "$runner_env")"
 
-if [[ ! -s "$runner_env" ]]; then
+rotate_tokens=false
+if [[ "${1:-}" == "--rotate" ]]; then
+  rotate_tokens=true
+elif [[ -n "${1:-}" ]]; then
+  printf 'Usage: bash scripts/start-codespace-runners.sh [--rotate]\n' >&2
+  exit 2
+fi
+
+if [[ ! -s "$runner_env" || "$rotate_tokens" == true ]]; then
   spark_token="$(openssl rand -hex 32)"
   python_token="$(openssl rand -hex 32)"
   umask 077
