@@ -4,6 +4,35 @@ function notesCollection() {
   return mongoCollection("study_notes");
 }
 
+function stickyNotesCollection() {
+  return mongoCollection("study_sticky_notes");
+}
+
+export async function listStickyNotes(userId: string) {
+  return stickyNotesCollection().find({ user_id: userId }).sort({ pinned: -1, updated_at: -1 }).toArray();
+}
+
+export async function createStickyNote(userId: string, input: { text: string; color: string }) {
+  const id = crypto.randomUUID();
+  const now = new Date();
+  const stickyNote = { _id: id, id, user_id: userId, text: input.text, color: input.color, pinned: true, created_at: now, updated_at: now };
+  await stickyNotesCollection().insertOne(stickyNote);
+  return stickyNote;
+}
+
+export async function updateStickyNote(userId: string, stickyNoteId: string, input: { text: string; color: string; pinned: boolean }) {
+  return stickyNotesCollection().findOneAndUpdate(
+    { _id: stickyNoteId, user_id: userId },
+    { $set: { ...input, updated_at: new Date() } },
+    { returnDocument: "after" },
+  );
+}
+
+export async function deleteStickyNote(userId: string, stickyNoteId: string) {
+  const result = await stickyNotesCollection().deleteOne({ _id: stickyNoteId, user_id: userId });
+  return result.deletedCount > 0;
+}
+
 export async function listNotes(userId: string, search = "") {
   const filter: Record<string, unknown> = { user_id: userId };
   const term = search.trim().slice(0, 100);

@@ -50,6 +50,7 @@ export async function connectMongo(): Promise<Db> {
     database.collection("learning_question_progress").createIndex({ user_id: 1, updated_at: -1 }),
     database.collection("study_notes").createIndex({ user_id: 1, updated_at: -1 }),
     database.collection("study_notes").createIndex({ user_id: 1, bookmarked: 1, updated_at: -1 }),
+    database.collection("study_sticky_notes").createIndex({ user_id: 1, pinned: -1, updated_at: -1 }),
     database.collection("study_note_documents").createIndex({ user_id: 1, created_at: -1 }),
     database.collection("ai_chat_conversations").createIndex({ user_id: 1, updated_at: -1 }),
     database.collection("ai_chat_messages").createIndex({ conversation_id: 1, created_at: 1 }),

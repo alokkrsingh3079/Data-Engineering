@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ArrowLeft, ArrowRight, Bookmark, BookOpen, BriefcaseBusiness, Check, ChevronRight, Clock3, Cloud, Code2, Columns2, Database, Download, FileText, FolderOpen, GitBranch, GraduationCap, Layers3, Lightbulb, LogOut, Maximize2, Minimize2, Plus, Printer, Search, Sparkles, Trash2, Type, Workflow, X, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, BookOpen, BriefcaseBusiness, Check, ChevronRight, Clock3, Cloud, Code2, Columns2, Database, Download, FileText, FolderOpen, GitBranch, GraduationCap, Layers3, Lightbulb, LogOut, Maximize2, Minimize2, Pencil, Pin, Plus, Printer, Search, Sparkles, Trash2, Type, Workflow, X, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
 import "./notes-studio.css";
 import "./notes-print.css";
+import "./sticky-notes.css";
 
 type Note = {
   id: string;
@@ -23,6 +24,7 @@ type Note = {
 
 type View = "dashboard" | "all" | "bookmarks" | "revision" | "recent" | "subject" | "pdf";
 type ReaderMode = "notes" | "source" | "split";
+type StickyNote = { id: string; text: string; color: "yellow" | "pink" | "blue" | "green"; pinned: boolean; created_at: string; updated_at: string };
 type PdfDocument = { id: string; filename: string; size_bytes: number; status: "uploaded" | "processing" | "completed" | "failed"; generated_note_id: string | null; processing_error: string | null; created_at: string };
 const API = "";
 const subjects = ["SQL", "Python", "PySpark", "Azure Data Factory", "Databricks", "ETL & Data Warehousing", "Data Engineering System Design", "Data Engineering Concepts", "Interview Preparation"];
@@ -60,6 +62,11 @@ function noteHeadings(content: string) {
 
 export default function NotesStudio() {
   const [notes, setNotes] = useState<Note[]>([]);
+  const [stickyNotes, setStickyNotes] = useState<StickyNote[]>([]);
+  const [stickyDraft, setStickyDraft] = useState<{ text: string; color: StickyNote["color"] }>({ text: "", color: "yellow" });
+  const [editingStickyId, setEditingStickyId] = useState<string | null>(null);
+  const [stickyComposerOpen, setStickyComposerOpen] = useState(false);
+  const [stickySaving, setStickySaving] = useState(false);
   const [documents, setDocuments] = useState<PdfDocument[]>([]);
   const [userName, setUserName] = useState("Learner");
   const [view, setView] = useState<View>("dashboard");
@@ -112,6 +119,74 @@ export default function NotesStudio() {
   }
 
   useEffect(() => { void loadNotes(); }, []);
+
+  async function loadStickyNotes() {
+    const response = await fetch(`${API}/api/notes/sticky`, { credentials: "include" });
+    if (response.status === 401) { location.href = "/login"; return; }
+    const body = await readApiJson(response, "Sticky notes");
+    if (!response.ok) throw new Error(body.error || "Sticky notes could not be loaded.");
+    setStickyNotes(body);
+  }
+
+  useEffect(() => { void loadStickyNotes().catch((cause) => setError(cause instanceof Error ? cause.message : "Sticky notes could not be loaded.")); }, []);
+
+  function startStickyCreate() {
+    setStickyDraft({ text: "", color: "yellow" });
+    setEditingStickyId(null);
+    setStickyComposerOpen(true);
+  }
+
+  function startStickyEdit(stickyNote: StickyNote) {
+    setStickyDraft({ text: stickyNote.text, color: stickyNote.color });
+    setEditingStickyId(stickyNote.id);
+    setStickyComposerOpen(true);
+  }
+
+  async function saveStickyNote(event: FormEvent) {
+    event.preventDefault();
+    setStickySaving(true);
+    setError("");
+    try {
+      const existing = stickyNotes.find((stickyNote) => stickyNote.id === editingStickyId);
+      const response = await fetch(editingStickyId ? `${API}/api/notes/sticky/${editingStickyId}` : `${API}/api/notes/sticky`, {
+        method: editingStickyId ? "PUT" : "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...stickyDraft, ...(editingStickyId ? { pinned: existing?.pinned ?? true } : {}) }),
+      });
+      const body = await readApiJson(response, "Sticky note save");
+      if (!response.ok) throw new Error(body.error || "Sticky note could not be saved.");
+      await loadStickyNotes();
+      setStickyComposerOpen(false);
+      setEditingStickyId(null);
+      setNotice(editingStickyId ? "Reminder updated" : "Reminder added to your study library");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Sticky note could not be saved.");
+    } finally {
+      setStickySaving(false);
+    }
+  }
+
+  async function toggleStickyPin(stickyNote: StickyNote) {
+    const response = await fetch(`${API}/api/notes/sticky/${stickyNote.id}`, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: stickyNote.text, color: stickyNote.color, pinned: !stickyNote.pinned }),
+    });
+    const body = await readApiJson(response, "Reminder update");
+    if (!response.ok) { setError(body.error || "Reminder could not be updated."); return; }
+    await loadStickyNotes();
+  }
+
+  async function removeStickyNote(stickyNote: StickyNote) {
+    if (!window.confirm("Delete this reminder?")) return;
+    const response = await fetch(`${API}/api/notes/sticky/${stickyNote.id}`, { method: "DELETE", credentials: "include" });
+    const body = await readApiJson(response, "Reminder delete");
+    if (!response.ok) { setError(body.error || "Reminder could not be deleted."); return; }
+    await loadStickyNotes();
+    setNotice("Reminder deleted");
+  }
 
   async function loadDocuments() {
     const response = await fetch(`${API}/api/notes/documents`, { credentials: "include" });
@@ -436,6 +511,14 @@ export default function NotesStudio() {
         {notice && <div className="notesNotice" role="status"><span>{notice}</span><button aria-label="Dismiss" onClick={() => setNotice("")}><X size={15} /></button></div>}
         {error && <div className="notesError" role="alert">{error}<button onClick={() => setError("")}><X size={14} /></button></div>}
         {loading ? <div className="notesEmpty">Loading your notes…</div> : view === "pdf" ? <PdfLibrary documents={documents} activePdf={activePdf} subject={pdfSubject} busy={pdfBusy} onSubjectChange={setPdfSubject} onSelect={setActivePdf} onUpload={() => pdfFileRef.current?.click()} onGenerate={(document) => void generateFromPdf(document)} onDelete={(document) => void removePdf(document)} onOpenNote={(noteId) => { const note = notes.find((item) => item.id === noteId); if (note) void openNote(note); else setError("Generated note not found. Refresh your notes."); }} /> : view === "dashboard" && !search ? <>
+          <section className="stickyReminderSection">
+            <div className="notesSectionHead"><div><span>QUICK MEMORY BOARD</span><h2>Remember this</h2></div><button className="notesPrimary" onClick={startStickyCreate}><Plus size={15} /> Add reminder</button></div>
+            <p className="stickyReminderIntro">Save the important 1–3 line facts you want to remember. Your pinned reminders stay at the top.</p>
+            {stickyNotes.length ? <div className="stickyReminderGrid">{stickyNotes.map((stickyNote) => <article className={`stickyReminderCard ${stickyNote.color} ${stickyNote.pinned ? "pinned" : ""}`} key={stickyNote.id}>
+              <div className="stickyReminderText">{stickyNote.text}</div>
+              <footer><span>{stickyNote.pinned ? <><Pin size={12} /> Pinned</> : "Reminder"}</span><div><button title={stickyNote.pinned ? "Unpin reminder" : "Pin reminder"} aria-label={stickyNote.pinned ? "Unpin reminder" : "Pin reminder"} onClick={() => void toggleStickyPin(stickyNote)}><Pin size={14} fill={stickyNote.pinned ? "currentColor" : "none"} /></button><button title="Edit reminder" aria-label="Edit reminder" onClick={() => startStickyEdit(stickyNote)}><Pencil size={14} /></button><button title="Delete reminder" aria-label="Delete reminder" onClick={() => void removeStickyNote(stickyNote)}><Trash2 size={14} /></button></div></footer>
+            </article>)}</div> : <button className="stickyReminderEmpty" onClick={startStickyCreate}><span><Pin size={18} /></span><strong>Keep a key idea close</strong><small>Add a short reminder, definition, command, or interview tip.</small><b><Plus size={14} /> Write your first reminder</b></button>}
+          </section>
           <section className="subjectSection"><div className="notesSectionHead"><div><span>EXPLORE BY SUBJECT</span><h2>Your study library</h2></div><small>Counts reflect your saved notes</small></div><div className="subjectGrid">{subjects.map((subject) => { const SubjectIcon = subjectIcons[subject] || BookOpen; return <button className={`subjectCard ${subjectColor(subject)}`} key={subject} onClick={() => { setActiveSubject(subject); setView("subject"); }}><span className="subjectIcon"><SubjectIcon size={19} /></span><strong>{subject}</strong><small>{notes.filter((note) => note.subject === subject).length} notes</small><ChevronRight size={16} /></button>; })}</div></section>
           <section className="notesSplit"><div className="notesSection"><div className="notesSectionHead"><div><span>KEEP YOUR MOMENTUM</span><h2>Recently viewed</h2></div><button onClick={() => { setView("recent"); setActiveNote(null); }}>View all <ChevronRight size={14} /></button></div>{recentlyViewed.length ? <div className="noteList">{recentlyViewed.map((note) => <NoteRow key={note.id} note={note} open={openNote} />)}</div> : <div className="inlineEmpty">Notes you open will appear here.</div>}</div><div className="notesSection"><div className="notesSectionHead"><div><span>QUICK ACCESS</span><h2>Bookmarked</h2></div><button onClick={() => { setView("bookmarks"); setActiveNote(null); }}>View all <ChevronRight size={14} /></button></div>{bookmarks.length ? <div className="noteList">{bookmarks.map((note) => <NoteRow key={note.id} note={note} open={openNote} />)}</div> : <div className="inlineEmpty">Bookmark a note to keep it close.</div>}</div></section>
           <section className="featuredSection"><div><span>START YOUR COLLECTION</span><h2>Make this library yours.</h2><p>Create study notes organized around the topics you are learning right now.</p></div><button className="notesPrimary" onClick={startCreate}><Plus size={16} /> Create your first note</button><div className="featuredMark"><BookOpen size={31} /></div></section>
@@ -443,6 +526,7 @@ export default function NotesStudio() {
       </>}
     </main>
 
+    {stickyComposerOpen && <div className="noteModalBackdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setStickyComposerOpen(false); }}><form className="noteEditorModal stickyComposerModal" onSubmit={(event) => void saveStickyNote(event)}><header><div><span>QUICK MEMORY BOARD</span><h2>{editingStickyId ? "Edit reminder" : "Add a reminder"}</h2></div><button type="button" aria-label="Close reminder editor" onClick={() => setStickyComposerOpen(false)}><X size={18} /></button></header><label>Important point<textarea required autoFocus maxLength={280} rows={4} value={stickyDraft.text} onChange={(event) => setStickyDraft({ ...stickyDraft, text: event.target.value })} placeholder="Write a concise fact, definition, command, or idea you want to remember…" /></label><div className="stickyComposerMeta"><label>Sticky color<select value={stickyDraft.color} onChange={(event) => setStickyDraft({ ...stickyDraft, color: event.target.value as StickyNote["color"] })}><option value="yellow">Warm yellow</option><option value="pink">Soft pink</option><option value="blue">Cool blue</option><option value="green">Soft green</option></select></label><span>{stickyDraft.text.length}/280 · keep it short and memorable</span></div>{error && <div className="notesError" role="alert">{error}</div>}<footer><button type="button" className="notesSecondary" onClick={() => setStickyComposerOpen(false)}>Cancel</button><button className="notesPrimary" disabled={stickySaving}>{stickySaving ? "Saving…" : editingStickyId ? "Save reminder" : "Pin reminder"}</button></footer></form></div>}
     {editing && <div className="noteModalBackdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditing(false); }}><form className="noteEditorModal" onSubmit={(event) => void saveNote(event)}><header><div><span>{activeNote ? "EDIT STUDY MATERIAL" : "NEW STUDY MATERIAL"}</span><h2>{activeNote ? "Edit note" : "Create a note"}</h2></div><button type="button" aria-label="Close editor" onClick={() => setEditing(false)}><X size={18} /></button></header><label>Title<input required maxLength={160} autoFocus value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="e.g. Window functions" /></label><div className="noteFormRow"><label>Subject<select value={draft.subject} onChange={(event) => setDraft({ ...draft, subject: event.target.value })}>{subjects.map((subject) => <option key={subject}>{subject}</option>)}</select></label><label>Difficulty<select value={draft.difficulty} onChange={(event) => setDraft({ ...draft, difficulty: event.target.value as Note["difficulty"] })}><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label></div><label>Chapter or folder<input maxLength={120} value={draft.chapter} onChange={(event) => setDraft({ ...draft, chapter: event.target.value })} placeholder="Optional chapter" /></label><label>Study material<textarea value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} placeholder={'Use headings to structure your note:\n\n# Overview\nWrite your explanation here.\n\n```sql\nSELECT ...\n```'} /></label>{error && <div className="notesError" role="alert">{error}</div>}<footer>{activeNote && <button type="button" className="deleteNote" onClick={() => void removeNote(activeNote)}><Trash2 size={15} /> Delete</button>}<button type="button" className="notesSecondary" onClick={() => setEditing(false)}>Cancel</button><button className="notesPrimary" disabled={saving}>{saving ? "Saving…" : "Save note"}</button></footer></form></div>}
   </div>;
 }

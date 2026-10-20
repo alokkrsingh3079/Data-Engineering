@@ -9,6 +9,7 @@ const ops=fs.readFileSync(new URL('../src/ops.ts',import.meta.url),'utf8');
 const learning=fs.readFileSync(new URL('../src/learning.ts',import.meta.url),'utf8');
 const questions=fs.readFileSync(new URL('../src/questions.ts',import.meta.url),'utf8');
 const mongo=fs.readFileSync(new URL('../src/mongo.ts',import.meta.url),'utf8');
+const notes=fs.readFileSync(new URL('../src/notes.ts',import.meta.url),'utf8');
 const workspaces=fs.readFileSync(new URL('../src/workspaces.ts',import.meta.url),'utf8');
 const curriculum=fs.readFileSync(new URL('../src/curriculum.ts',import.meta.url),'utf8');
 const frontend=fs.readFileSync(new URL('../../frontend/src/LearningStudio.tsx',import.meta.url),'utf8');
@@ -28,6 +29,13 @@ test('practice workspaces and sessions are account-owned',()=>{assert.match(db,/
 test('production security controls include bounded code and AI evaluation rates',()=>{assert.match(server,/X-Content-Type-Options/);assert.match(server,/X-Frame-Options/);assert.match(server,/Rate limit exceeded/);assert.ok(server.includes("expensiveRoute==='/learning/questions/:id/run'?10"));assert.ok(server.includes("expensiveRoute==='/interview/learning/:id/answer'?20"));assert.match(server,/requireRole\('admin'\)/)});
 test('Ask AI removes the auth middleware sessionId before strict request validation',()=>{const route=server.slice(server.indexOf("app.post('/api/ai/ask'"),server.indexOf("// ---------------- Production platform services"));assert.match(route,/delete requestBody\.sessionId/);assert.match(route,/askAiRequest\.safeParse\(requestBody\)/)});
 test('authentication and audit routes exist',()=>{assert.match(server,/\/api\/auth\/register/);assert.match(server,/\/api\/auth\/login/);assert.match(server,/\/api\/auth\/logout/);assert.match(server,/\/api\/admin\/audit/)});
+test('sticky reminders are bounded and scoped to the authenticated account',()=>{
+  assert.match(server,/stickyNoteInput=z\.object\(\{text:z\.string\(\)\.trim\(\)\.min\(1\)\.max\(280\)/);
+  for(const route of ["app.get('/api/notes/sticky'","app.post('/api/notes/sticky'","app.put('/api/notes/sticky/:stickyNoteId'","app.delete('/api/notes/sticky/:stickyNoteId'"])assert.ok(server.includes(route),`missing ${route}`);
+  assert.match(notes,/study_sticky_notes/);
+  assert.match(notes,/user_id: userId/);
+  assert.match(notes,/pinned: -1, updated_at: -1/);
+});
 test('production lifecycle routes exist',()=>{assert.match(server,/\/api\/admin\/questions/);assert.match(server,/\/api\/admin\/collections/);assert.match(server,/\/api\/analytics\/overview/);assert.match(server,/\/api\/export\/progress/)});
 test('multipart imports enforce workspace ownership after parsing',()=>{const fileRoute=server.slice(server.indexOf("app.post('/api/databases/import-file'"),server.indexOf("app.post('/api/databases/import-image'"));const imageRoute=server.slice(server.indexOf("app.post('/api/databases/import-image'"),server.indexOf("app.post('/api/databases/:id/import-review'"));assert.match(server,/async function ownedDbRow\(id:string,user:any\).*owner_user_id!==user\.id/);assert.match(fileRoute,/upload\.single\('file'\)[\s\S]*ownedDbRow\(String\(req\.body\.databaseId\)/);assert.match(imageRoute,/upload\.single\('file'\)[\s\S]*ownedDbRow\(String\(req\.body\.databaseId/)});
 test('learning attempts and progress persist in Mongo per authenticated user',()=>{assert.match(learning,/mongoCollection\("attempts"\)\.insertOne/);assert.match(learning,/mongoCollection\("question_revision_marks"\)/);assert.match(server,/progressSummary\(String\(\(req as any\)\.user\.id\)\)/);assert.match(server,/listQuestionAttempts\(req\.params\.id,String\(\(req as any\)\.user\.id\)\)/);assert.doesNotMatch(server,/INSERT INTO attempts/)})

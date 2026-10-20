@@ -1,0 +1,205 @@
+.stickyReminderSection {
+  padding: 9px 0 25px;
+}
+
+.stickyReminderSection .notesSectionHead {
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.stickyReminderSection .notesSectionHead h2 {
+  margin-top: 5px;
+}
+
+.stickyReminderIntro {
+  margin: 0 0 15px;
+  color: #91a2b5;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.stickyReminderGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.stickyReminderCard {
+  --sticky-paper: #fff4c7;
+  --sticky-ink: #54451d;
+  --sticky-edge: #e8cf78;
+  min-height: 145px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px 16px 10px;
+  border: 1px solid var(--sticky-edge);
+  border-top: 4px solid color-mix(in srgb, var(--sticky-edge), #fff 20%);
+  border-radius: 5px;
+  background: var(--sticky-paper);
+  box-shadow: 0 5px 14px #0002;
+  color: var(--sticky-ink);
+  transform: rotate(-0.35deg);
+}
+
+.stickyReminderCard:nth-child(even) {
+  transform: rotate(0.35deg);
+}
+
+.stickyReminderCard.pink {
+  --sticky-paper: #ffedf1;
+  --sticky-ink: #633441;
+  --sticky-edge: #edbac7;
+}
+
+.stickyReminderCard.blue {
+  --sticky-paper: #e9f4ff;
+  --sticky-ink: #244665;
+  --sticky-edge: #b4d2ee;
+}
+
+.stickyReminderCard.green {
+  --sticky-paper: #eaf8ed;
+  --sticky-ink: #31583a;
+  --sticky-edge: #b9dabb;
+}
+
+.stickyReminderText {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font: 600 14px/1.7 'DM Sans', sans-serif;
+}
+
+.stickyReminderCard footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 15px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--sticky-edge), transparent 35%);
+  color: color-mix(in srgb, var(--sticky-ink), #fff 30%);
+  font-size: 10px;
+}
+
+.stickyReminderCard footer > span,
+.stickyReminderCard footer > div,
+.stickyReminderCard footer button {
+  display: inline-flex;
+  align-items: center;
+}
+
+.stickyReminderCard footer > span {
+  gap: 4px;
+}
+
+.stickyReminderCard footer > div {
+  gap: 3px;
+}
+
+.stickyReminderCard footer button {
+  justify-content: center;
+  width: 29px;
+  height: 29px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--sticky-ink);
+  cursor: pointer;
+}
+
+.stickyReminderCard footer button:hover {
+  background: color-mix(in srgb, var(--sticky-edge), transparent 55%);
+}
+
+.stickyReminderEmpty {
+  width: 100%;
+  min-height: 118px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 15px 18px;
+  border: 1px dashed #40566c;
+  border-radius: 5px;
+  background: #111e2c;
+  color: #b8c7d7;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stickyReminderEmpty > span {
+  width: 37px;
+  height: 37px;
+  display: grid;
+  flex: none;
+  place-items: center;
+  margin-right: 6px;
+  border-radius: 6px;
+  background: #263a4f;
+  color: #ffd876;
+}
+
+.stickyReminderEmpty strong {
+  font: 600 12px Manrope, sans-serif;
+}
+
+.stickyReminderEmpty small {
+  color: #8296aa;
+  font-size: 10px;
+}
+
+.stickyReminderEmpty b {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  color: #9acbfa;
+  font-size: 10px;
+}
+
+.stickyComposerModal > label > textarea {
+  min-height: 125px;
+  line-height: 1.7;
+}
+
+.stickyComposerMeta {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stickyComposerMeta > label {
+  flex: 1;
+}
+
+.stickyComposerMeta > span {
+  padding-bottom: 11px;
+  color: #899bae;
+  font-size: 10px;
+}
+
+@media (max-width: 700px) {
+  .stickyReminderGrid {
+    grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+  }
+
+  .stickyReminderEmpty {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .stickyReminderEmpty b {
+    margin: 8px 0 0;
+  }
+
+  .stickyComposerMeta {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .stickyComposerMeta > span {
+    padding-bottom: 0;
+  }
+}
