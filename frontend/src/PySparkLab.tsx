@@ -43,6 +43,23 @@ type RunResult = {
 };
 
 const API = "";
+
+async function readApiJson<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get("content-type") || "";
+  const body = await response.text();
+  if (!contentType.toLowerCase().includes("application/json")) {
+    const detail = body.trimStart().startsWith("<")
+      ? "The server returned an HTML page. Check the Render API URL and deployment."
+      : "The server returned a non-JSON response.";
+    throw new Error(`${detail} (HTTP ${response.status})`);
+  }
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    throw new Error(`The API returned invalid JSON (HTTP ${response.status}).`);
+  }
+}
+
 const TABS = ["Test Cases", "Expected Output", "Hints", "Explanation", "Solution"] as const;
 type Tab = typeof TABS[number];
 const levels = Array.from({ length: 18 }, (_, index) => String.fromCharCode(65 + index));
@@ -102,7 +119,7 @@ export default function PySparkLab() {
 
   async function loadHistory(id: string) {
     const response = await fetch(`${API}/api/learning/questions/${id}/attempts?limit=10`, { credentials: "include" });
-    if (response.ok) setHistory(await response.json());
+    if (response.ok) setHistory(await readApiJson(response));
   }
 
   async function chooseQuestion(item: Question) {
@@ -114,14 +131,14 @@ export default function PySparkLab() {
     setTutorText("");
     setTab("Test Cases");
     await Promise.all([loadHistory(item.id), fetch(`${API}/api/learning/questions/${item.id}/review`, { credentials: "include" }).then(async (response) => {
-      if (response.ok) setReview(await response.json());
-    })]);
+      if (response.ok) setReview(await readApiJson(response));
+    })]).catch((cause) => setError(cause instanceof Error ? cause.message : "Could not load question details."));
   }
 
   useEffect(() => {
     let mounted = true;
     void fetch(`${API}/api/learning/runners/status`, { credentials: "include" })
-      .then((response) => response.ok ? response.json() : null)
+      .then((response) => response.ok ? readApiJson<{ pyspark: RunnerState }>(response) : null)
       .then((status) => { if (mounted && status?.pyspark) setRunner(status.pyspark); })
       .catch(() => {});
     Promise.all([
@@ -130,11 +147,11 @@ export default function PySparkLab() {
         const firstResponse = await fetch(`${API}/api/learning/questions?${query}&page=1`, { credentials: "include" });
         if (firstResponse.status === 401) { location.href = "/login"; return null; }
         if (!firstResponse.ok) throw new Error("PySpark questions could not be loaded.");
-        const firstPage = await firstResponse.json();
+        const firstPage = await readApiJson<any>(firstResponse);
         const rest = await Promise.all(Array.from({ length: Math.max(0, firstPage.totalPages - 1) }, async (_, index) => {
           const response = await fetch(`${API}/api/learning/questions?${query}&page=${index + 2}`, { credentials: "include" });
           if (!response.ok) throw new Error("Some PySpark questions could not be loaded.");
-          return response.json();
+            return readApiJson<any>(response);
         }));
         return { ...firstPage, items: [firstPage, ...rest].flatMap((page) => page.items || []) };
       })(),
@@ -162,7 +179,7 @@ export default function PySparkLab() {
       const response = await fetch(`${API}/api/learning/questions/${question.id}/jobs`, {
         method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, mode: submit ? "submit" : "run" }),
       });
-      const body = await response.json();
+      const body = await readApiJson<any>(response);
       if (!response.ok) throw new Error(body.error || "Execution failed.");
       setActiveJobId(body.jobId);
       setJobStatus(body.status || "queued");
@@ -171,7 +188,7 @@ export default function PySparkLab() {
       while (Date.now() < deadline) {
         await new Promise((resolve) => window.setTimeout(resolve, 900));
         const statusResponse = await fetch(`${API}/api/learning/jobs/${body.jobId}`, { credentials: "include" });
-        const statusBody = await statusResponse.json();
+        const statusBody = await readApiJson<any>(statusResponse);
         if (!statusResponse.ok) throw new Error(statusBody.error || "Spark job status is unavailable.");
         setJobStatus(statusBody.status);
         if (!["queued", "running", "finalizing"].includes(statusBody.status)) {
@@ -189,7 +206,7 @@ export default function PySparkLab() {
           setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, completed: true, revisionMarked: false } : item));
         }
         await Promise.all([loadHistory(question.id), fetch(`${API}/api/learning/questions/${question.id}/review`, { credentials: "include" }).then(async (reviewResponse) => {
-          if (reviewResponse.ok) setReview(await reviewResponse.json());
+          if (reviewResponse.ok) setReview(await readApiJson(reviewResponse));
         })]);
       }
     } catch (cause) {
@@ -204,7 +221,7 @@ export default function PySparkLab() {
   async function cancelExecution() {
     if (!activeJobId) return;
     const response = await fetch(`${API}/api/learning/jobs/${activeJobId}`, { method: "DELETE", credentials: "include" });
-    const body = await response.json();
+    const body = await readApiJson<any>(response);
     if (!response.ok) { setError(body.error || "Spark job could not be cancelled."); return; }
     setError("Spark job cancelled.");
     setBusy("");
@@ -227,7 +244,7 @@ export default function PySparkLab() {
     if (!question) return;
     const marked = !question.revisionMarked;
     const response = await fetch(`${API}/api/learning/questions/${question.id}/revision`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ marked }) });
-    const body = await response.json().catch(() => null);
+    const body = await readApiJson<any>(response).catch(() => null);
     if (!response.ok) { setError(body?.error || "Revision mark could not be saved."); return; }
     setQuestion({ ...question, revisionMarked: marked });
     setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, revisionMarked: marked } : item));
@@ -243,7 +260,7 @@ export default function PySparkLab() {
         method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ questionId: question.id, action, code, error: errorText?.slice(0, 500) }),
       });
-      const body = await response.json();
+      const body = await readApiJson<any>(response);
       if (!response.ok) throw new Error(body.error || "AI Tutor is unavailable.");
       setTutorText(`${body.basis === "theoretical" ? "Theoretical guidance, not execution output.\n\n" : ""}${body.answer}`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "AI Tutor is unavailable."); }
@@ -253,10 +270,14 @@ export default function PySparkLab() {
   async function showSolution() {
     setTab("Solution");
     if (review || !question) return;
-    const response = await fetch(`${API}/api/learning/questions/${question.id}/review`, { credentials: "include" });
-    const body = await response.json();
-    if (response.ok) setReview(body);
-    else setError(body.error || "Reference solution is unavailable.");
+    try {
+      const response = await fetch(`${API}/api/learning/questions/${question.id}/review`, { credentials: "include" });
+      const body = await readApiJson<any>(response);
+      if (response.ok) setReview(body);
+      else setError(body.error || "Reference solution is unavailable.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Reference solution is unavailable.");
+    }
   }
 
   const example = question?.public_examples?.[0];
