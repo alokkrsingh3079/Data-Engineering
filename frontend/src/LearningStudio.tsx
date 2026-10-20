@@ -127,29 +127,34 @@ export default function LearningStudio() {
       if (!response.ok) throw new Error("Learning content is temporarily unavailable.");
       const data = (await response.json()) as { modules: Module[] };
       setModules(data.modules);
-      const accountResponse = await fetch(`${API}/api/auth/me`, { credentials: "include" });
-      if (accountResponse.ok) {
-        const account = await accountResponse.json();
-        setUserName(account.user?.name || "Data Engineer");
-      }
-      const runnerResponse = await fetch(`${API}/api/learning/runners/status`, { credentials: "include" });
-      if (runnerResponse.ok) setRunnerStatus(await runnerResponse.json());
-      const revisionResponse = await fetch(`${API}/api/learning/revisions`, { credentials: "include" });
-      if (revisionResponse.ok) setRevisionQueue(await revisionResponse.json());
       const routeModule = decodeURIComponent(location.pathname.split("/")[2] || "");
       const initial = data.modules.find((module) => module.id === routeModule) || data.modules.find((module) => module.id === selectedModule) || data.modules[0];
       setSelectedModule(initial?.id || "");
       setSelectedLesson((current) => current || initial?.lessons[0]?.id || "");
-      const topicResponse = await fetch(`${API}/api/learning/progress/topics`, { credentials: "include" });
-      if (topicResponse.ok) setTopics(await topicResponse.json());
-      const recentResponse = await fetch(`${API}/api/learning/attempts/recent?limit=1`, { credentials: "include" });
-      if (recentResponse.ok) {
-        const recent = await recentResponse.json();
-        if (recent[0]?.question_id) {
-          const recentQuestion = await fetch(`${API}/api/learning/questions/${recent[0].question_id}`, { credentials: "include" });
-          if (recentQuestion.ok) setRecentAttempt({ ...recent[0], question: await recentQuestion.json() });
+      const fetchOptionalJson = async (path: string): Promise<any | null> => {
+        try {
+          const result = await fetch(`${API}${path}`, { credentials: "include" });
+          return result.ok ? await result.json() : null;
+        } catch {
+          return null;
         }
-      }
+      };
+      void Promise.all([
+        fetchOptionalJson("/api/auth/me"),
+        fetchOptionalJson("/api/learning/runners/status"),
+        fetchOptionalJson("/api/learning/revisions"),
+        fetchOptionalJson("/api/learning/progress/topics"),
+        fetchOptionalJson("/api/learning/attempts/recent?limit=1")
+      ]).then(async ([account, runners, revisions, topicProgress, recent]) => {
+        if (account?.user) setUserName(account.user.name || "Data Engineer");
+        if (runners) setRunnerStatus(runners);
+        if (revisions) setRevisionQueue(revisions);
+        if (topicProgress) setTopics(topicProgress);
+        if (recent?.[0]?.question_id) {
+          const recentQuestion = await fetchOptionalJson(`/api/learning/questions/${recent[0].question_id}`);
+          if (recentQuestion) setRecentAttempt({ ...recent[0], question: recentQuestion });
+        }
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load learning content.");
     } finally {
