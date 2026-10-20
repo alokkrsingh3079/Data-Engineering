@@ -1,0 +1,516 @@
+.readerStudyLayout.withSourcePdf {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.readerViewTools .readerPanelToggle {
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 10px;
+}
+
+.readerStudyLayout.withSourcePdf .readerContent {
+  min-width: 0;
+  margin-top: 0;
+}
+
+.readerPdfPanel {
+  position: sticky;
+  top: 0;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #d6e4f2;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.readerPdfToolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 13px;
+  border-bottom: 1px solid #d6e4f2;
+  color: #173653;
+}
+
+.readerPdfToolbar > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.readerPdfToolbar small {
+  overflow: hidden;
+  color: #71839a;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readerPdfPanel iframe {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 255px);
+  min-height: 480px;
+  border: 0;
+  background: #edf2f7;
+}
+
+@media (max-width: 1150px) {
+  .readerStudyLayout.withSourcePdf {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .readerPdfPanel {
+    position: static;
+  }
+
+  .readerPdfPanel iframe {
+    height: 70vh;
+  }
+}
+
+.readerViewControls {
+  position: sticky;
+  z-index: 5;
+  top: -25px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -25px calc(clamp(4px, 2vw, 30px) * -1) 20px;
+  padding: 10px clamp(12px, 2vw, 30px);
+  border-bottom: 1px solid #d9e4ee;
+  background: #f8fbffed;
+  backdrop-filter: blur(10px);
+}
+
+.readerModeButtons,
+.readerViewTools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.readerModeButtons button,
+.readerViewTools button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid #d3dfeb;
+  border-radius: 5px;
+  background: #fff;
+  color: #3f5870;
+  font: 600 12px 'DM Sans', sans-serif;
+  cursor: pointer;
+}
+
+.readerModeButtons button.selected {
+  border-color: #8bbce4;
+  background: #eaf5ff;
+  color: #14588c;
+}
+
+.readerViewTools button {
+  min-width: 36px;
+  padding: 0 8px;
+}
+
+.readerModeButtons button:hover,
+.readerViewTools button:hover:not(:disabled) {
+  border-color: #8bbce4;
+  color: #14588c;
+}
+
+.readerViewTools button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.readerZoomValue {
+  min-width: 42px;
+  color: #526a80;
+  font-size: 11px;
+  text-align: center;
+}
+
+.readerStudyLayout.readerMode-notes,
+.readerStudyLayout.readerMode-source {
+  display: block;
+}
+
+.readerStudyLayout.readerMode-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 22px;
+}
+
+.readerLayout.readerTocHidden {
+  grid-template-columns: minmax(0, 1fr) 205px;
+}
+
+.readerLayout.readerToolsHidden {
+  grid-template-columns: 190px minmax(0, 1fr);
+}
+
+.readerLayout.readerTocHidden.readerToolsHidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.readerLayout.readerTocHidden > .readerToc,
+.readerLayout.readerToolsHidden > .readerQuick {
+  display: none;
+}
+
+.readerStudyLayout .readerContent {
+  margin-top: 0;
+  font-size: calc(16px * var(--reader-text-scale, 1));
+  line-height: 1.85;
+}
+
+.readerStudyLayout.readerMode-source .readerPdfPanel,
+.readerStudyLayout.readerMode-split .readerPdfPanel {
+  position: static;
+}
+
+.readerStudyLayout.readerMode-source .readerPdfPanel iframe {
+  height: calc(100vh - 300px);
+  min-height: 620px;
+}
+
+.readerPdfToolbar {
+  flex-direction: row;
+  align-items: center;
+}
+
+.readerPdfToolbar > strong {
+  margin-left: auto;
+  color: #526a80;
+  font-size: 11px;
+}
+
+.notesReaderExpanded {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  min-height: 100vh;
+  overflow: auto;
+  background: #0b1320;
+}
+
+.notesReaderExpanded .notesSidebar {
+  display: none;
+}
+
+.notesReaderExpanded .notesMain {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  margin: 0;
+  padding: 76px 24px 20px;
+}
+
+.notesReaderExpanded .notesTopbar {
+  position: fixed;
+  z-index: 10;
+  inset: 0 0 auto;
+  min-height: 60px;
+  padding: 10px 24px;
+  border-bottom: 1px solid #26394d;
+  background: #0d1826;
+}
+
+.notesReaderExpanded .readerLayout {
+  grid-template-columns: 190px minmax(0, 1fr) 205px;
+  max-width: none;
+  margin: 0;
+}
+
+.notesReaderExpanded .readerLayout.readerTocHidden {
+  grid-template-columns: minmax(0, 1fr) 205px;
+}
+
+.notesReaderExpanded .readerLayout.readerToolsHidden {
+  grid-template-columns: 190px minmax(0, 1fr);
+}
+
+.notesReaderExpanded .readerLayout.readerTocHidden.readerToolsHidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.notesReaderExpanded .readerLayout.readerTocHidden > .readerToc,
+.notesReaderExpanded .readerLayout.readerToolsHidden > .readerQuick {
+  display: none;
+}
+
+.notesReaderExpanded .noteReader {
+  width: 100%;
+  height: calc(100vh - 96px);
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  padding: 22px clamp(22px, 5vw, 88px) 55px;
+  border: 1px solid #d6e4f2;
+  border-radius: 7px;
+  background: #f8fbff;
+}
+
+.notesReaderExpanded .readerViewControls {
+  top: -22px;
+  margin-top: -22px;
+  padding-top: 10px;
+}
+
+.notesReaderExpanded .readerStudyLayout.readerMode-split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.notesReaderExpanded .readerStudyLayout.readerMode-source .readerPdfPanel iframe,
+.notesReaderExpanded .readerStudyLayout.readerMode-split .readerPdfPanel iframe {
+  height: calc(100vh - 205px);
+  min-height: 640px;
+}
+
+@media (max-width: 760px) {
+  .readerLayout:not(.readerToolsHidden) > .readerQuick {
+    position: static;
+    display: block;
+    padding: 12px 0;
+  }
+
+  .readerViewControls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .readerModeButtons {
+    width: 100%;
+  }
+
+  .readerModeButtons button {
+    flex: 1;
+    padding: 0 6px;
+    font-size: 10px;
+  }
+
+  .readerStudyLayout.readerMode-split,
+  .notesReaderExpanded .readerStudyLayout.readerMode-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .notesReaderExpanded .readerLayout,
+  .notesReaderExpanded .readerLayout.readerTocHidden,
+  .notesReaderExpanded .readerLayout.readerToolsHidden,
+  .notesReaderExpanded .readerLayout.readerTocHidden.readerToolsHidden {
+    display: block;
+  }
+
+  .notesReaderExpanded .readerLayout:not(.readerTocHidden) > .readerToc {
+    position: static;
+    display: flex;
+    gap: 8px;
+    overflow: auto;
+    padding: 8px 0;
+    white-space: nowrap;
+  }
+
+  .notesReaderExpanded .readerLayout:not(.readerTocHidden) > .readerToc > span,
+  .notesReaderExpanded .readerLayout:not(.readerTocHidden) > .readerToc > p,
+  .notesReaderExpanded .readerLayout:not(.readerTocHidden) > .readerToc > button {
+    display: none;
+  }
+
+  .notesReaderExpanded .notesMain {
+    padding: 68px 8px 8px;
+  }
+
+  .notesReaderExpanded .notesTopbar {
+    padding: 8px 10px;
+  }
+
+  .notesReaderExpanded .notesTopActions {
+    gap: 4px;
+  }
+
+  .notesReaderExpanded .noteReader {
+    height: calc(100vh - 76px);
+    padding: 18px 14px 36px;
+  }
+}
+
+@media print {
+  @page {
+    size: letter;
+    margin: 0.7in 0.75in;
+  }
+
+  html,
+  body,
+  #root {
+    width: auto !important;
+    min-width: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  .notesSidebar,
+  .notesTopbar,
+  .readerCrumb,
+  .readerViewControls,
+  .readerToc,
+  .readerQuick,
+  .readerPdfPanel {
+    display: none !important;
+  }
+
+  .notesShell,
+  .notesMain,
+  .readerLayout,
+  .noteReader {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #172b40 !important;
+  }
+
+  .readerLayout {
+    display: block !important;
+  }
+
+  .readerHero {
+    margin: 0 0 22px !important;
+    padding: 0 0 16px !important;
+    border-bottom: 2px solid #1d5b88 !important;
+    break-inside: avoid;
+  }
+
+  .readerHero::after,
+  .readerHeroMark {
+    display: none !important;
+  }
+
+  .readerHero h1 {
+    max-width: none !important;
+    margin: 12px 0 8px !important;
+    color: #123b5c !important;
+    font-size: 25pt !important;
+    line-height: 1.2 !important;
+  }
+
+  .readerHero .readerSubject,
+  .readerHero .readerMeta {
+    color: #476278 !important;
+  }
+
+  .readerStudyLayout,
+  .readerStudyLayout.withSourcePdf {
+    display: block !important;
+  }
+
+  .readerContent {
+    margin: 0 !important;
+    color: #26384a !important;
+    font-size: 10.5pt !important;
+    line-height: 1.65 !important;
+  }
+
+  .noteText h2,
+  .noteText h3,
+  .noteText h4 {
+    color: #153f60 !important;
+    break-after: avoid-page;
+  }
+
+  .noteText p,
+  .noteListPoints,
+  .noteCallout,
+  .noteTableWrap,
+  .visualFlow {
+    break-inside: avoid;
+  }
+
+  .noteText p,
+  .noteListPoints,
+  .noteCallout,
+  .noteTableWrap,
+  .visualFlow,
+  .noteCode {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .noteListPoints,
+  .noteCallout,
+  .noteTableWrap,
+  .visualFlow,
+  .noteCode {
+    max-width: 100% !important;
+  }
+
+  .noteCode {
+    overflow: visible !important;
+    border-color: #ced9e3 !important;
+    background: #f4f7fa !important;
+    box-shadow: none !important;
+  }
+
+  .noteCodeBar {
+    background: #e8eef4 !important;
+  }
+
+  .noteCodeBar > span,
+  .noteCode pre,
+  .noteCode pre code {
+    color: #1d3145 !important;
+  }
+
+  .noteCodeBar > button {
+    display: none !important;
+  }
+
+  .noteCode pre {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  .noteTableWrap {
+    overflow: visible !important;
+  }
+
+  .noteTableWrap table {
+    width: 100% !important;
+    border-collapse: collapse;
+  }
+
+  .noteTableWrap thead {
+    display: table-header-group;
+  }
+
+  .noteTableWrap tr {
+    break-inside: avoid;
+  }
+
+  .sourceCitation {
+    color: #1c527d !important;
+    text-decoration: none !important;
+  }
+}

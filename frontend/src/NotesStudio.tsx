@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ArrowLeft, ArrowRight, Bookmark, BookOpen, BriefcaseBusiness, Check, ChevronRight, Clock3, Cloud, Code2, Database, Download, FileText, FolderOpen, GitBranch, GraduationCap, Layers3, Lightbulb, LogOut, Plus, Printer, Search, Sparkles, Trash2, Workflow, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, BookOpen, BriefcaseBusiness, Check, ChevronRight, Clock3, Cloud, Code2, Columns2, Database, Download, FileText, FolderOpen, GitBranch, GraduationCap, Layers3, Lightbulb, LogOut, Maximize2, Minimize2, Plus, Printer, Search, Sparkles, Trash2, Type, Workflow, X, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
 import "./notes-studio.css";
+import "./notes-print.css";
 
 type Note = {
   id: string;
@@ -21,6 +22,7 @@ type Note = {
 };
 
 type View = "dashboard" | "all" | "bookmarks" | "revision" | "recent" | "subject" | "pdf";
+type ReaderMode = "notes" | "source" | "split";
 type PdfDocument = { id: string; filename: string; size_bytes: number; status: "uploaded" | "processing" | "completed" | "failed"; generated_note_id: string | null; processing_error: string | null; created_at: string };
 const API = "";
 const subjects = ["SQL", "Python", "PySpark", "Azure Data Factory", "Databricks", "ETL & Data Warehousing", "Data Engineering System Design", "Data Engineering Concepts", "Interview Preparation"];
@@ -74,6 +76,12 @@ export default function NotesStudio() {
   const [pdfSubject, setPdfSubject] = useState("SQL");
   const [pdfBusy, setPdfBusy] = useState(false);
   const [activePdf, setActivePdf] = useState<PdfDocument | null>(null);
+  const [readerMode, setReaderMode] = useState<ReaderMode>("notes");
+  const [readerExpanded, setReaderExpanded] = useState(false);
+  const [readerTocVisible, setReaderTocVisible] = useState(true);
+  const [readerToolsVisible, setReaderToolsVisible] = useState(true);
+  const [readerTextSize, setReaderTextSize] = useState(1);
+  const [sourcePdfZoom, setSourcePdfZoom] = useState(125);
   const readerRef = useRef<HTMLElement>(null);
   const pdfFileRef = useRef<HTMLInputElement>(null);
   const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,6 +155,8 @@ export default function NotesStudio() {
       setActivePdf(null);
       await Promise.all([loadDocuments(), loadNotes()]);
       setActiveNote(body as Note);
+      setReaderMode("notes");
+      setReaderExpanded(false);
       setProgress(0);
       setView("all");
     } catch (cause) {
@@ -188,6 +198,8 @@ export default function NotesStudio() {
       if (!response.ok) throw new Error("This note could not be opened.");
       const fullNote = await readApiJson(response, "Note");
       setActiveNote(fullNote);
+      setReaderMode("notes");
+      setReaderExpanded(false);
       setProgress(fullNote.progress_percent || 0);
       setEditing(false);
       setView("all");
@@ -364,7 +376,7 @@ export default function NotesStudio() {
   const title = view === "dashboard" ? "Notes & Study Material" : view === "bookmarks" ? "Bookmarks" : view === "revision" ? "Revision Notes" : view === "recent" ? "Recently Viewed" : view === "subject" ? activeSubject : view === "pdf" ? "PDF Library" : "My Notes";
   const ActiveSubjectIcon = activeNote ? subjectIcons[activeNote.subject] || BookOpen : BookOpen;
 
-  return <div className="notesShell">
+  return <div className={`notesShell ${activeNote && !editing && readerExpanded ? "notesReaderExpanded" : ""} ${readerTocVisible ? "" : "readerTocHidden"} ${readerToolsVisible ? "" : "readerToolsHidden"}`}>
     <aside className="notesSidebar">
       <a className="notesBrand" href="/"><span><Layers3 size={18} /></span><b>Data Engineering<small>PRACTICE PLATFORM</small></b></a>
       <nav aria-label="Notes navigation">
@@ -383,10 +395,24 @@ export default function NotesStudio() {
     <main className="notesMain">
       <input ref={pdfFileRef} type="file" accept="application/pdf,.pdf" hidden onChange={(event) => void uploadPdf(event.target.files?.[0])} />
       {activeNote && !editing ? <>
-        <header className="notesTopbar"><button className="notesBack" onClick={() => setActiveNote(null)}><ArrowLeft size={16} /> All notes</button><div className="notesTopActions"><button title={activeNote.bookmarked ? "Remove bookmark" : "Bookmark note"} aria-label="Toggle bookmark" onClick={() => void toggleNoteFlag(activeNote, "bookmarked")}><Bookmark size={16} fill={activeNote.bookmarked ? "currentColor" : "none"} /></button><button title="Download Markdown" aria-label="Download note" onClick={() => downloadNote(activeNote)}><Download size={16} /></button><button title="Print note" aria-label="Print note" onClick={() => window.print()}><Printer size={16} /></button><button className="notesPrimary small" onClick={() => startEdit(activeNote)}>Edit note</button></div></header>
-        <div className={`readerLayout ${subjectColor(activeNote.subject)}`}>
+        <header className="notesTopbar"><button className="notesBack" onClick={() => { setReaderExpanded(false); setActiveNote(null); }}><ArrowLeft size={16} /> All notes</button><div className="notesTopActions"><button title={activeNote.bookmarked ? "Remove bookmark" : "Bookmark note"} aria-label="Toggle bookmark" onClick={() => void toggleNoteFlag(activeNote, "bookmarked")}><Bookmark size={16} fill={activeNote.bookmarked ? "currentColor" : "none"} /></button><button title="Download Markdown" aria-label="Download note" onClick={() => downloadNote(activeNote)}><Download size={16} /></button><button title="Print note" aria-label="Print note" onClick={() => window.print()}><Printer size={16} /></button><button className="notesPrimary small" onClick={() => startEdit(activeNote)}>Edit note</button></div></header>
+        <div className={`readerLayout ${subjectColor(activeNote.subject)} ${readerTocVisible ? "" : "readerTocHidden"} ${readerToolsVisible ? "" : "readerToolsHidden"}`}>
           <aside className="readerToc"><span>IN THIS NOTE</span>{headings.length ? headings.map((heading) => <a href={`#${heading.id}`} key={heading.id}>{heading.title}</a>) : <p>Add headings with # in the editor to build a table of contents.</p>}<button className={activeNote.revision_marked ? "revisionOn" : ""} onClick={() => void toggleNoteFlag(activeNote, "revision_marked")}><BookOpen size={15} />{activeNote.revision_marked ? "In revision queue" : "Mark for revision"}</button></aside>
           <article className="noteReader" ref={readerRef} onScroll={updateProgress}>
+            <div className="readerViewControls" aria-label="Note and source view controls">
+              <div className="readerModeButtons" role="group" aria-label="Choose what to view">
+                <button className={readerMode === "notes" ? "selected" : ""} aria-pressed={readerMode === "notes"} onClick={() => setReaderMode("notes")}><BookOpen size={15} /> Generated notes</button>
+                {activeNote.source_document_id && <button className={readerMode === "source" ? "selected" : ""} aria-pressed={readerMode === "source"} onClick={() => setReaderMode("source")}><FileText size={15} /> Original PDF</button>}
+                {activeNote.source_document_id && <button className={readerMode === "split" ? "selected" : ""} aria-pressed={readerMode === "split"} onClick={() => setReaderMode("split")}><Columns2 size={15} /> Side by side</button>}
+              </div>
+              <div className="readerViewTools">
+                <button className="readerPanelToggle" aria-expanded={readerTocVisible} onClick={() => setReaderTocVisible((visible) => !visible)}>{readerTocVisible ? "Hide contents" : "Show contents"}</button>
+                <button className="readerPanelToggle" aria-expanded={readerToolsVisible} onClick={() => setReaderToolsVisible((visible) => !visible)}>{readerToolsVisible ? "Hide tools" : "Show tools"}</button>
+                {readerMode !== "source" && <><button title="Decrease note text size" aria-label="Decrease note text size" disabled={readerTextSize <= 0} onClick={() => setReaderTextSize((size) => Math.max(0, size - 1))}><Type size={14} />−</button><button title="Increase note text size" aria-label="Increase note text size" disabled={readerTextSize >= 3} onClick={() => setReaderTextSize((size) => Math.min(3, size + 1))}><Type size={17} />+</button></>}
+                {readerMode !== "notes" && <><button title="Zoom out PDF" aria-label="Zoom out PDF" disabled={sourcePdfZoom <= 75} onClick={() => setSourcePdfZoom((zoom) => Math.max(75, zoom - 25))}><ZoomOut size={16} /></button><span className="readerZoomValue">{sourcePdfZoom}%</span><button title="Zoom in PDF" aria-label="Zoom in PDF" disabled={sourcePdfZoom >= 200} onClick={() => setSourcePdfZoom((zoom) => Math.min(200, zoom + 25))}><ZoomIn size={16} /></button></>}
+                <button title={readerExpanded ? "Exit full view" : "Full view"} aria-label={readerExpanded ? "Exit full view" : "Full view"} onClick={() => setReaderExpanded((expanded) => !expanded)}>{readerExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
+              </div>
+            </div>
             <div className="readerCrumb"><a href="/notes" onClick={(event) => { event.preventDefault(); setActiveNote(null); setView("dashboard"); }}>Notes</a><ChevronRight size={13} />{activeNote.subject}{activeNote.chapter && <><ChevronRight size={13} />{activeNote.chapter}</>}</div>
             <header className={`readerHero ${subjectColor(activeNote.subject)}`}>
               <div className="readerHeroMark"><ActiveSubjectIcon size={29} /></div>
@@ -394,7 +420,13 @@ export default function NotesStudio() {
               <h1>{activeNote.title}</h1>
               <div className="readerMeta">Updated {formatDate(activeNote.updated_at)}{activeNote.chapter && <span>{activeNote.chapter}</span>}{activeNote.source_document_id && <a href={`/api/notes/documents/${activeNote.source_document_id}/file`} target="_blank" rel="noreferrer">Source: {activeNote.source_filename || "PDF"}</a>}</div>
             </header>
-            <div className="readerContent">{activeNote.content ? renderContent(activeNote.content) : <div className="readerEmpty">This note has no content yet. Add your study material with Edit note.</div>}</div>
+            <div className={`readerStudyLayout readerMode-${readerMode}`} style={{ "--reader-text-scale": [0.95, 1, 1.12, 1.25][readerTextSize] } as React.CSSProperties}>
+              {readerMode !== "source" && <div className="readerContent">{activeNote.content ? renderContent(activeNote.content) : <div className="readerEmpty">This note has no content yet. Add your study material with Edit note.</div>}</div>}
+              {readerMode !== "notes" && activeNote.source_document_id && <section className="readerPdfPanel" aria-label="Original source PDF">
+                <div className="readerPdfToolbar"><span><FileText size={15} /> Original source PDF</span><small>{activeNote.source_filename || "Study material"}</small><strong>{sourcePdfZoom}% zoom</strong></div>
+                <iframe title={`Original PDF: ${activeNote.source_filename || activeNote.title}`} src={`/api/notes/documents/${activeNote.source_document_id}/file#toolbar=1&view=FitH&zoom=${sourcePdfZoom}`} />
+              </section>}
+            </div>
           </article>
           <aside className="readerQuick"><div className="quickProgress"><span>READING PROGRESS</span><strong>{progress}%</strong><div><i style={{ width: `${progress}%` }} /></div></div><div className="quickBox"><span>STUDY TOOLS</span><button onClick={() => void toggleNoteFlag(activeNote, "revision_marked")}><BookOpen size={15} />{activeNote.revision_marked ? "Remove revision mark" : "Add to revision"}</button><button onClick={() => startEdit(activeNote)}><FileText size={15} />Personal annotations</button></div><div className="quickBox related"><span>RELATED PRACTICE</span><a href={activeNote.subject === "PySpark" ? "/pyspark" : "/sql"}>{activeNote.subject === "PySpark" ? "Open PySpark Lab" : "Open SQL Lab"}<ChevronRight size={14} /></a></div></aside>
         </div>
