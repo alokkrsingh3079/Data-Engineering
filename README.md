@@ -4,7 +4,19 @@
 
 **Repository:** https://github.com/sameep20252026/Data-Engineering
 
+bash scripts/start-codespace-runners.sh
+
 This README contains the complete seven-phase implementation plan, acceptance criteria, and copy-ready prompts for an AI coding agent. Keep this file in the repository as the long-term project specification and source of truth.
+
+## On-Demand Codespaces Runners
+
+To start the isolated Spark and Python runners in GitHub Codespaces, run:
+
+```bash
+bash scripts/start-codespace-runners.sh
+```
+
+The first run generates runner tokens. Add the printed values to Render as `SPARK_RUNNER_TOKEN` and `PYTHON_RUNNER_TOKEN`. The Codespace must remain running while Render uses the runners. For setup, token rotation, and limitations, see [the self-hosted runner guide](docs/SELF_HOSTED_RUNNERS.md).
 
 ## Run Locally
 
