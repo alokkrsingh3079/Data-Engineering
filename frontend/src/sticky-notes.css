@@ -170,6 +170,32 @@
   line-height: 1.7;
 }
 
+.stickyAiPrompt {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid #344a60;
+  border-radius: 5px;
+  background: #132131;
+}
+
+.stickyAiPrompt > label {
+  flex: 1;
+  margin: 0;
+}
+
+.stickyAiPrompt > button {
+  flex: none;
+}
+
+.topicNoteModal > p {
+  margin: -6px 0 2px;
+  color: #99aabc;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .stickyComposerMeta {
   display: flex;
   align-items: flex-end;
@@ -206,6 +232,11 @@
     align-items: stretch;
     flex-direction: column;
     gap: 0;
+  }
+
+  .stickyAiPrompt {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .stickyComposerMeta > span {

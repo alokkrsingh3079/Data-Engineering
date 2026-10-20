@@ -64,9 +64,14 @@ export default function NotesStudio() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [stickyNotes, setStickyNotes] = useState<StickyNote[]>([]);
   const [stickyDraft, setStickyDraft] = useState<{ text: string; color: StickyNote["color"] }>({ text: "", color: "yellow" });
+  const [stickyTopic, setStickyTopic] = useState("");
+  const [stickyGenerating, setStickyGenerating] = useState(false);
   const [editingStickyId, setEditingStickyId] = useState<string | null>(null);
   const [stickyComposerOpen, setStickyComposerOpen] = useState(false);
   const [stickySaving, setStickySaving] = useState(false);
+  const [topicComposerOpen, setTopicComposerOpen] = useState(false);
+  const [topicDraft, setTopicDraft] = useState({ topic: "", subject: "PySpark", difficulty: "intermediate" as Note["difficulty"] });
+  const [topicGenerating, setTopicGenerating] = useState(false);
   const [documents, setDocuments] = useState<PdfDocument[]>([]);
   const [userName, setUserName] = useState("Learner");
   const [view, setView] = useState<View>("dashboard");
@@ -132,6 +137,7 @@ export default function NotesStudio() {
 
   function startStickyCreate() {
     setStickyDraft({ text: "", color: "yellow" });
+    setStickyTopic("");
     setEditingStickyId(null);
     setStickyComposerOpen(true);
   }
@@ -140,6 +146,55 @@ export default function NotesStudio() {
     setStickyDraft({ text: stickyNote.text, color: stickyNote.color });
     setEditingStickyId(stickyNote.id);
     setStickyComposerOpen(true);
+  }
+
+  async function generateStickyText() {
+    setStickyGenerating(true);
+    setError("");
+    try {
+      const response = await fetch(`${API}/api/notes/sticky/generate`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: stickyTopic }),
+      });
+      const body = await readApiJson(response, "Reminder generation");
+      if (!response.ok) throw new Error(body.error || "A reminder could not be generated.");
+      setStickyDraft((draft) => ({ ...draft, text: body.text }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "A reminder could not be generated.");
+    } finally {
+      setStickyGenerating(false);
+    }
+  }
+
+  async function generateTopicNote(event: FormEvent) {
+    event.preventDefault();
+    setTopicGenerating(true);
+    setError("");
+    try {
+      const response = await fetch(`${API}/api/notes/generate`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(topicDraft),
+      });
+      const body = await readApiJson(response, "Topic note generation");
+      if (!response.ok) throw new Error(body.error || "Notes could not be generated.");
+      setNotes((current) => [body, ...current]);
+      setActiveNote(body);
+      setReaderMode("notes");
+      setReaderExpanded(false);
+      setProgress(0);
+      setEditing(false);
+      setTopicComposerOpen(false);
+      setView("all");
+      setNotice("Topic notes generated and saved");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Notes could not be generated.");
+    } finally {
+      setTopicGenerating(false);
+    }
   }
 
   async function saveStickyNote(event: FormEvent) {
@@ -506,13 +561,13 @@ export default function NotesStudio() {
           <aside className="readerQuick"><div className="quickProgress"><span>READING PROGRESS</span><strong>{progress}%</strong><div><i style={{ width: `${progress}%` }} /></div></div><div className="quickBox"><span>STUDY TOOLS</span><button onClick={() => void toggleNoteFlag(activeNote, "revision_marked")}><BookOpen size={15} />{activeNote.revision_marked ? "Remove revision mark" : "Add to revision"}</button><button onClick={() => startEdit(activeNote)}><FileText size={15} />Personal annotations</button></div><div className="quickBox related"><span>RELATED PRACTICE</span><a href={activeNote.subject === "PySpark" ? "/pyspark" : "/sql"}>{activeNote.subject === "PySpark" ? "Open PySpark Lab" : "Open SQL Lab"}<ChevronRight size={14} /></a></div></aside>
         </div>
       </> : <>
-        <header className="notesTopbar dashboardTopbar"><div><div className="notesEyebrow">YOUR PERSONAL LEARNING LIBRARY</div><h1>{title}</h1></div><div className="notesTopActions"><button className="notesSecondary" disabled={pdfBusy} onClick={() => pdfFileRef.current?.click()}><Plus size={15} /> Upload PDF</button><button className="notesSecondary" onClick={() => { setView("pdf"); setActivePdf(null); }}><Sparkles size={15} /> Generate with AI</button><button className="notesPrimary" onClick={startCreate}><Plus size={16} /> Create note</button></div></header>
+        <header className="notesTopbar dashboardTopbar"><div><div className="notesEyebrow">YOUR PERSONAL LEARNING LIBRARY</div><h1>{title}</h1></div><div className="notesTopActions"><button className="notesSecondary" disabled={pdfBusy} onClick={() => pdfFileRef.current?.click()}><Plus size={15} /> Upload PDF</button><button className="notesSecondary" onClick={() => { setView("pdf"); setActivePdf(null); }}><Sparkles size={15} /> Generate from PDF</button><button className="notesSecondary" onClick={() => { setTopicDraft({ topic: "", subject: "PySpark", difficulty: "intermediate" }); setTopicComposerOpen(true); }}><Sparkles size={15} /> Generate from topic</button><button className="notesPrimary" onClick={startCreate}><Plus size={16} /> Create note</button></div></header>
         {view !== "pdf" && <section className="notesToolbar"><label className="notesSearch"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search notes, chapters and concepts" /><kbd>/</kbd></label><div className="notesCount"><FileText size={15} />{notes.length} saved {notes.length === 1 ? "note" : "notes"}</div></section>}
         {notice && <div className="notesNotice" role="status"><span>{notice}</span><button aria-label="Dismiss" onClick={() => setNotice("")}><X size={15} /></button></div>}
         {error && <div className="notesError" role="alert">{error}<button onClick={() => setError("")}><X size={14} /></button></div>}
         {loading ? <div className="notesEmpty">Loading your notes…</div> : view === "pdf" ? <PdfLibrary documents={documents} activePdf={activePdf} subject={pdfSubject} busy={pdfBusy} onSubjectChange={setPdfSubject} onSelect={setActivePdf} onUpload={() => pdfFileRef.current?.click()} onGenerate={(document) => void generateFromPdf(document)} onDelete={(document) => void removePdf(document)} onOpenNote={(noteId) => { const note = notes.find((item) => item.id === noteId); if (note) void openNote(note); else setError("Generated note not found. Refresh your notes."); }} /> : view === "dashboard" && !search ? <>
           <section className="stickyReminderSection">
-            <div className="notesSectionHead"><div><span>QUICK MEMORY BOARD</span><h2>Remember this</h2></div><button className="notesPrimary" onClick={startStickyCreate}><Plus size={15} /> Add reminder</button></div>
+            <div className="notesSectionHead"><div><span>QUICK MEMORY BOARD</span><h2>Remember this</h2></div><div className="stickyReminderActions"><button className="notesSecondary" onClick={() => { setStickyDraft({ text: "", color: "yellow" }); setStickyTopic(""); setEditingStickyId(null); setStickyComposerOpen(true); }}><Sparkles size={14} /> Generate from topic</button><button className="notesPrimary" onClick={startStickyCreate}><Plus size={15} /> Add reminder</button></div></div>
             <p className="stickyReminderIntro">Save the important 1–3 line facts you want to remember. Your pinned reminders stay at the top.</p>
             {stickyNotes.length ? <div className="stickyReminderGrid">{stickyNotes.map((stickyNote) => <article className={`stickyReminderCard ${stickyNote.color} ${stickyNote.pinned ? "pinned" : ""}`} key={stickyNote.id}>
               <div className="stickyReminderText" title={stickyNote.text}>{stickyNote.text}</div>
@@ -526,7 +581,8 @@ export default function NotesStudio() {
       </>}
     </main>
 
-    {stickyComposerOpen && <div className="noteModalBackdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setStickyComposerOpen(false); }}><form className="noteEditorModal stickyComposerModal" onSubmit={(event) => void saveStickyNote(event)}><header><div><span>QUICK MEMORY BOARD</span><h2>{editingStickyId ? "Edit reminder" : "Add a reminder"}</h2></div><button type="button" aria-label="Close reminder editor" onClick={() => setStickyComposerOpen(false)}><X size={18} /></button></header><label>Important point<textarea required autoFocus maxLength={280} rows={4} value={stickyDraft.text} onChange={(event) => setStickyDraft({ ...stickyDraft, text: event.target.value })} placeholder="Write a concise fact, definition, command, or idea you want to remember…" /></label><div className="stickyComposerMeta"><label>Sticky color<select value={stickyDraft.color} onChange={(event) => setStickyDraft({ ...stickyDraft, color: event.target.value as StickyNote["color"] })}><option value="yellow">Warm yellow</option><option value="pink">Soft pink</option><option value="blue">Cool blue</option><option value="green">Soft green</option></select></label><span>{stickyDraft.text.length}/280 · keep it short and memorable</span></div>{error && <div className="notesError" role="alert">{error}</div>}<footer><button type="button" className="notesSecondary" onClick={() => setStickyComposerOpen(false)}>Cancel</button><button className="notesPrimary" disabled={stickySaving}>{stickySaving ? "Saving…" : editingStickyId ? "Save reminder" : "Pin reminder"}</button></footer></form></div>}
+    {stickyComposerOpen && <div className="noteModalBackdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setStickyComposerOpen(false); }}><form className="noteEditorModal stickyComposerModal" onSubmit={(event) => void saveStickyNote(event)}><header><div><span>QUICK MEMORY BOARD</span><h2>{editingStickyId ? "Edit reminder" : "Add a reminder"}</h2></div><button type="button" aria-label="Close reminder editor" onClick={() => setStickyComposerOpen(false)}><X size={18} /></button></header>{!editingStickyId && <div className="stickyAiPrompt"><label>Generate a reminder from a topic<input maxLength={160} value={stickyTopic} onChange={(event) => setStickyTopic(event.target.value)} placeholder="e.g. PySpark lazy evaluation" /></label><button type="button" className="notesSecondary" disabled={stickyGenerating || stickyTopic.trim().length < 2} onClick={() => void generateStickyText()}><Sparkles size={14} />{stickyGenerating ? "Generating…" : "Suggest reminder"}</button></div>}<label>Important point<textarea required autoFocus maxLength={280} rows={4} value={stickyDraft.text} onChange={(event) => setStickyDraft({ ...stickyDraft, text: event.target.value })} placeholder="Write a concise fact, definition, command, or idea you want to remember…" /></label><div className="stickyComposerMeta"><label>Sticky color<select value={stickyDraft.color} onChange={(event) => setStickyDraft({ ...stickyDraft, color: event.target.value as StickyNote["color"] })}><option value="yellow">Warm yellow</option><option value="pink">Soft pink</option><option value="blue">Cool blue</option><option value="green">Soft green</option></select></label><span>{stickyDraft.text.length}/280 · edit the suggestion before saving</span></div>{error && <div className="notesError" role="alert">{error}</div>}<footer><button type="button" className="notesSecondary" onClick={() => setStickyComposerOpen(false)}>Cancel</button><button className="notesPrimary" disabled={stickySaving}>{stickySaving ? "Saving…" : editingStickyId ? "Save reminder" : "Pin reminder"}</button></footer></form></div>}
+    {topicComposerOpen && <div className="noteModalBackdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !topicGenerating) setTopicComposerOpen(false); }}><form className="noteEditorModal topicNoteModal" onSubmit={(event) => void generateTopicNote(event)}><header><div><span>AI STUDY GUIDE</span><h2>Generate notes from a topic</h2></div><button type="button" aria-label="Close topic note generator" disabled={topicGenerating} onClick={() => setTopicComposerOpen(false)}><X size={18} /></button></header><p>Enter a topic or a list of concepts. AI will create a structured study guide and save it to My Notes.</p><label>Topic or concepts<input required minLength={2} maxLength={160} autoFocus value={topicDraft.topic} onChange={(event) => setTopicDraft({ ...topicDraft, topic: event.target.value })} placeholder="e.g. PySpark SparkSession, DataFrames, transformations, and actions" /></label><div className="noteFormRow"><label>Subject<select value={topicDraft.subject} onChange={(event) => setTopicDraft({ ...topicDraft, subject: event.target.value })}>{subjects.map((subject) => <option key={subject}>{subject}</option>)}</select></label><label>Level<select value={topicDraft.difficulty} onChange={(event) => setTopicDraft({ ...topicDraft, difficulty: event.target.value as Note["difficulty"] })}><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label></div>{error && <div className="notesError" role="alert">{error}</div>}<footer><button type="button" className="notesSecondary" disabled={topicGenerating} onClick={() => setTopicComposerOpen(false)}>Cancel</button><button className="notesPrimary" disabled={topicGenerating || topicDraft.topic.trim().length < 2}><Sparkles size={14} />{topicGenerating ? "Creating study guide…" : "Generate and save notes"}</button></footer></form></div>}
     {editing && <div className="noteModalBackdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditing(false); }}><form className="noteEditorModal" onSubmit={(event) => void saveNote(event)}><header><div><span>{activeNote ? "EDIT STUDY MATERIAL" : "NEW STUDY MATERIAL"}</span><h2>{activeNote ? "Edit note" : "Create a note"}</h2></div><button type="button" aria-label="Close editor" onClick={() => setEditing(false)}><X size={18} /></button></header><label>Title<input required maxLength={160} autoFocus value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="e.g. Window functions" /></label><div className="noteFormRow"><label>Subject<select value={draft.subject} onChange={(event) => setDraft({ ...draft, subject: event.target.value })}>{subjects.map((subject) => <option key={subject}>{subject}</option>)}</select></label><label>Difficulty<select value={draft.difficulty} onChange={(event) => setDraft({ ...draft, difficulty: event.target.value as Note["difficulty"] })}><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label></div><label>Chapter or folder<input maxLength={120} value={draft.chapter} onChange={(event) => setDraft({ ...draft, chapter: event.target.value })} placeholder="Optional chapter" /></label><label>Study material<textarea value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} placeholder={'Use headings to structure your note:\n\n# Overview\nWrite your explanation here.\n\n```sql\nSELECT ...\n```'} /></label>{error && <div className="notesError" role="alert">{error}</div>}<footer>{activeNote && <button type="button" className="deleteNote" onClick={() => void removeNote(activeNote)}><Trash2 size={15} /> Delete</button>}<button type="button" className="notesSecondary" onClick={() => setEditing(false)}>Cancel</button><button className="notesPrimary" disabled={saving}>{saving ? "Saving…" : "Save note"}</button></footer></form></div>}
   </div>;
 }

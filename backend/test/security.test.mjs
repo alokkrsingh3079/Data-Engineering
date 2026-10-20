@@ -36,6 +36,16 @@ test('sticky reminders are bounded and scoped to the authenticated account',()=>
   assert.match(notes,/user_id: userId/);
   assert.match(notes,/pinned: -1, updated_at: -1/);
 });
+test('AI topic note and sticky reminder routes validate bounded input and use authenticated account storage',()=>{
+  assert.ok(server.includes("app.post('/api/notes/generate'"));
+  assert.ok(server.includes("app.post('/api/notes/sticky/generate'"));
+  assert.match(server,/topic:z\.string\(\)\.trim\(\)\.min\(2\)\.max\(160\)/);
+  assert.match(server,/createNote\(String\(\(req as any\)\.user\.id\)/);
+  assert.match(server,/generateNotesFromTopic/);
+  assert.match(server,/generateStickyReminder/);
+  assert.match(server,/createStickyNote\(String\(\(req as any\)\.user\.id\)/);
+  assert.match(notes,/user_id: userId/);
+});
 test('production lifecycle routes exist',()=>{assert.match(server,/\/api\/admin\/questions/);assert.match(server,/\/api\/admin\/collections/);assert.match(server,/\/api\/analytics\/overview/);assert.match(server,/\/api\/export\/progress/)});
 test('multipart imports enforce workspace ownership after parsing',()=>{const fileRoute=server.slice(server.indexOf("app.post('/api/databases/import-file'"),server.indexOf("app.post('/api/databases/import-image'"));const imageRoute=server.slice(server.indexOf("app.post('/api/databases/import-image'"),server.indexOf("app.post('/api/databases/:id/import-review'"));assert.match(server,/async function ownedDbRow\(id:string,user:any\).*owner_user_id!==user\.id/);assert.match(fileRoute,/upload\.single\('file'\)[\s\S]*ownedDbRow\(String\(req\.body\.databaseId\)/);assert.match(imageRoute,/upload\.single\('file'\)[\s\S]*ownedDbRow\(String\(req\.body\.databaseId/)});
 test('learning attempts and progress persist in Mongo per authenticated user',()=>{assert.match(learning,/mongoCollection\("attempts"\)\.insertOne/);assert.match(learning,/mongoCollection\("question_revision_marks"\)/);assert.match(server,/progressSummary\(String\(\(req as any\)\.user\.id\)\)/);assert.match(server,/listQuestionAttempts\(req\.params\.id,String\(\(req as any\)\.user\.id\)\)/);assert.doesNotMatch(server,/INSERT INTO attempts/)})
