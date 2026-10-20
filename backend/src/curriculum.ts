@@ -236,7 +236,7 @@ export async function getLearningStudio(userId: string) {
     listWorkspaces(userId, false),
     mongoCollection("learning_modules").find().sort({ order: 1 }).toArray(),
     mongoCollection("learning_progress").find({ user_id: userId }).toArray(),
-    mongoCollection("learning_questions").aggregate([{ $match: { status: "published" } }, { $group: { _id: "$module_id", count: { $sum: 1 } } }]).toArray(),
+    mongoCollection("learning_questions").aggregate([{ $match: { status: "published", $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] } }, { $group: { _id: "$module_id", count: { $sum: 1 } } }]).toArray(),
     mongoCollection("learning_question_progress").find({ user_id: userId, completed: true }, { projection: { question_id: 1 } }).toArray(),
     mongoCollection("learning_attempts").findOne({ user_id: userId }, { sort: { created_at: -1 }, projection: { question_id: 1 } })
   ]);
@@ -252,13 +252,13 @@ export async function getLearningStudio(userId: string) {
   const recentId = String(recentAttempt?.question_id || "");
   const [completedQuestions, completedSql, recentQuestion] = await Promise.all([
     completedQuestionIds.size
-      ? mongoCollection("learning_questions").find({ _id: { $in: [...completedQuestionIds] } }, { projection: { module_id: 1 } }).toArray()
+      ? mongoCollection("learning_questions").find({ _id: { $in: [...completedQuestionIds] }, $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] }, { projection: { module_id: 1 } }).toArray()
       : Promise.resolve([]),
     sqlQuestionIds.length
       ? mongoCollection("attempts").distinct("challenge_id", { session_id: userId, challenge_id: { $in: sqlQuestionIds }, correct: true })
       : Promise.resolve([]),
     recentId
-      ? mongoCollection("learning_questions").findOne({ _id: recentId }, { projection: { module_id: 1 } })
+      ? mongoCollection("learning_questions").findOne({ _id: recentId, $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] }, { projection: { module_id: 1 } })
       : Promise.resolve(null)
   ]);
   if (completedQuestions.length) {

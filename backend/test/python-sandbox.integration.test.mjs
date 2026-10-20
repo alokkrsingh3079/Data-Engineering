@@ -51,3 +51,20 @@ test('bubblewrap Python runner reports failed and invalid submissions', async (c
   const timeout = await runSandboxedPython({ ...base, code: 'while True: pass' });
   assert.equal(timeout.status, 'timeout');
 });
+
+test('bubblewrap runner supports validated function names for generated learning questions', async (context) => {
+  if (!fs.existsSync('/usr/bin/bwrap') || !fs.existsSync('/usr/bin/prlimit') || !fs.existsSync('/usr/bin/python3')) {
+    context.skip('bubblewrap, prlimit, or system Python is unavailable');
+    return;
+  }
+  try { await verifySandbox(); } catch { context.skip('namespace sandbox unavailable'); return; }
+  const result = await runSandboxedPython({
+    taskId: 'generated-question-123',
+    functionName: 'sum_values',
+    language: 'python',
+    code: 'def sum_values(values): return sum(values)',
+    testCases: [{ name: 'sums values', input: [2, 3], expected: 5 }]
+  });
+  assert.equal(result.status, 'passed');
+  assert.deepEqual(result.tests.map((item) => item.passed), [true]);
+});
