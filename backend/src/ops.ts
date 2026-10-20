@@ -18,13 +18,27 @@ export async function seedStarterQuestions(){const database=(await pool.query("S
  {title:'Compare employee salaries with job bands',difficulty:'advanced',topic:'Data Quality',context:'Compensation data must stay within the configured minimum and maximum for each job.',task:'Find employees whose salary falls outside their job band.',required:'Return employee_id, first_name, salary, min_salary, max_salary ordered by employee_id.',sql:'SELECT e.employee_id,e.first_name,e.salary,j.min_salary,j.max_salary FROM employees e JOIN jobs j ON j.job_id=e.job_id WHERE e.salary<j.min_salary OR e.salary>j.max_salary ORDER BY e.employee_id',tags:['join','validation']},
  {title:'Find the highest-paid employee in each department',difficulty:'very-advanced',topic:'Window Functions',context:'Department leaders need one top-paid employee per department.',task:'Return the highest-paid employee from each department.',required:'Return department_name, first_name, salary with one row per department.',sql:'WITH ranked AS (SELECT d.department_name,e.first_name,e.salary,ROW_NUMBER() OVER(PARTITION BY d.department_id ORDER BY e.salary DESC,e.employee_id) AS row_num FROM departments d JOIN employees e ON e.department_id=d.department_id) SELECT department_name,first_name,salary FROM ranked WHERE row_num=1 ORDER BY department_name',tags:['window function','row number']}
 ];const client=await pool.connect();try{await client.query('BEGIN');const setId=crypto.randomUUID();await client.query('INSERT INTO question_sets(id,database_id,name,count_requested,accepted_count,status,settings) VALUES($1,$2,$3,$4,$5,$6,$7)',[setId,database.id,'SQL Foundations · Data Engineering',items.length,0,'running',JSON.stringify({source:'starter',topics:[...new Set(items.map(item=>item.topic))]})]);const ids=[];for(const item of items){const expected=await executeReadOnly(database.schema_name,item.sql),id=crypto.randomUUID();await client.query('INSERT INTO challenges(id,database_id,question_set_id,title,difficulty,topic,context,task,required_output,reference_sql,expected_json,tags,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',[id,database.id,setId,item.title,item.difficulty,item.topic,item.context,item.task,item.required, item.sql,JSON.stringify(expected),JSON.stringify(item.tags),'starter']);ids.push(id)}await client.query('UPDATE question_sets SET accepted_count=$1,status=$2 WHERE id=$3',[ids.length,'completed',setId]);const collectionId=crypto.randomUUID();await client.query('INSERT INTO question_collections(id,database_id,name,description,is_published) VALUES($1,$2,$3,$4,$5)',[collectionId,database.id,'Company Challenge · Workforce Data Quality','Original workforce SQL challenges for data-engineering practice.',true]);for(let i=0;i<ids.length;i++)await client.query('INSERT INTO collection_questions(collection_id,challenge_id,position) VALUES($1,$2,$3)',[collectionId,ids[i],i]);await client.query('COMMIT')}catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}}
+export function summarizePlatformQuestionCounts(
+ sqlQuestionCount:number,
+ sqlAiQuestionCount:number,
+ learningQuestionCount:number,
+ learningAiQuestionCount:number
+){
+ return {
+  total:sqlQuestionCount+learningQuestionCount,
+  ai:sqlAiQuestionCount+learningAiQuestionCount
+ };
+}
+
 export async function metrics(){
  const summarizeAttempts=(name:string)=>mongoCollection(name).aggregate([{$group:{_id:null,attempts:{$sum:1},correct:{$sum:{$cond:['$correct',1,0]}},execution_ms:{$sum:{$cond:[{$isNumber:'$execution_ms'},'$execution_ms',0]}},timed_attempts:{$sum:{$cond:[{$isNumber:'$execution_ms'},1,0]}}}}]).toArray();
+ const canonicalWorkspace=await mongoCollection('app_databases').findOne({slug:'demo-ecommerce'},{projection:{id:1}});
+ const canonicalDatabaseId=String(canonicalWorkspace?.id||canonicalWorkspace?._id||'');
  const [userTotal,userActive,sqlQuestions,sqlAiQuestions,learningQuestions,learningAiQuestions,sqlAttemptResult,learningAttemptResult,databaseTotal]=await Promise.all([
   mongoCollection('users').countDocuments(),
   mongoCollection('users').countDocuments({status:'active'}),
-  mongoCollection('challenges').countDocuments(),
-  mongoCollection('challenges').countDocuments({source:'ai'}),
+  canonicalDatabaseId?mongoCollection('challenges').countDocuments({database_id:canonicalDatabaseId}):Promise.resolve(0),
+  canonicalDatabaseId?mongoCollection('challenges').countDocuments({database_id:canonicalDatabaseId,source:'ai'}):Promise.resolve(0),
   mongoCollection('learning_questions').countDocuments({status:'published'}),
   mongoCollection('learning_questions').countDocuments({status:'published',source:'ai'}),
   summarizeAttempts('attempts'),
@@ -34,5 +48,5 @@ export async function metrics(){
  const sql=sqlAttemptResult[0]||{attempts:0,correct:0,execution_ms:0,timed_attempts:0},learning=learningAttemptResult[0]||{attempts:0,correct:0,execution_ms:0,timed_attempts:0};
  const timedAttempts=sql.timed_attempts+learning.timed_attempts;
  const attempts={attempts:sql.attempts+learning.attempts,correct:sql.correct+learning.correct,avg_ms:timedAttempts?Math.round((sql.execution_ms+learning.execution_ms)/timedAttempts):0};
- return {users:{total:userTotal,active:userActive},questions:{total:sqlQuestions+learningQuestions,ai:sqlAiQuestions+learningAiQuestions},attempts,databases:{total:databaseTotal}};
+ return {users:{total:userTotal,active:userActive},questions:summarizePlatformQuestionCounts(sqlQuestions,sqlAiQuestions,learningQuestions,learningAiQuestions),attempts,databases:{total:databaseTotal}};
 }
