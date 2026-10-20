@@ -46,7 +46,7 @@ export async function runnerHealth(language: RunnerLanguage): Promise<{ configur
     const response = await fetch(new URL("/health", config.url), {
       headers: { Authorization: `Bearer ${config.token}` },
       redirect: "error",
-      signal: AbortSignal.timeout(2000)
+      signal: AbortSignal.timeout(10_000)
     });
     return { configured: true, available: response.ok };
   } catch {
