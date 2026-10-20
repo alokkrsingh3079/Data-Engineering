@@ -1,14 +1,36 @@
 import { parquetMetadata, parquetReadObjects, parquetSchema } from "hyparquet";
+import { parse, type CreateTableStatement, type InsertStatement, type Statement } from "pgsql-ast-parser";
+import { validatePracticeImport } from "./sql-guard.js";
 
 export const MAX_DATASET_BYTES = 5 * 1024 * 1024;
 export const MAX_DATASET_ROWS = 10_000;
 export const MAX_DATASET_COLUMNS = 80;
+export const MAX_DATASET_TABLES = 20;
 
 export type ParsedDataset = {
   rows: Record<string, unknown>[];
   columns: string[];
   filename: string;
 };
+
+export type ParsedSqlDatabase = {
+  filename: string;
+  sql: string;
+  tableCount: number;
+  insertedRows: number;
+};
+
+function rejectSqlFunctionCalls(value: unknown): void {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    value.forEach(rejectSqlFunctionCalls);
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "function") throw new Error("SQL imports do not allow function calls in schema or row expressions.");
+    rejectSqlFunctionCalls(child);
+  }
+}
 
 function parseCsv(text: string): string[][] {
   const records: string[][] = [];
@@ -113,6 +135,72 @@ function parquetCell(value: unknown): unknown {
   return value;
 }
 
+export function parseSqlDatabaseFile(filename: string, bytes: Buffer, schemaName: string): ParsedSqlDatabase {
+  if (!bytes.length || bytes.length > MAX_DATASET_BYTES) throw new Error("Upload a non-empty SQL file up to 5 MB.");
+  if (filename.toLowerCase().slice(filename.lastIndexOf(".")) !== ".sql") {
+    throw new Error("SQL database imports require a .sql file.");
+  }
+
+  let sql: string;
+  try {
+    sql = new TextDecoder("utf-8", { fatal: true }).decode(bytes).replace(/^\uFEFF/, "");
+  } catch {
+    throw new Error("SQL file must be valid UTF-8 text.");
+  }
+
+  let statements: Statement[];
+  try {
+    statements = parse(sql);
+  } catch {
+    throw new Error("SQL file is malformed or uses unsupported PostgreSQL syntax.");
+  }
+  validatePracticeImport(schemaName, sql);
+  if (!statements.length) throw new Error("SQL file is empty.");
+  statements.forEach(rejectSqlFunctionCalls);
+
+  const createStatements = statements.filter((statement): statement is CreateTableStatement => statement.type === "create table");
+  if (!createStatements.length) throw new Error("SQL file must define at least one table with CREATE TABLE.");
+  if (createStatements.length > MAX_DATASET_TABLES) {
+    throw new Error(`SQL databases are limited to ${MAX_DATASET_TABLES} tables.`);
+  }
+  for (const statement of createStatements) {
+    if (
+      statement.temporary ||
+      statement.unlogged ||
+      statement.inherits?.length ||
+      statement.columns.some(column => column.kind === "like table")
+    ) {
+      throw new Error("SQL imports support regular tables with explicit columns only.");
+    }
+    const columns = statement.columns.filter(column => column.kind === "column");
+    if (!columns.length || columns.length > MAX_DATASET_COLUMNS) {
+      throw new Error(`Each SQL table must have between 1 and ${MAX_DATASET_COLUMNS} columns.`);
+    }
+    const identifiers = [statement.name.name, ...columns.map(column => column.name.name)];
+    if (identifiers.some(identifier => !/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(identifier))) {
+      throw new Error("SQL table and column names must use standard PostgreSQL identifiers up to 63 characters.");
+    }
+  }
+
+  let insertedRows = 0;
+  for (const statement of statements) {
+    if (statement.type === "create table" || statement.type === "alter table") continue;
+    if (statement.type !== "insert") {
+      throw new Error("SQL imports support only CREATE TABLE, INSERT ... VALUES, and ALTER TABLE statements.");
+    }
+    const insert = statement as InsertStatement;
+    if (insert.insert.type !== "values") {
+      throw new Error("SQL imports support INSERT ... VALUES only; INSERT ... SELECT is not supported.");
+    }
+    insertedRows += insert.insert.values.length;
+    if (insertedRows > MAX_DATASET_ROWS) {
+      throw new Error(`SQL databases are limited to ${MAX_DATASET_ROWS.toLocaleString()} inserted rows in total.`);
+    }
+  }
+
+  return { filename: filename.slice(0, 180), sql, tableCount: createStatements.length, insertedRows };
+}
+
 async function parquetRows(bytes: Buffer): Promise<{ columns: string[]; rows: Record<string, unknown>[] }> {
   if (bytes.length < 12 || bytes.subarray(0, 4).toString("ascii") !== "PAR1" || bytes.subarray(-4).toString("ascii") !== "PAR1") {
     throw new Error("Parquet file is invalid or incomplete.");
@@ -156,7 +244,7 @@ export async function parseDatasetFile(filename: string, bytes: Buffer): Promise
   if (!bytes.length || bytes.length > MAX_DATASET_BYTES) throw new Error("Upload a non-empty dataset up to 5 MB.");
   const extension = filename.toLowerCase().slice(filename.lastIndexOf("."));
   if (![".csv", ".json", ".jsonl", ".parquet"].includes(extension)) {
-    throw new Error("Supported formats are CSV, JSON, JSON Lines (.jsonl), and Parquet (.parquet).");
+    throw new Error("Supported formats are CSV, JSON, JSON Lines (.jsonl), and Parquet (.parquet). SQL database files are imported separately.");
   }
   let parsed: { columns: string[]; rows: Record<string, unknown>[] };
   if (extension === ".parquet") {

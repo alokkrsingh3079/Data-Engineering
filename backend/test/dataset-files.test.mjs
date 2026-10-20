@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parquetWriteBuffer } from "hyparquet-writer";
-import { inferDatasetColumnType, MAX_DATASET_BYTES, parseDatasetFile } from "../src/dataset-files.ts";
+import { inferDatasetColumnType, MAX_DATASET_BYTES, parseDatasetFile, parseSqlDatabaseFile } from "../src/dataset-files.ts";
 
 test("parses CSV quoting, escaped quotes, nulls, and safe column names", async () => {
   const parsed = await parseDatasetFile("Retail data.csv", Buffer.from('Customer ID,Name,Name\n1,"A, Inc.","He said ""yes"""\n2,,B\n'));
@@ -45,6 +45,27 @@ test("rejects malformed and oversized text datasets", async () => {
   await assert.rejects(parseDatasetFile("broken.json", Buffer.from("{")), /malformed/);
   await assert.rejects(parseDatasetFile("broken.csv", Buffer.from("a,b\n1\n")), /same number/);
   await assert.rejects(parseDatasetFile("large.csv", Buffer.alloc(MAX_DATASET_BYTES + 1)), /up to 5 MB/);
+});
+
+test("accepts a bounded PostgreSQL schema and data script for isolated import", () => {
+  const sql = `CREATE TABLE departments (department_id INT PRIMARY KEY, department_name TEXT NOT NULL);
+CREATE TABLE employees (employee_id INT PRIMARY KEY, department_id INT, salary NUMERIC);
+ALTER TABLE employees ADD CONSTRAINT employees_department_fk FOREIGN KEY (department_id) REFERENCES departments(department_id);
+INSERT INTO departments VALUES (1, 'Sales'), (2, 'Engineering');
+INSERT INTO employees VALUES (10, 1, 50000), (11, 2, 60000);`;
+  const parsed = parseSqlDatabaseFile("company.sql", Buffer.from(sql), "qg_test");
+  assert.equal(parsed.tableCount, 2);
+  assert.equal(parsed.insertedRows, 4);
+  assert.equal(parsed.filename, "company.sql");
+});
+
+test("rejects unsafe SQL imports, SELECT inserts, foreign schemas, and excessive rows", () => {
+  assert.throws(() => parseSqlDatabaseFile("unsafe.sql", Buffer.from("DROP TABLE users;"), "qg_test"), /only create or alter workspace tables and insert rows/i);
+  assert.throws(() => parseSqlDatabaseFile("select.sql", Buffer.from("CREATE TABLE a (id INT); INSERT INTO a SELECT id FROM b;"), "qg_test"), /INSERT \.\.\. SELECT/);
+  assert.throws(() => parseSqlDatabaseFile("schema.sql", Buffer.from("CREATE TABLE public.a (id INT);"), "qg_test"), /current practice workspace/i);
+  assert.throws(() => parseSqlDatabaseFile("function.sql", Buffer.from("CREATE TABLE a (files TEXT DEFAULT pg_ls_dir('/'));"), "qg_test"), /function calls/i);
+  const rows = Array.from({ length: 10_001 }, (_, index) => `(${index})`).join(",");
+  assert.throws(() => parseSqlDatabaseFile("large.sql", Buffer.from(`CREATE TABLE a (id INT); INSERT INTO a VALUES ${rows};`), "qg_test"), /limited to 10,000 inserted rows/);
 });
 
 test("infers primitive SQL types conservatively", () => {

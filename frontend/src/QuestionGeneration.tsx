@@ -3,15 +3,24 @@ import { Activity, ArrowLeft, ArrowRight, BarChart3, BookOpen, Code2, Database, 
 import "./question-generation.css";
 import "./studio-sidebar.css";
 
+type DatasetTable = {
+  name: string;
+  row_count: number;
+  columns: { name: string; type: string; nullCount: number }[];
+  preview: Record<string, unknown>[];
+};
+
 type Dataset = {
   id: string;
   name: string;
   description: string;
   filename: string;
+  table_name: string;
   row_count: number;
   database: { id: string; name: string; dialect: string };
   columns: { name: string; type: string; nullCount: number }[];
   preview: Record<string, unknown>[];
+  tables: DatasetTable[];
 };
 
 const topics = {
@@ -23,6 +32,7 @@ const topics = {
 export default function QuestionGeneration() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedId, setSelectedId] = useState("");
+  const [tableName, setTableName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -38,6 +48,9 @@ export default function QuestionGeneration() {
   const [runnerReady, setRunnerReady] = useState<{ python: boolean | null; pyspark: boolean | null }>({ python: null, pyspark: null });
 
   const selected = datasets.find((dataset) => dataset.id === selectedId) || null;
+  const selectedTable = selected?.tables.find((table) => table.name === tableName) || selected?.tables[0] || null;
+  const selectedColumns = selectedTable?.columns || selected?.columns || [];
+  const selectedPreview = selectedTable?.preview || selected?.preview || [];
   const activeRunnerReady = language === "SQL" || runnerReady[language.toLowerCase() as "python" | "pyspark"] === true;
   const generationReady = Boolean(selected && aiConfigured && activeRunnerReady);
 
@@ -74,6 +87,7 @@ export default function QuestionGeneration() {
     if (!selected) return;
     setName(selected.name);
     setDescription(selected.description || "");
+    setTableName(selected.tables.find((table) => table.row_count > 0)?.name || selected.tables[0]?.name || selected.table_name);
   }, [selectedId]);
 
   async function uploadDataset() {
@@ -163,7 +177,7 @@ export default function QuestionGeneration() {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ language: language.toLowerCase(), count: Number(count), difficulty, topic })
+          body: JSON.stringify({ language: language.toLowerCase(), count: Number(count), difficulty, topic, tableName: selectedTable?.name })
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Question generation failed.");
@@ -198,24 +212,27 @@ export default function QuestionGeneration() {
         <section className="qgCard">
           <h2><FileUp size={18} /> Dataset library</h2>
           <label className="qgUpload" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setFile(event.dataTransfer.files[0] || null); }}>
-            Drop a CSV, JSON, JSONL, or Parquet file here, or choose a file (up to 5 MB)
-            <input type="file" accept=".csv,.json,.jsonl,.parquet,application/json,text/csv,application/vnd.apache.parquet" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+            Drop a CSV, JSON, JSONL, Parquet, or PostgreSQL SQL script here (up to 5 MB)
+            <input type="file" accept=".csv,.json,.jsonl,.parquet,.sql,application/json,text/csv,application/vnd.apache.parquet,application/sql" onChange={(event) => setFile(event.target.files?.[0] || null)} />
           </label>
+          <p className="qgSmall">SQL scripts may contain CREATE TABLE, INSERT ... VALUES, and ALTER TABLE statements only. PostgreSQL pg_dump files with COPY/SET commands are not supported.</p>
           <button className="qgPrimary" onClick={() => void uploadDataset()} disabled={!file || loading}>{loading ? <LoaderCircle className="qgSpin" size={16} /> : <FileUp size={16} />} Upload dataset</button>
           <label className="qgField">Your datasets<select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option value="">Select a dataset</option>{datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name} · {dataset.row_count} rows</option>)}</select></label>
           {selected && <div className="qgDetails">
             <label className="qgField">Name<input value={name} maxLength={100} onChange={(event) => setName(event.target.value)} /></label>
             <label className="qgField">Description<textarea value={description} maxLength={1000} rows={2} onChange={(event) => setDescription(event.target.value)} /></label>
             <div className="qgActions"><button onClick={() => void saveDetails()}>Save details</button><button className="qgDanger" onClick={() => void deleteDataset()}><Trash2 size={14} /> Delete</button></div>
-            <p className="qgSmall">{selected.filename} · {selected.row_count.toLocaleString()} rows · {selected.columns.length} columns · {selected.database.dialect}</p>
-            <div className="qgColumns">{selected.columns.map((column) => <span key={column.name}><strong>{column.name}</strong><small>{column.type} · {column.nullCount} null</small></span>)}</div>
-            <div className="qgTableWrap"><table><thead><tr>{selected.columns.map((column) => <th key={column.name}>{column.name}</th>)}</tr></thead><tbody>{selected.preview.map((row, index) => <tr key={index}>{selected.columns.map((column) => <td key={column.name}>{String(row[column.name] ?? "NULL")}</td>)}</tr>)}</tbody></table></div>
+            <p className="qgSmall">{selected.filename} · {selected.tables.length} table(s) · {selected.row_count.toLocaleString()} rows total · {selected.database.dialect}</p>
+            {language !== "SQL" && selected.tables.length > 1 && <label className="qgField">Coding target table<select value={selectedTable?.name || ""} onChange={(event) => setTableName(event.target.value)}>{selected.tables.map((table) => <option key={table.name} value={table.name}>{table.name} · {table.row_count} rows</option>)}</select></label>}
+            {selectedTable && <><p className="qgSmall">Preview: {selectedTable.name} · {selectedTable.row_count.toLocaleString()} rows · {selectedColumns.length} columns</p>
+            <div className="qgColumns">{selectedColumns.map((column) => <span key={column.name}><strong>{column.name}</strong><small>{column.type} · {column.nullCount} null</small></span>)}</div>
+            <div className="qgTableWrap"><table><thead><tr>{selectedColumns.map((column) => <th key={column.name}>{column.name}</th>)}</tr></thead><tbody>{selectedPreview.map((row, index) => <tr key={index}>{selectedColumns.map((column) => <td key={column.name}>{String(row[column.name] ?? "NULL")}</td>)}</tr>)}</tbody></table></div></>}
           </div>}
           {!datasets.length && <p className="qgEmpty">Upload a file to create a private, isolated SQL workspace.</p>}
         </section>
         <section className="qgCard qgGenerate">
           <h2><Sparkles size={18} /> Generate questions</h2>
-          <p className="qgSmall">AI receives the selected dataset schema and a small sample of its rows. Avoid uploading sensitive personal data.</p>
+          <p className="qgSmall">AI receives the selected database schema and a small sample of its rows. SQL generation can use every table; Python and PySpark use the selected coding target table. Avoid uploading sensitive personal data.</p>
           {aiConfigured === false && <p className="qgLimit">AI generation is unavailable: configure the backend OPENAI_API_KEY to continue.</p>}
           {language !== "SQL" && runnerReady[language.toLowerCase() as "python" | "pyspark"] === false && <p className="qgLimit">The isolated {language} runner is not configured or available. Generation stays disabled until it is healthy.</p>}
           <label className="qgField">Dataset<select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option value="">Select a dataset</option>{datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name}</option>)}</select></label>

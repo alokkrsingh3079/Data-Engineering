@@ -60,7 +60,7 @@ app.post('/api/question-datasets', (req,res,next)=>upload.single('file')(req,res
 app.get('/api/question-datasets/:datasetId',async(req,res)=>{try{const dataset=await getQuestionDataset(String((req as any).user.id),req.params.datasetId);if(!dataset)return res.status(404).json({error:'Dataset not found'});res.json(dataset)}catch{res.status(503).json({error:'Dataset preview is unavailable'})}});
 app.put('/api/question-datasets/:datasetId',async(req,res)=>{const input=z.object({name:z.string().trim().min(1).max(100),description:z.string().max(1000)}).safeParse(req.body);if(!input.success)return res.status(400).json({error:'Invalid dataset details'});try{const dataset=await updateQuestionDataset(String((req as any).user.id),req.params.datasetId,input.data.name,input.data.description);if(!dataset)return res.status(404).json({error:'Dataset not found'});res.json(dataset)}catch{res.status(503).json({error:'Dataset details could not be saved'})}});
 app.delete('/api/question-datasets/:datasetId',async(req,res)=>{try{if(!await deleteQuestionDataset(String((req as any).user.id),req.params.datasetId))return res.status(404).json({error:'Dataset not found'});res.json({ok:true})}catch(error){res.status(400).json({error:(error as Error).message})}});
-const datasetGeneration=z.object({language:z.enum(['python','pyspark']),count:z.number().int().min(1).max(10),difficulty:z.enum(['beginner','intermediate','advanced','mixed']).default('mixed'),topic:z.string().trim().min(1).max(100)});
+const datasetGeneration=z.object({language:z.enum(['python','pyspark']),count:z.number().int().min(1).max(10),difficulty:z.enum(['beginner','intermediate','advanced','mixed']).default('mixed'),topic:z.string().trim().min(1).max(100),tableName:z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/).optional()});
 app.post('/api/question-datasets/:datasetId/generate',async(req,res)=>{
  const input=datasetGeneration.safeParse(req.body);if(!input.success)return res.status(400).json({error:'Choose a supported lab, 1–10 questions, a difficulty, and a topic'});
  const userId=String((req as any).user.id);
@@ -68,8 +68,11 @@ app.post('/api/question-datasets/:datasetId/generate',async(req,res)=>{
   const dataset=await getQuestionDataset(userId,req.params.datasetId);if(!dataset)return res.status(404).json({error:'Dataset not found'});
  const runners=await learningRunnerStatus();const runner=input.data.language==='python'?runners.python:runners.pyspark;
  if(!runner.available)return res.status(503).json({error:`The isolated ${input.data.language} runner is not configured or available`});
- const rows=dataset.preview;
-  const generated=await generateDatasetCodingQuestions({schema:JSON.stringify(dataset.columns),sample:JSON.stringify(rows),language:input.data.language,count:input.data.count,difficulty:input.data.difficulty,topic:input.data.topic});
+  const tableName=input.data.tableName||dataset.table_name;
+  const codingTable=dataset.tables.find((table:any)=>table.name===tableName);
+  if(!codingTable)return res.status(400).json({error:'Select a table from this uploaded database'});
+  if(!codingTable.row_count||!codingTable.preview.length)return res.status(400).json({error:`The ${tableName} table has no sample rows for coding-question generation`});
+  const generated=await generateDatasetCodingQuestions({schema:JSON.stringify({table:codingTable.name,columns:codingTable.columns}),sample:JSON.stringify(codingTable.preview),language:input.data.language,count:input.data.count,difficulty:input.data.difficulty,topic:input.data.topic});
   const accepted:string[]=[];const rejected:string[]=[];
   for(const raw of generated.questions){
    const id=crypto.randomUUID();

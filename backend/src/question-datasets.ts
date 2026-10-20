@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
 import type { Document } from "mongodb";
 import { mongoCollection } from "./mongo.js";
-import { pool, createPracticeSchema, dropPracticeSchema, grantPracticeSchema, quoteIdent } from "./db.js";
+import { pool, createPracticeSchema, dropPracticeSchema, executeImport, grantPracticeSchema, listTables, quoteIdent } from "./db.js";
 import { createWorkspace, deleteWorkspaceRecord } from "./workspaces.js";
-import { inferDatasetColumnType, parseDatasetFile, type ParsedDataset } from "./dataset-files.js";
+import { inferDatasetColumnType, MAX_DATASET_COLUMNS, MAX_DATASET_ROWS, MAX_DATASET_TABLES, parseDatasetFile, parseSqlDatabaseFile, type ParsedDataset } from "./dataset-files.js";
 
 type DatasetRecord = Document & {
   _id: string;
@@ -14,6 +14,7 @@ type DatasetRecord = Document & {
   description: string;
   filename: string;
   table_name: string;
+  table_names?: string[];
   columns: string[];
   row_count: number;
   created_at: Date;
@@ -80,11 +81,13 @@ async function insertRows(schemaName: string, parsed: ParsedDataset, tableName: 
 }
 
 export async function createQuestionDataset(userId: string, filename: string, bytes: Buffer) {
-  const parsed = await parseDatasetFile(filename, bytes);
   const id = crypto.randomUUID();
   const databaseId = crypto.randomUUID();
-  const { slug, schemaName } = databaseNames(parsed.filename, id);
-  const databaseName = normalizeName(parsed.filename.replace(/\.[^.]+$/, ""), "Uploaded dataset");
+  const { slug, schemaName } = databaseNames(filename, id);
+  const databaseName = normalizeName(filename.replace(/\.[^.]+$/, ""), "Uploaded dataset");
+  const isSqlDatabase = filename.toLowerCase().endsWith(".sql");
+  const parsed = isSqlDatabase ? null : await parseDatasetFile(filename, bytes);
+  const parsedSql = isSqlDatabase ? parseSqlDatabaseFile(filename, bytes, schemaName) : null;
   const tableName = "dataset";
   const description = "";
   const createdAt = new Date();
@@ -101,7 +104,40 @@ export async function createQuestionDataset(userId: string, filename: string, by
 
   await createPracticeSchema(schemaName);
   try {
-    await insertRows(schemaName, parsed, tableName);
+    let tableNames: string[];
+    let defaultTableName: string;
+    let totalRows = 0;
+    if (parsedSql) {
+      await executeImport(schemaName, parsedSql.sql);
+      const importedTables: { name: string; columns: { column_name: string }[] }[] = await listTables(schemaName);
+      if (!importedTables.length) throw new Error("SQL file did not create any tables.");
+      if (importedTables.length > MAX_DATASET_TABLES) {
+        throw new Error(`SQL databases are limited to ${MAX_DATASET_TABLES} tables.`);
+      }
+      const rowCounts = new Map<string, number>();
+      for (const table of importedTables) {
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(table.name) || !table.columns.length || table.columns.length > MAX_DATASET_COLUMNS) {
+          throw new Error("SQL table and column names must use standard PostgreSQL identifiers, with no more than 80 columns per table.");
+        }
+        if (table.columns.some(column => !/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(column.column_name))) {
+          throw new Error("SQL table and column names must use standard PostgreSQL identifiers up to 63 characters.");
+        }
+        const result = await pool.query(`SELECT count(*)::int AS count FROM ${quoteIdent(schemaName)}.${quoteIdent(table.name)}`);
+        const count = Number(result.rows[0].count);
+        totalRows += count;
+        rowCounts.set(table.name, count);
+        if (totalRows > MAX_DATASET_ROWS) {
+          throw new Error(`SQL databases are limited to ${MAX_DATASET_ROWS.toLocaleString()} rows in total.`);
+        }
+      }
+      tableNames = importedTables.map(table => table.name);
+      defaultTableName = importedTables.find(table => (rowCounts.get(table.name) || 0) > 0)?.name || importedTables[0].name;
+    } else {
+      await insertRows(schemaName, parsed!, tableName);
+      tableNames = [tableName];
+      defaultTableName = tableName;
+      totalRows = parsed!.rows.length;
+    }
     await pool.query(
       "INSERT INTO app_databases(id,name,slug,schema_name,dialect,description,owner_user_id) VALUES($1,$2,$3,$4,'postgresql',$5,$6)",
       [databaseId, databaseName, slug, schemaName, workspace.description, userId]
@@ -114,10 +150,11 @@ export async function createQuestionDataset(userId: string, filename: string, by
       database_id: databaseId,
       name: databaseName,
       description,
-      filename: parsed.filename,
-      table_name: tableName,
-      columns: parsed.columns,
-      row_count: parsed.rows.length,
+      filename: parsedSql?.filename || parsed!.filename,
+      table_name: defaultTableName,
+      table_names: tableNames,
+      columns: parsed?.columns || [],
+      row_count: totalRows,
       created_at: createdAt
     };
     await datasets().insertOne(record);
@@ -139,32 +176,56 @@ export async function getQuestionDataset(userId: string, id: string) {
     [record.database_id, userId]
   );
   if (!workspace.rowCount) return null;
-  const table = `${quoteIdent(String(workspace.rows[0].schema_name))}.${quoteIdent(record.table_name)}`;
-  const [columns, sample, nullCounts] = await Promise.all([
-    pool.query(
+  const schemaName = String(workspace.rows[0].schema_name);
+  const tableNames = (record.table_names?.length ? record.table_names : [record.table_name]).slice(0, MAX_DATASET_TABLES);
+  const tables: {
+    name: string;
+    row_count: number;
+    columns: { name: string; type: string; nullCount: number }[];
+    preview: Record<string, unknown>[];
+  }[] = [];
+  let totalRows = 0;
+  for (const tableName of tableNames) {
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(tableName)) throw new Error("Dataset contains an invalid table name.");
+    const columns = await pool.query(
       "SELECT column_name,data_type FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2 ORDER BY ordinal_position",
-      [workspace.rows[0].schema_name, record.table_name]
-    ),
-    pool.query(`SELECT * FROM ${table} LIMIT 10`),
-    Promise.all(record.columns.map(async column => {
-      const result = await pool.query(`SELECT count(*)::int AS count FROM ${table} WHERE ${quoteIdent(column)} IS NULL`);
-      return [column, Number(result.rows[0].count)] as const;
-    }))
-  ]);
+      [schemaName, tableName]
+    );
+    if (!columns.rowCount || columns.rows.length > MAX_DATASET_COLUMNS || columns.rows.some(row => !/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(String(row.column_name)))) {
+      throw new Error("Dataset table schema is invalid or unavailable.");
+    }
+    const table = `${quoteIdent(schemaName)}.${quoteIdent(tableName)}`;
+    const aggregate = await pool.query(
+      `SELECT count(*)::int AS row_count${columns.rows.map((column, index) => `, count(*) FILTER (WHERE ${quoteIdent(String(column.column_name))} IS NULL)::int AS null_${index}`).join("")} FROM ${table}`
+    );
+    const sample = await pool.query(`SELECT * FROM ${table} LIMIT 10`);
+    const rowCount = Number(aggregate.rows[0].row_count);
+    totalRows += rowCount;
+    tables.push({
+      name: tableName,
+      row_count: rowCount,
+      columns: columns.rows.map((column, index) => ({
+        name: String(column.column_name),
+        type: String(column.data_type),
+        nullCount: Number(aggregate.rows[0][`null_${index}`])
+      })),
+      preview: sample.rows
+    });
+  }
+  const selectedTable = tables.find(table => table.name === record.table_name) || tables[0];
+  if (!selectedTable) return null;
   return {
     ...record,
+    row_count: totalRows,
+    tables,
     database: {
       id: String(workspace.rows[0].id),
       name: String(workspace.rows[0].name),
       dialect: String(workspace.rows[0].dialect),
       schemaName: String(workspace.rows[0].schema_name)
     },
-    columns: columns.rows.map(row => ({
-      name: String(row.column_name),
-      type: String(row.data_type),
-      nullCount: new Map(nullCounts).get(String(row.column_name)) || 0
-    })),
-    preview: sample.rows
+    columns: selectedTable.columns,
+    preview: selectedTable.preview
   };
 }
 
