@@ -1,0 +1,287 @@
+Build a Professional AI-Powered Notes Studio in My Existing Data Engineering Platform
+
+Objective
+
+Upgrade my existing Data Engineering Practice Platform with a premium, colorful, AI-powered Notes & Study Material module.
+
+Use the provided design reference as the visual direction. The final UI should look like a professional learning platform with dark navy backgrounds, electric blue accents, colorful subject cards, clean typography, structured educational notes, code examples, diagrams and a responsive mobile layout.
+
+IMPORTANT: Do not rebuild the project from scratch. Inspect the existing application and integrate the feature without breaking existing functionality, routes, authentication, SQL lab, Python lab, PySpark lab, Azure & Databricks, ETL Testing, Interview, AI Interview or Progress & Analytics.
+
+1. Sidebar and Navigation
+
+Add a new sidebar item named "Notes & Study Material".
+
+Maintain the existing navigation structure and design language.
+
+The Notes module should have these pages:
+
+- Notes Dashboard
+- My Notes
+- PDF Library
+- AI Notes Generator
+- Bookmarks
+- Revision Notes
+- Recently Viewed
+- Create Note
+- Note Details / Reading View
+
+2. Notes Dashboard Design
+
+Build a responsive dashboard with:
+
+- Header: Notes & Study Material.
+- Global search for notes, chapters and concepts.
+- Colorful subject cards with icons and note counts.
+- Recently viewed and bookmarked notes.
+- Featured notes.
+- Reading progress.
+- Upload PDF button.
+- Generate with AI button.
+- Create Note button.
+- Difficulty filters and technology filters.
+- Empty states for new users.
+
+Subjects:
+SQL, Python, PySpark, Azure Data Factory, Databricks, ETL & Data Warehousing, Data Engineering System Design, Data Engineering Concepts and Interview Preparation.
+
+Each subject card should open its corresponding organized notes library.
+
+Do not hardcode fake statistics. Populate counts and progress using actual saved records.
+
+3. PDF Upload and AI Notes Generation
+
+Allow authorized users to upload study PDFs.
+
+The workflow must be:
+
+1. Upload PDF.
+2. Validate the file.
+3. Extract digital PDF text.
+4. Use OCR when a PDF contains scanned pages.
+5. Detect chapters, headings, subheadings, code blocks, tables and important concepts.
+6. Split long documents into manageable sections.
+7. Generate structured notes using a configured AI provider.
+8. Render the generated content in the Notes Editor.
+9. Allow the user to preview, edit and approve the notes.
+10. Save the notes and source PDF.
+11. Provide source page references wherever available.
+
+Create real processing states:
+Uploading, Extracting Text, Organizing Topics, Generating Notes, Saving and Completed.
+
+Handle failures, retries, large PDFs, duplicate uploads and partial processing. Never display fabricated progress or pretend that AI processing succeeded.
+
+If AI or OCR credentials are unavailable, explain the missing configuration and provide setup instructions.
+
+4. Colorful Notes Reading Interface
+
+This is the most important component.
+
+Create a premium reading experience with three areas on desktop:
+
+LEFT SIDEBAR:
+
+- Table of contents.
+- Chapters and subtopics.
+- Expandable sections.
+- Active section indicator.
+- Bookmarks.
+- Navigation between topics.
+
+CENTER CONTENT:
+
+- Topic title and breadcrumbs.
+- Short introduction.
+- Clearly structured headings.
+- Concise but sufficiently detailed explanations.
+- Colorful concept cards.
+- Definition boxes.
+- Important points.
+- Warning and common-mistake boxes.
+- Code examples with syntax highlighting.
+- Copy-code buttons.
+- Expected output.
+- Comparison tables.
+- Flowcharts and educational diagrams.
+- Related topics and practice links.
+
+RIGHT SIDEBAR:
+
+- Quick revision.
+- Key takeaways.
+- Important definitions.
+- Interview tips.
+- Reading progress.
+- Related labs.
+- Bookmark controls.
+
+On mobile, convert sidebars into drawers or collapsible panels and show the main note content without horizontal overflow.
+
+5. Automatic Colorful Formatting
+
+Automatically format AI-generated notes using a consistent design system.
+
+Use:
+
+- Blue for core concepts.
+- Purple for deeper explanations.
+- Green for examples and correct approaches.
+- Amber for important points.
+- Red for warnings and common mistakes.
+- Cyan for interview tips and shortcuts.
+
+Use these colors as restrained accents with readable backgrounds and sufficient contrast. Avoid excessive gradients, oversized cards and decorative clutter.
+
+Support light mode and dark mode while preserving the same content hierarchy.
+
+6. Adaptive Notes Length
+
+Notes must be medium-length by default: neither excessively long nor too short.
+
+Use this adaptive structure:
+
+1. Topic overview.
+2. Core concepts.
+3. Detailed explanations.
+4. Important points.
+5. Practical examples.
+6. Syntax and code snippets, where relevant.
+7. Diagrams and comparison tables, where useful.
+8. Common mistakes.
+9. Interview questions and answers.
+10. Quick revision summary.
+11. Practice questions.
+
+Adjust sections according to the actual source material. Do not force every section into every note.
+
+Preserve technical accuracy. Do not invent information or misrepresent additional AI explanations as content from the uploaded PDF. Keep source-derived content distinguishable from supplementary explanations.
+
+7. Example: PySpark Notes
+
+Create an example note structure for "PySpark DataFrame Transformations".
+
+Include:
+
+- Overview of DataFrames.
+- select(), filter(), withColumn() and groupBy().
+- Explanation of transformations versus actions.
+- Short code examples with syntax highlighting.
+- Sample input and output tables.
+- A visual execution flow where appropriate.
+- Common mistakes.
+- Interview questions.
+- Quick revision cards.
+- Link to the existing PySpark Lab.
+
+The example is for demonstrating the interface. Do not treat demonstration content as real saved user notes unless it is explicitly stored as sample content.
+
+8. Example: SQL Notes
+
+For SQL topics, support:
+
+- Query examples.
+- Formatted SQL code blocks.
+- Sample tables and expected results.
+- Joins, CTEs, window functions and aggregations.
+- Query explanation.
+- Common interview traps.
+- Related SQL Lab practice.
+
+Provide a "Try in SQL Lab" action only if the existing lab can safely accept the selected query.
+
+9. Notes Organization and Management
+
+Implement the hierarchy:
+
+Subject → Chapter → Topic → Notes → Sections.
+
+Allow users to:
+
+- Create folders and subfolders.
+- Rename and edit notes.
+- Add personal annotations.
+- Bookmark individual notes and sections.
+- Mark sections for revision.
+- Search across note titles and content.
+- Filter by subject, difficulty and source PDF.
+- Sort by recently updated, recently viewed and alphabetical order.
+- Duplicate and delete notes.
+- Export notes to PDF.
+- Print clean study notes.
+- Resume reading from the last saved position.
+
+Save edits and reading progress persistently.
+
+10. PDF Library and Original Document Viewer
+
+Create a PDF Library that stores uploaded documents.
+
+Provide:
+
+- PDF title and source filename.
+- Subject and chapter association.
+- Upload date.
+- Processing status.
+- Generated-notes status.
+- Original PDF preview.
+- Page navigation and zoom.
+- Open generated notes.
+- Retry failed processing.
+- Delete and replace document actions.
+
+Where supported, clicking a source citation in the generated notes should open the relevant original PDF page.
+
+11. Database and Backend Integration
+
+Inspect the existing codebase and database before implementing.
+
+Reuse the existing authentication, external Supabase configuration, storage and backend services if present.
+
+Create or update suitable structures for:
+
+- Notes folders.
+- Notes.
+- Note sections.
+- Uploaded documents.
+- Processing jobs and statuses.
+- Bookmarks.
+- Personal annotations.
+- Reading progress.
+
+Use migrations that preserve existing data. Implement appropriate Row Level Security, ownership checks, storage policies and upload validation.
+
+Keep AI provider keys and privileged credentials on the server. Do not expose secrets in frontend code.
+
+Use background processing for long documents where appropriate. Ensure retries are safe and prevent accidental duplicate records.
+
+12. Functional Requirements
+
+Every control must work:
+
+- Search and filters.
+- PDF upload.
+- Generate notes.
+- Preview and edit.
+- Save and reopen.
+- Bookmarks.
+- Table-of-contents navigation.
+- Copy code.
+- Related lab navigation.
+- Export and print.
+- Reading progress.
+- Error handling and retries.
+
+Use real application data instead of hardcoded dashboard statistics.
+
+13. Final Implementation Workflow
+
+First inspect the existing project architecture, current routes, components, database schema and storage configuration.
+
+Then provide a short implementation plan identifying what must be reused, added or modified.
+
+Implement the feature incrementally. Verify the complete PDF-to-notes workflow, data persistence, access permissions, mobile responsiveness and existing lab functionality.
+
+Deliver a working Notes Studio, not just a static UI mockup.
+
+Keep the final design visually close to the supplied reference while following the existing application's architecture and conventions.
