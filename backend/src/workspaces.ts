@@ -1,5 +1,6 @@
 import { mongoCollection } from "./mongo.js";
 import { grantPracticeSchema, pool } from "./db.js";
+import type { Document } from "mongodb";
 
 export async function migrateLegacyWorkspaces(): Promise<void> {
   const { rows } = await pool.query("SELECT * FROM app_databases");
@@ -42,12 +43,23 @@ export async function getWorkspaceBySlug(slug: string): Promise<any> {
   return mongoCollection("app_databases").findOne({ slug });
 }
 
+export function prioritizeOwnedWorkspaces<T extends Document>(
+  workspaces: T[],
+  userId: string
+): T[] {
+  return [...workspaces].sort((left, right) =>
+    Number(String(right.owner_user_id) === userId) - Number(String(left.owner_user_id) === userId)
+  );
+}
+
 export async function listWorkspaces(userId: string, isAdmin: boolean) {
   const filter = isAdmin ? {} : { owner_user_id: userId };
-  return mongoCollection("app_databases")
-    .find(filter, { projection: { id: 1, name: 1, slug: 1, schema_name: 1, dialect: 1, description: 1, created_at: 1 } })
+  const workspaces = await mongoCollection("app_databases")
+    .find(filter, { projection: { id: 1, name: 1, slug: 1, schema_name: 1, dialect: 1, description: 1, created_at: 1, owner_user_id: 1 } })
     .sort({ created_at: -1 })
     .toArray();
+  if (!isAdmin) return workspaces;
+  return prioritizeOwnedWorkspaces(workspaces, userId).map(({ owner_user_id: _ownerUserId, ...workspace }) => workspace);
 }
 
 export async function createWorkspace(workspace: Record<string, unknown>): Promise<void> {
