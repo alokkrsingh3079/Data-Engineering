@@ -181,7 +181,7 @@ export default function AskAI() {
     <aside className="studioSidebar">
       <a className="studioBrand" href="/" aria-label="Data Engineering Studio home">
         <span className="studioBrandMark"><Layers3 size={18} /></span>
-        <span><strong>Data Engineering</strong><small>INTERVIEW STUDIO</small></span>
+        <span><strong>Data Engineering</strong><small>PRACTICE PLATFORM</small></span>
       </a>
       <nav className="studioActions" aria-label="Main navigation">
         <a href="/"><BarChart3 size={15} /> Dashboard</a>

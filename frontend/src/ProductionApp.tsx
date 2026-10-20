@@ -69,21 +69,21 @@ export function Login() {
   return (
     <div className="authPage">
       <aside className="authBrandPanel">
-        <a className="studioBrand" href="/" aria-label="Data Engineering Interview Studio home">
+        <a className="studioBrand" href="/" aria-label="Data Engineering Practice Platform home">
           <span className="studioBrandMark"><Layers3 size={19} /></span>
-          <span><strong>Data Engineering</strong><small>INTERVIEW STUDIO</small></span>
+          <span><strong>Data Engineering</strong><small>PRACTICE PLATFORM</small></span>
         </a>
-        <h2>Build the instincts behind reliable data.</h2>
-        <p>Learn, practice, and get interview-ready across the tools used by modern data teams.</p>
-        <div className="authFeatureList"><span><Database size={15} /> Real PostgreSQL practice</span><span><Code2 size={15} /> Isolated Python and Spark labs</span><span><Sparkles size={15} /> Progress paths and AI tutoring</span></div>
+        <h2>Build job-ready skills across the data stack.</h2>
+        <p>One place to learn, practice, track progress, and prepare for data engineering interviews.</p>
+        <div className="authFeatureList"><span><Database size={15} /> PostgreSQL schemas and SQL challenges</span><span><Code2 size={15} /> Python and PySpark practice tracks</span><span><Sparkles size={15} /> Guided learning paths and AI tutoring</span></div>
       </aside>
       <div className="authCard">
         <div className="brandMark">✦</div>
-        <h1>SQL Practice Online</h1>
+        <h1>Welcome back</h1>
         <p>
           {register
-            ? "Create your learning account"
-            : "Sign in to your account"}
+            ? "Create your Data Engineering learning account"
+            : "Sign in to your Data Engineering practice platform"}
         </p>
         {register && (
           <input
@@ -110,7 +110,7 @@ export function Login() {
         <button className="linkBtn" onClick={() => setRegister(!register)}>
           {register
             ? "Already have an account? Sign in"
-            : "Create a student account"}
+            : "Create a learner account"}
         </button>
       </div>
     </div>
