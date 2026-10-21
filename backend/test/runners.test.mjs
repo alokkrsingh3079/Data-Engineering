@@ -112,6 +112,43 @@ test('runner health reports upstream HTTP failures without sending the runner to
   }
 });
 
+test('runner execution reports credential rejection without exposing the token', async (t) => {
+  const server = createServer((request, response) => {
+    assert.equal(request.headers.authorization, 'Bearer execution-test-token');
+    response.writeHead(401).end(JSON.stringify({ error: 'Authentication required' }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const previousUrl = process.env.SPARK_RUNNER_URL;
+  const previousToken = process.env.SPARK_RUNNER_TOKEN;
+  const previousMode = process.env.NODE_ENV;
+  process.env.SPARK_RUNNER_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.SPARK_RUNNER_TOKEN = 'execution-test-token';
+  process.env.NODE_ENV = 'development';
+  try {
+    const result = await executeOnRunner({
+      language: 'pyspark',
+      taskId: 'generated-question',
+      functionName: 'solve',
+      code: 'def solve(input): return input',
+      testCases: [{ name: 'sample', input: { input: [] }, expected: [] }]
+    });
+    assert.deepEqual(result, {
+      status: 'error',
+      message: 'Execution service rejected its credentials (HTTP 401). Check that SPARK_RUNNER_TOKEN matches the runner.'
+    });
+    assert.doesNotMatch(JSON.stringify(result), /execution-test-token/);
+  } finally {
+    if (previousUrl === undefined) delete process.env.SPARK_RUNNER_URL;
+    else process.env.SPARK_RUNNER_URL = previousUrl;
+    if (previousToken === undefined) delete process.env.SPARK_RUNNER_TOKEN;
+    else process.env.SPARK_RUNNER_TOKEN = previousToken;
+    if (previousMode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousMode;
+  }
+});
+
 test('Spark job adapter authenticates queue requests and validates owner-facing job results', async (t) => {
   const jobId = 'f1d59c24-249c-4b99-8b4c-77a0f54e6821';
   const seen = [];

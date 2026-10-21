@@ -42,6 +42,7 @@ export default function QuestionGeneration() {
   const [topic, setTopic] = useState(topics.SQL[0]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [generationFailures, setGenerationFailures] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
@@ -147,6 +148,7 @@ export default function QuestionGeneration() {
     if (!selected) return;
     setError("");
     setNotice("");
+    setGenerationFailures([]);
     setGenerating(true);
     try {
       if (language === "SQL") {
@@ -181,6 +183,7 @@ export default function QuestionGeneration() {
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Question generation failed.");
+        setGenerationFailures(Array.isArray(result.rejected) ? result.rejected.filter((reason: unknown): reason is string => typeof reason === "string") : []);
         setNotice(`${result.validated} question(s) validated; ${result.failed} failed validation.`);
         const first = result.questionIds?.[0];
         if (first) location.href = language === "Python"
@@ -208,6 +211,7 @@ export default function QuestionGeneration() {
       <header className="qgHeader"><span>DATASET-GROUNDED PRACTICE</span><h1>Question Generation</h1><p>Upload a dataset, inspect its schema, then generate verified exercises for the existing labs.</p></header>
       {error && <div className="qgAlert" role="alert">{error}</div>}
       {notice && <div className="qgNotice" role="status">{notice}</div>}
+      {generationFailures.length > 0 && <details className="qgAlert"><summary>Validation details ({generationFailures.length})</summary><ul>{generationFailures.map((reason, index) => <li key={`${index}-${reason}`}>{reason}</li>)}</ul></details>}
       <div className="qgGrid">
         <section className="qgCard">
           <h2><FileUp size={18} /> Dataset library</h2>

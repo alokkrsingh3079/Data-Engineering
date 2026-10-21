@@ -94,7 +94,13 @@ export async function executeOnRunner(input: {
       signal: AbortSignal.timeout(input.language === "pyspark" ? 150_000 : 15_000)
     });
     const text = await response.text();
-    if (!response.ok || Buffer.byteLength(text, "utf8") > 512_000) return { status: "error" as const, message: "Execution service returned an invalid response." };
+    if (!response.ok) return {
+      status: "error" as const,
+      message: response.status === 401
+        ? "Execution service rejected its credentials (HTTP 401). Check that SPARK_RUNNER_TOKEN matches the runner."
+        : `Execution service returned HTTP ${response.status}.`
+    };
+    if (Buffer.byteLength(text, "utf8") > 512_000) return { status: "error" as const, message: "Execution service returned an invalid response." };
     let json: unknown;
     try {
       json = JSON.parse(text);
@@ -112,8 +118,17 @@ export async function executeOnRunner(input: {
       message: parsed.data.message,
       output: parsed.data.output
     };
-  } catch {
-    return { status: "unavailable" as const, message: "Execution service is unavailable." };
+  } catch (error) {
+    const cause = error && typeof error === "object" && "cause" in error ? error.cause : undefined;
+    const code = cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string" && /^[A-Z0-9_]{1,40}$/.test(cause.code)
+      ? cause.code
+      : undefined;
+    const message = error instanceof Error && error.name === "TimeoutError"
+      ? "Execution service request timed out."
+      : code
+        ? `Execution service network request failed (${code}).`
+        : "Execution service is unavailable.";
+    return { status: "unavailable" as const, message };
   }
 }
 
