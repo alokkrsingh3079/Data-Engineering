@@ -16,9 +16,9 @@ Supply secrets through the deployment platform's secret store. Do not commit pop
 | `ADMIN_NAME` | No | Backend | Initial administrator display name. |
 | `OPENAI_API_KEY` | No | Backend | Enables AI question generation, tutoring, and schema-image assistance. |
 | `OPENAI_MODEL` | No | Backend | AI model name; defaults to `gpt-4o-mini`. |
-| `PYTHON_RUNNER_URL` | No | Backend | Trusted isolated Python runner origin. Must be HTTPS in production and expose authenticated `/health` and `/v1/execute` routes. Without it, Python execution reports unavailable. |
+| `PYTHON_RUNNER_URL` | No | Backend | Trusted isolated Python runner origin. Must be HTTPS in production; `/health` is public for availability checks and `/v1/execute` requires bearer authentication. Without it, Python execution reports unavailable. |
 | `PYTHON_RUNNER_TOKEN` | No | Backend | Server-only bearer token for the Python runner; store in the backend secret manager. |
-| `SPARK_RUNNER_URL` | No | Backend | Trusted isolated Spark runner origin. HTTPS in production; development may use `http://127.0.0.1:4021`. Exposes authenticated `/v1/jobs`, `/v1/jobs/:id`, and `/v1/execute` routes. Without it, PySpark execution reports unavailable. |
+| `SPARK_RUNNER_URL` | No | Backend | Trusted isolated Spark runner origin. HTTPS in production; development may use `http://127.0.0.1:4021`. `/health` is public for availability checks; `/v1/jobs`, `/v1/jobs/:id`, and `/v1/execute` require bearer authentication. Without it, PySpark execution reports unavailable. |
 | `SPARK_RUNNER_TOKEN` | Yes for production Compose | Spark worker and backend | Shared backend-to-worker bearer token. Generate a long random value and store it in both services' secret configuration; never expose it to the browser. |
 | `SPARK_RUNNER_ALLOW_PRIVATE_HTTP` | Production Compose only | Backend | Compose sets `true` only for `http://spark_runner:4021` on the dedicated internal network. All other production runner URLs must use HTTPS. |
 | `DOCKER_GID` | Yes for production Compose | Spark worker | Numeric group ID owning `/var/run/docker.sock` on the dedicated Spark host; allows the non-root controller to create restricted job containers. |

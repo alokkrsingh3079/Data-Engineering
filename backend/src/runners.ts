@@ -39,19 +39,35 @@ export function isRunnerConfigured(language: RunnerLanguage): boolean {
   return runnerConfig(language) !== null;
 }
 
-export async function runnerHealth(language: RunnerLanguage): Promise<{ configured: boolean; available: boolean }> {
+export async function runnerHealth(language: RunnerLanguage): Promise<{ configured: boolean; available: boolean; diagnostic?: string }> {
   const config = runnerConfig(language);
-  if (!config) return { configured: false, available: false };
+  if (!config) return { configured: false, available: false, diagnostic: "Runner URL or token is missing or invalid." };
+  let diagnostic = "Runner request failed.";
   try {
     const response = await fetch(new URL("/health", config.url), {
-      headers: { Authorization: `Bearer ${config.token}` },
       redirect: "error",
       signal: AbortSignal.timeout(10_000)
     });
-    return { configured: true, available: response.ok };
-  } catch {
-    return { configured: true, available: false };
+    if (response.ok) return { configured: true, available: true };
+    diagnostic = `Runner returned HTTP ${response.status}.`;
+  } catch (error) {
+    const cause = error && typeof error === "object" && "cause" in error ? error.cause : undefined;
+    const code = cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string" && /^[A-Z0-9_]{1,40}$/.test(cause.code)
+      ? cause.code
+      : undefined;
+    diagnostic = error instanceof Error && error.name === "TimeoutError"
+      ? "Runner health request timed out."
+      : code
+        ? `Runner network request failed (${code}).`
+        : "Runner network request failed.";
   }
+  console.warn(JSON.stringify({
+    event: "runner_health_check_failed",
+    language,
+    host: config.url.host,
+    diagnostic
+  }));
+  return { configured: true, available: false, diagnostic };
 }
 
 export type RunnerTestCase = { name: string; input: unknown; expected: unknown };
