@@ -12,6 +12,25 @@ test("parses CSV quoting, escaped quotes, nulls, and safe column names", async (
   ]);
 });
 
+test("decodes UTF-8, Windows-1252, and BOM-marked UTF-16 CSV files", async () => {
+  const windows1252 = await parseDatasetFile("employees.csv", Buffer.from("name,comment\nAndr\xe9,Smart \x93quote\x94\n", "latin1"));
+  assert.deepEqual(windows1252.rows, [{ name: "André", comment: "Smart “quote”" }]);
+
+  const utf16le = Buffer.concat([
+    Buffer.from([0xff, 0xfe]),
+    Buffer.from("name,city\nZoë,München\n", "utf16le")
+  ]);
+  const utf16 = await parseDatasetFile("employees.csv", utf16le);
+  assert.deepEqual(utf16.rows, [{ name: "Zoë", city: "München" }]);
+
+  const utf8 = await parseDatasetFile("employees.csv", Buffer.from("\uFEFFname,city\n李雷,北京\n", "utf8"));
+  assert.deepEqual(utf8.rows, [{ name: "李雷", city: "北京" }]);
+});
+
+test("rejects binary-looking CSV instead of silently decoding control characters", async () => {
+  await assert.rejects(parseDatasetFile("broken.csv", Buffer.from([0x61, 0x2c, 0x62, 0x0a, 0x31, 0x00, 0x32])), /control characters/);
+});
+
 test("parses JSON arrays, wrapped rows, and JSON Lines", async () => {
   assert.deepEqual((await parseDatasetFile("data.json", Buffer.from('{"rows":[{"Event ID":1},{"Event ID":2}]}'))).rows, [
     { event_id: 1 }, { event_id: 2 }
@@ -43,6 +62,7 @@ test("rejects invalid Parquet files and unsupported formats", async () => {
 
 test("rejects malformed and oversized text datasets", async () => {
   await assert.rejects(parseDatasetFile("broken.json", Buffer.from("{")), /malformed/);
+  await assert.rejects(parseDatasetFile("broken.json", Buffer.from([0xff, 0xfe, 0x7b, 0x00])), /valid UTF-8/);
   await assert.rejects(parseDatasetFile("broken.csv", Buffer.from("a,b\n1\n")), /same number/);
   await assert.rejects(parseDatasetFile("large.csv", Buffer.alloc(MAX_DATASET_BYTES + 1)), /up to 5 MB/);
 });

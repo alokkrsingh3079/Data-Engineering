@@ -97,6 +97,30 @@ function csvRows(text: string): { columns: string[]; rows: Record<string, unknow
   return { columns, rows };
 }
 
+function decodeCsv(bytes: Buffer): string {
+  let text: string;
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    text = new TextDecoder("utf-16le", { fatal: true }).decode(bytes.subarray(2));
+  } else if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    text = new TextDecoder("utf-16be", { fatal: true }).decode(bytes.subarray(2));
+  } else {
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      try {
+        text = new TextDecoder("windows-1252", { fatal: true }).decode(bytes);
+      } catch {
+        throw new Error("CSV encoding is unsupported. Save the file as UTF-8 and upload it again.");
+      }
+    }
+  }
+
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(text)) {
+    throw new Error("CSV contains unsupported control characters. Save the file as UTF-8 CSV and upload it again.");
+  }
+  return text;
+}
+
 function jsonRows(text: string, extension: string): { columns: string[]; rows: Record<string, unknown>[] } {
   let values: unknown[];
   try {
@@ -249,6 +273,8 @@ export async function parseDatasetFile(filename: string, bytes: Buffer): Promise
   let parsed: { columns: string[]; rows: Record<string, unknown>[] };
   if (extension === ".parquet") {
     parsed = await parquetRows(bytes);
+  } else if (extension === ".csv") {
+    parsed = csvRows(decodeCsv(bytes));
   } else {
     let text: string;
     try {
@@ -256,7 +282,7 @@ export async function parseDatasetFile(filename: string, bytes: Buffer): Promise
     } catch {
       throw new Error("Dataset must be valid UTF-8 text.");
     }
-    parsed = extension === ".csv" ? csvRows(text) : jsonRows(text, extension);
+    parsed = jsonRows(text, extension);
   }
   return { ...parsed, filename: filename.slice(0, 180) };
 }
