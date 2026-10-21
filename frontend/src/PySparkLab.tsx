@@ -137,14 +137,31 @@ export default function PySparkLab() {
 
   useEffect(() => {
     let mounted = true;
-    void fetch(`${API}/api/learning/runners/status`, { credentials: "include" })
-      .then((response) => response.ok ? readApiJson<{ pyspark: RunnerState }>(response) : null)
-      .then((status) => {
-        if (!mounted || !status?.pyspark) return;
-        setRunner(status.pyspark);
-        if (!status.pyspark.available) console.warn("[PySpark Lab] Runner health check failed:", status.pyspark.diagnostic || "No diagnostic provided.");
-      })
-      .catch(() => {});
+    let lastDiagnostic = "";
+    const refreshRunnerStatus = () => {
+      void fetch(`${API}/api/learning/runners/status`, { credentials: "include" })
+        .then((response) => response.ok ? readApiJson<{ pyspark: RunnerState }>(response) : null)
+        .then((status) => {
+          if (!mounted || !status?.pyspark) return;
+          setRunner(status.pyspark);
+          const diagnostic = status.pyspark.available ? "" : status.pyspark.diagnostic || "No diagnostic provided.";
+          if (diagnostic && diagnostic !== lastDiagnostic) console.warn("[PySpark Lab] Runner health check failed:", diagnostic);
+          lastDiagnostic = diagnostic;
+        })
+        .catch(() => {});
+    };
+    refreshRunnerStatus();
+    const refreshInterval = window.setInterval(refreshRunnerStatus, 30_000);
+    window.addEventListener("focus", refreshRunnerStatus);
+    return () => {
+      mounted = false;
+      window.clearInterval(refreshInterval);
+      window.removeEventListener("focus", refreshRunnerStatus);
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
     Promise.all([
       (async () => {
         const query = "moduleId=pyspark-foundations&type=coding&pageSize=50";

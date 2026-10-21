@@ -49,17 +49,17 @@ export async function runnerHealth(language: RunnerLanguage): Promise<{ configur
       signal: AbortSignal.timeout(10_000)
     });
     if (response.ok) return { configured: true, available: true };
-    diagnostic = `Runner returned HTTP ${response.status}.`;
+    diagnostic = `Runner at ${config.url.host} returned HTTP ${response.status}.`;
   } catch (error) {
     const cause = error && typeof error === "object" && "cause" in error ? error.cause : undefined;
     const code = cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string" && /^[A-Z0-9_]{1,40}$/.test(cause.code)
       ? cause.code
       : undefined;
     diagnostic = error instanceof Error && error.name === "TimeoutError"
-      ? "Runner health request timed out."
+      ? `Runner at ${config.url.host} health request timed out.`
       : code
-        ? `Runner network request failed (${code}).`
-        : "Runner network request failed.";
+        ? `Runner at ${config.url.host} network request failed (${code}).`
+        : `Runner at ${config.url.host} network request failed.`;
   }
   console.warn(JSON.stringify({
     event: "runner_health_check_failed",

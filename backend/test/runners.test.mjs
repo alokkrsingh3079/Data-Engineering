@@ -100,7 +100,7 @@ test('runner health reports upstream HTTP failures without sending the runner to
     assert.deepEqual(await runnerHealth('pyspark'), {
       configured: true,
       available: false,
-      diagnostic: 'Runner returned HTTP 503.'
+      diagnostic: `Runner at 127.0.0.1:${server.address().port} returned HTTP 503.`
     });
   } finally {
     if (previousUrl === undefined) delete process.env.SPARK_RUNNER_URL;
