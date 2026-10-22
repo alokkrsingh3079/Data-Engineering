@@ -198,9 +198,24 @@ export default function PySparkLab() {
     setResult(null);
     try {
       const createJobPath = `${API}/api/learning/questions/${question.id}/jobs`;
-      const response = await fetch(createJobPath, {
-        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, mode: submit ? "submit" : "run" }),
-      });
+      const idempotencyKey = crypto.randomUUID();
+      let response: Response | undefined;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetch(createJobPath, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+            body: JSON.stringify({ code, mode: submit ? "submit" : "run" }),
+          });
+          if (![502, 503, 504].includes(response.status) || attempt === 2) break;
+          await response.body?.cancel();
+        } catch (cause) {
+          if (attempt === 2) throw new Error(`Spark job creation request failed. Request: ${createJobPath}.`);
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 700 * 2 ** attempt));
+      }
+      if (!response) throw new Error(`Spark job creation request failed. Request: ${createJobPath}.`);
       const body = await readApiJson<any>(response, createJobPath);
       if (!response.ok) throw new Error(body.error || "Execution failed.");
       setActiveJobId(body.jobId);
