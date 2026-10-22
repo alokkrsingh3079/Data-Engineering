@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import socket
@@ -195,6 +196,12 @@ def main():
         raise RuntimeError("PYTHON_RUNNER_TOKEN is required")
     client.ping()
     client.images.get(IMAGE)
+    print(json.dumps({
+        "event": "runner_token_fingerprint",
+        "component": "runner",
+        "language": "python",
+        "fingerprint": hashlib.sha256(TOKEN.encode()).hexdigest()[:16],
+    }), flush=True)
     ThreadingHTTPServer((os.environ.get("PYTHON_RUNNER_HOST","0.0.0.0"),int(os.environ.get("PYTHON_RUNNER_PORT","4020"))),Handler).serve_forever()
 
 

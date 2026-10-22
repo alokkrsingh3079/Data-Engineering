@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { cancelSparkJob, createSparkJob, executeOnRunner, getSparkJob, isRunnerConfigured, runnerHealth } from '../src/runners.ts';
+import { cancelSparkJob, createSparkJob, executeOnRunner, getSparkJob, isRunnerConfigured, runnerHealth, runnerTokenFingerprints } from '../src/runners.ts';
 
 test('Python and Spark runners remain unavailable until trusted endpoints are configured', async () => {
   const variables = ['PYTHON_RUNNER_URL', 'PYTHON_RUNNER_TOKEN', 'SPARK_RUNNER_URL', 'SPARK_RUNNER_TOKEN', 'SPARK_RUNNER_ALLOW_PRIVATE_HTTP'];
@@ -31,6 +31,29 @@ test('Python and Spark runners remain unavailable until trusted endpoints are co
     }
     if (previousMode === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = previousMode;
+  }
+});
+
+test('runner diagnostics expose only a short token fingerprint and configured host', () => {
+  const variables = ['PYTHON_RUNNER_URL', 'PYTHON_RUNNER_TOKEN', 'SPARK_RUNNER_URL', 'SPARK_RUNNER_TOKEN'];
+  const previous = Object.fromEntries(variables.map((key) => [key, process.env[key]]));
+  try {
+    process.env.PYTHON_RUNNER_URL = 'https://python.example.test';
+    process.env.PYTHON_RUNNER_TOKEN = 'python-secret-for-test';
+    process.env.SPARK_RUNNER_URL = 'https://spark.example.test';
+    process.env.SPARK_RUNNER_TOKEN = 'spark-secret-for-test';
+    const diagnostics = runnerTokenFingerprints();
+    assert.deepEqual(diagnostics.map(({ language, host }) => ({ language, host })), [
+      { language: 'python', host: 'python.example.test' },
+      { language: 'pyspark', host: 'spark.example.test' }
+    ]);
+    assert.ok(diagnostics.every(({ fingerprint }) => /^[a-f0-9]{16}$/.test(fingerprint)));
+    assert.doesNotMatch(JSON.stringify(diagnostics), /python-secret-for-test|spark-secret-for-test/);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 });
 
