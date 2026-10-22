@@ -3,7 +3,7 @@ import { createNote, createNoteFromPdf, createStickyNote, deleteNote, deletePdfD
 import { generateNotesFromPdf, generateNotesFromTopic, generateStickyReminder } from "./ai.js";
 import {createWorkspace,deleteWorkspaceRecord,getWorkspaceById,listWorkspaces,migrateLegacyWorkspaces,workspaceOwnedByUser} from "./workspaces.js";
 import {approveSchemaImport,createSchemaImport,getInitialSnapshot,getSchemaImport,listFeatureFlags,listSnapshots,migrateLegacyRecords,setFeatureFlag} from "./records.js";
-import "dotenv/config";import express from "express";import cors from "cors";import multer from "multer";import crypto from "node:crypto";import {z} from "zod";import {pool,initDb,ensureDemoDatabase,createPracticeSchema,dropPracticeSchema,quoteIdent,schemaSnapshot,listTables,executeReadOnly,executeImport,snapshotDatabase,restoreSnapshot,schemaDDL,dataSQL,clearPracticeSchema} from "./db.js";import {openai,model,generateQuestions,tutor,learningTutor,extractSchemaFromImage,generateAdditionalSampleRows,generateDatasetCodingQuestions,parseDatasetCodingTestCases} from "./ai.js";
+import "dotenv/config";import express from "express";import cors from "cors";import multer from "multer";import crypto from "node:crypto";import {z} from "zod";import {pool,initDb,ensureDemoDatabase,createPracticeSchema,dropPracticeSchema,quoteIdent,schemaSnapshot,listTables,executeReadOnly,executeImport,snapshotDatabase,restoreSnapshot,schemaDDL,dataSQL,clearPracticeSchema} from "./db.js";import {openai,model,generateQuestions,tutor,learningTutor,extractSchemaFromImage,generateAdditionalSampleRows,generateDatasetCodingQuestions} from "./ai.js";
 import {audit,requestToken,createSession,deleteSession,getUserByEmail,getUserFromToken,hashPassword,listAuditLogs,listUsers,migrateLegacyAuthData,recordUserLogin,requireRole,updateUserAccess,validateAuthConfig,verifyPassword,createUser} from "./auth.js";
 import {metrics,seedAdmin,seedStarterQuestions,ensureUserWorkspace,assignLegacyWorkspacesToAdmin} from "./ops.js";
 import {analyticsOverview,clearRevisionMark,dailyProgress,exportProgress,listQuestionAttempts,migrateLegacyLearningData,progressSummary,recordAttempt,revisionStatus,setRevisionMark} from "./learning.js";
@@ -77,7 +77,12 @@ app.post('/api/question-datasets/:datasetId/generate',async(req,res)=>{
   for(const raw of generated.questions){
    const id=crypto.randomUUID();
    try{
-    const testCases=Array.isArray(raw.test_cases)?parseDatasetCodingTestCases(input.data.language,raw.test_cases as Record<string,unknown>[]):[];
+    const testCases=Array.isArray(raw.test_cases)?raw.test_cases.map((test,index)=>{
+     if(typeof test.input_json!=='string'||typeof test.expected_json!=='string')throw new Error('AI test data is malformed');
+     const testInput:unknown=JSON.parse(test.input_json);const expected:unknown=JSON.parse(test.expected_json);
+     if(!testInput||typeof testInput!=='object'||Array.isArray(testInput))throw new Error('Test input must be a JSON object');
+     return{name:String(test.name||`Case ${index+1}`).slice(0,120),input:testInput,expected};
+    }):[];
     const functionName=String(raw.function_name||'');
     if(!/^[a-zA-Z_][a-zA-Z0-9_]{0,100}$/.test(functionName))throw new Error('Generated question function_name must be a valid Python identifier');
     if(testCases.length!==2)throw new Error(`Generated question must include exactly two valid test cases; received ${testCases.length}`);

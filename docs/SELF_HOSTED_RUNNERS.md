@@ -40,7 +40,7 @@ The runner controllers require access to the host Docker socket so they can crea
    ```
 
    Wait for both runner services to become healthy. Caddy obtains and renews HTTPS certificates automatically.
-6. In Render, add these environment variables, using the same values as the VM's private env file. The runner controllers must be updated to a version that provides the authenticated `/v1/auth-check` endpoint; backend runner status uses it to verify the configured credential rather than relying only on the public health endpoint.
+6. In Render, add these environment variables, using the same values as the VM's private env file:
 
    ```text
    SPARK_RUNNER_URL=https://spark-runner.example.com
@@ -49,7 +49,7 @@ The runner controllers require access to the host Docker socket so they can crea
    PYTHON_RUNNER_TOKEN=<same Python token as on the VM>
    ```
 
-   Save and redeploy the backend and runner controllers. Open `/api/learning/runners/status` on the API to verify both runners report configured and available, then try one Python and one PySpark submission. A `rejected the configured token` diagnostic means the active backend and runner bearer tokens differ; a health-check HTTP error identifies endpoint or reachability problems.
+   Save and redeploy the backend. Open `/api/learning/runners/status` on the API to verify both runners report configured and available, then try one Python and one PySpark submission.
 
 ## Operations
 

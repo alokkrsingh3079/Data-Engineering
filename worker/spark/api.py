@@ -221,18 +221,6 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def do_GET(self):
-        if self.path == "/v1/auth-check":
-            if not self._authorized():
-                self._send(401, {"error": "Authentication required"})
-                return
-            try:
-                client.ping()
-                client.images.get(JOB_IMAGE)
-            except (DockerException, NotFound):
-                self._send(503, {"ok": False, "error": "Docker executor is not ready"})
-                return
-            self._send(200, {"ok": True, "language": "pyspark"})
-            return
         if self.path.startswith("/v1/jobs/"):
             if not self._authorized():
                 self._send(401, {"error": "Authentication required"})

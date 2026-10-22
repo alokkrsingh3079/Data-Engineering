@@ -23,12 +23,6 @@ type Dataset = {
   tables: DatasetTable[];
 };
 
-type RunnerStatus = {
-  configured: boolean;
-  available: boolean;
-  diagnostic?: string;
-};
-
 const topics = {
   SQL: ["Filtering and sorting", "DISTINCT and NULL handling", "Aggregations and GROUP BY", "JOINs", "CTEs and subqueries", "Window functions", "Data quality"],
   Python: ["Data cleaning", "Functions and collections", "Grouping and aggregation", "Validation and deduplication", "Business logic"],
@@ -52,14 +46,13 @@ export default function QuestionGeneration() {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
-  const [runnerReady, setRunnerReady] = useState<{ python: RunnerStatus | null; pyspark: RunnerStatus | null }>({ python: null, pyspark: null });
+  const [runnerReady, setRunnerReady] = useState<{ python: boolean | null; pyspark: boolean | null }>({ python: null, pyspark: null });
 
   const selected = datasets.find((dataset) => dataset.id === selectedId) || null;
   const selectedTable = selected?.tables.find((table) => table.name === tableName) || selected?.tables[0] || null;
   const selectedColumns = selectedTable?.columns || selected?.columns || [];
   const selectedPreview = selectedTable?.preview || selected?.preview || [];
-  const activeRunnerStatus = language === "SQL" ? null : runnerReady[language.toLowerCase() as "python" | "pyspark"];
-  const activeRunnerReady = language === "SQL" || activeRunnerStatus?.available === true;
+  const activeRunnerReady = language === "SQL" || runnerReady[language.toLowerCase() as "python" | "pyspark"] === true;
   const generationReady = Boolean(selected && aiConfigured && activeRunnerReady);
 
   async function loadDatasets() {
@@ -84,11 +77,10 @@ export default function QuestionGeneration() {
       const ai = await aiResponse.json();
       const runners = await runnerResponse.json();
       setAiConfigured(Boolean(ai.configured));
-      setRunnerReady({ python: runners.python || null, pyspark: runners.pyspark || null });
+      setRunnerReady({ python: Boolean(runners.python?.available), pyspark: Boolean(runners.pyspark?.available) });
     }).catch(() => {
       setAiConfigured(false);
-      const unavailable = { configured: false, available: false, diagnostic: "Runner status could not be checked." };
-      setRunnerReady({ python: unavailable, pyspark: unavailable });
+      setRunnerReady({ python: false, pyspark: false });
     });
   }, []);
 
@@ -246,7 +238,7 @@ export default function QuestionGeneration() {
           <h2><Sparkles size={18} /> Generate questions</h2>
           <p className="qgSmall">AI receives the selected database schema and a small sample of its rows. SQL generation can use every table; Python and PySpark use the selected coding target table. Avoid uploading sensitive personal data.</p>
           {aiConfigured === false && <p className="qgLimit">AI generation is unavailable: configure the backend OPENAI_API_KEY to continue.</p>}
-          {language !== "SQL" && activeRunnerStatus && !activeRunnerStatus.available && <p className="qgLimit">The isolated {language} runner is unavailable for verified generation. {activeRunnerStatus.diagnostic || "Check the runner configuration and reload this page."}</p>}
+          {language !== "SQL" && runnerReady[language.toLowerCase() as "python" | "pyspark"] === false && <p className="qgLimit">The isolated {language} runner is not configured or available. Generation stays disabled until it is healthy.</p>}
           <label className="qgField">Dataset<select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option value="">Select a dataset</option>{datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name}</option>)}</select></label>
           <label className="qgField">Target lab<select value={language} onChange={(event) => { const value = event.target.value as keyof typeof topics; setLanguage(value); setTopic(topics[value][0]); if (value !== "SQL" && Number(count) > 10) setCount("10"); }}><option>SQL</option><option>Python</option><option>PySpark</option></select></label>
           <label className="qgField">Number of questions<select value={count} onChange={(event) => setCount(event.target.value)}>{["10","20","50","100"].map((value) => <option key={value} value={value} disabled={language !== "SQL" && Number(value) > 10}>{value}{language !== "SQL" && Number(value) > 10 ? " (not available for code runners)" : ""}</option>)}</select></label>
@@ -254,7 +246,7 @@ export default function QuestionGeneration() {
           <label className="qgField">Topic<select value={topic} onChange={(event) => setTopic(event.target.value)}>{topics[language].map((item) => <option key={item}>{item}</option>)}</select></label>
           {language !== "SQL" && <p className="qgLimit">Python/PySpark is currently limited to 10 questions per validated request. Higher counts require background generation support.</p>}
           <button className="qgPrimary" onClick={() => void generate()} disabled={!generationReady || generating}>{generating ? <LoaderCircle className="qgSpin" size={16} /> : <Sparkles size={16} />} Generate and validate</button>
-          <p className="qgSmall">OpenAI drafts coding challenges; the isolated runner must authenticate and pass the reference solution before a challenge is saved. SQL uses the selected dataset's real PostgreSQL tables.</p>
+          <p className="qgSmall">Generated Python and PySpark challenges are saved in your existing learning question bank. SQL uses the selected dataset's real PostgreSQL tables.</p>
           {selected && <a className="qgLabLink" href={`/sql?databaseId=${encodeURIComponent(selected.database.id)}`}>Open dataset in SQL Lab <ArrowRight size={14} /></a>}
         </section>
       </div>
