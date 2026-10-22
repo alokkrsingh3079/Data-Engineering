@@ -32,7 +32,7 @@ type Question = {
   revisionMarked: boolean;
 };
 
-type RunnerState = { configured: boolean; available: boolean };
+type RunnerState = { configured: boolean; available: boolean; diagnostic?: string };
 type RunResult = {
   status?: string;
   correct?: boolean;
@@ -44,19 +44,35 @@ type RunResult = {
 
 const API = "";
 
-async function readApiJson<T>(response: Response): Promise<T> {
+function requestDiagnostics(response: Response, path: string, requestId: string, startedAt: number) {
+  return {
+    requestId,
+    path,
+    status: response.status,
+    contentType: response.headers.get("content-type") || "missing",
+    cfRay: response.headers.get("cf-ray") || undefined,
+    renderRequestId: response.headers.get("rndr-id") || undefined,
+    upstreamRequestId: response.headers.get("x-request-id") || undefined,
+    server: response.headers.get("server") || undefined,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
+async function readApiJson<T>(response: Response, path = "API request", requestId?: string): Promise<T> {
   const contentType = response.headers.get("content-type") || "";
   const body = await response.text();
   if (!contentType.toLowerCase().includes("application/json")) {
     const detail = body.trimStart().startsWith("<")
-      ? "The server returned an HTML page. Check the Render API URL and deployment."
+      ? "The API gateway returned an HTML page."
       : "The server returned a non-JSON response.";
-    throw new Error(`${detail} (HTTP ${response.status})`);
+    const correlation = requestId ? ` Request ID: ${requestId}.` : "";
+    throw new Error(`${detail} Request: ${path} (HTTP ${response.status}).${correlation}`);
   }
   try {
     return JSON.parse(body) as T;
   } catch {
-    throw new Error(`The API returned invalid JSON (HTTP ${response.status}).`);
+    const correlation = requestId ? ` Request ID: ${requestId}.` : "";
+    throw new Error(`The API returned invalid JSON. Request: ${path} (HTTP ${response.status}).${correlation}`);
   }
 }
 
@@ -137,10 +153,31 @@ export default function PySparkLab() {
 
   useEffect(() => {
     let mounted = true;
-    void fetch(`${API}/api/learning/runners/status`, { credentials: "include" })
-      .then((response) => response.ok ? readApiJson<{ pyspark: RunnerState }>(response) : null)
-      .then((status) => { if (mounted && status?.pyspark) setRunner(status.pyspark); })
-      .catch(() => {});
+    let lastDiagnostic = "";
+    const refreshRunnerStatus = () => {
+      void fetch(`${API}/api/learning/runners/status`, { credentials: "include" })
+        .then((response) => response.ok ? readApiJson<{ pyspark: RunnerState }>(response) : null)
+        .then((status) => {
+          if (!mounted || !status?.pyspark) return;
+          setRunner(status.pyspark);
+          const diagnostic = status.pyspark.available ? "" : status.pyspark.diagnostic || "No diagnostic provided.";
+          if (diagnostic && diagnostic !== lastDiagnostic) console.warn("[PySpark Lab] Runner health check failed:", diagnostic);
+          lastDiagnostic = diagnostic;
+        })
+        .catch(() => {});
+    };
+    refreshRunnerStatus();
+    const refreshInterval = window.setInterval(refreshRunnerStatus, 30_000);
+    window.addEventListener("focus", refreshRunnerStatus);
+    return () => {
+      mounted = false;
+      window.clearInterval(refreshInterval);
+      window.removeEventListener("focus", refreshRunnerStatus);
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
     Promise.all([
       (async () => {
         const query = "moduleId=pyspark-foundations&type=coding&pageSize=50";
@@ -175,12 +212,56 @@ export default function PySparkLab() {
     setJobStatus("queued");
     setError("");
     setResult(null);
+    const requestId = crypto.randomUUID();
+    const createJobPath = `${API}/api/learning/questions/${question.id}/jobs`;
+    const requestStartedAt = Date.now();
+    console.info("[PySpark Lab] Creating Spark job", {
+      requestId,
+      questionId: question.id,
+      mode: submit ? "submit" : "run",
+      path: createJobPath,
+      codeLength: code.length,
+      startedAt: new Date(requestStartedAt).toISOString(),
+    });
     try {
-      const response = await fetch(`${API}/api/learning/questions/${question.id}/jobs`, {
-        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, mode: submit ? "submit" : "run" }),
+      let response: Response;
+      try {
+        response = await fetch(createJobPath, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", "X-Client-Request-Id": requestId },
+          body: JSON.stringify({ code, mode: submit ? "submit" : "run" }),
+        });
+      } catch (cause) {
+        const failure = {
+          requestId,
+          path: createJobPath,
+          durationMs: Date.now() - requestStartedAt,
+          failure: cause instanceof Error ? cause.name : "NetworkError",
+        };
+        console.error("[PySpark Lab] Spark job request did not receive an HTTP response", failure);
+        throw new Error(`Spark job request failed before receiving a response. Request: ${createJobPath}. Request ID: ${requestId}.`);
+      }
+      const diagnostics = requestDiagnostics(response, createJobPath, requestId, requestStartedAt);
+      let body: any;
+      try {
+        body = await readApiJson<any>(response, createJobPath, requestId);
+      } catch (cause) {
+        console.error("[PySpark Lab] Spark job response could not be read", diagnostics);
+        throw cause;
+      }
+      if (!response.ok) {
+        console.error("[PySpark Lab] Spark job creation failed", {
+          ...diagnostics,
+          apiError: typeof body?.error === "string" ? body.error.slice(0, 300) : undefined,
+        });
+        throw new Error(`${body?.error || "Spark job creation failed."} Request ID: ${requestId}.`);
+      }
+      console.info("[PySpark Lab] Spark job queued", {
+        ...diagnostics,
+        jobId: body.jobId,
+        jobStatus: body.status || "queued",
       });
-      const body = await readApiJson<any>(response);
-      if (!response.ok) throw new Error(body.error || "Execution failed.");
       setActiveJobId(body.jobId);
       setJobStatus(body.status || "queued");
       let completedJob: any = null;
@@ -210,6 +291,13 @@ export default function PySparkLab() {
         })]);
       }
     } catch (cause) {
+      console.error("[PySpark Lab] Spark execution flow failed", {
+        requestId,
+        questionId: question.id,
+        mode: submit ? "submit" : "run",
+        durationMs: Date.now() - requestStartedAt,
+        failure: cause instanceof Error ? cause.message : "Unknown failure",
+      });
       setError(cause instanceof Error ? cause.message : "The isolated Spark runner is unavailable.");
     } finally {
       setBusy("");
@@ -289,7 +377,7 @@ export default function PySparkLab() {
       <nav aria-label="Main navigation"><a href="/">Learning path</a><a href="/sql"><Database size={15} /> SQL Lab</a><a className="active" href="/pyspark"><Code2 size={15} /> PySpark Lab</a><a href="/ask-ai"><Sparkles size={15} /> Ask AI</a><a href="/interview">Interview</a></nav>
       <a className="sparkLabExit" href="/learn/pyspark-foundations">Learning module <ExternalLink size={14} /></a>
     </header>
-    <section className="sparkLabTitle"><div><p>REAL SPARK EXECUTION · LOCAL MODE</p><h1>PySpark Lab</h1><span>Interview exercises against a pinned Spark runtime.</span></div><div className={`sparkRunnerBadge ${runner.available ? "ready" : "offline"}`}><span />{runner.available ? "Spark runner ready" : runner.configured ? "Runner health check failed" : "Runner not configured"}</div></section>
+    <section className="sparkLabTitle"><div><p>REAL SPARK EXECUTION · LOCAL MODE</p><h1>PySpark Lab</h1><span>Interview exercises against a pinned Spark runtime.</span></div><div className={`sparkRunnerBadge ${runner.available ? "ready" : "offline"}`} title={runner.diagnostic}><span />{runner.available ? "Spark runner ready" : runner.configured ? `Runner health check failed${runner.diagnostic ? `: ${runner.diagnostic}` : ""}` : "Runner not configured"}</div></section>
     {error && <div className="sparkLabError" role="alert">{error}</div>}
     <div className="sparkLabLayout">
       <aside className="sparkQuestionRail" aria-label="PySpark question bank">

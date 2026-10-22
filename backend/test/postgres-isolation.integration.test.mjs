@@ -30,11 +30,15 @@ test('PostgreSQL workspace roles isolate practice schemas', { skip: process.env.
     await executeImport(leftSchema, 'CREATE TABLE sample (id INT PRIMARY KEY); INSERT INTO sample VALUES (1)');
     await executeImport(rightSchema, 'CREATE TABLE secret (id INT PRIMARY KEY); INSERT INTO secret VALUES (99)');
 
+    await pool.query(`ALTER ROLE ${leftRole.name} PASSWORD 'stale-integration-test-password'`);
+    await closePracticePools();
     const result = await executeReadOnly(leftSchema, 'SELECT id FROM sample');
     assert.equal(result.rows[0].id, 1);
 
+    const practiceConnectionString = process.env.PRACTICE_DATABASE_URL || process.env.DATABASE_URL;
+    assert.ok(practiceConnectionString, 'A practice or primary database URL is required for the integration test');
     const leftClient = new Client({
-      ...parsePgConnectionString(process.env.PRACTICE_DATABASE_URL),
+      ...parsePgConnectionString(practiceConnectionString),
       user: leftRole.name,
       password: leftRole.password
     });

@@ -9,8 +9,8 @@ test('Python and Spark runners remain unavailable until trusted endpoints are co
   const previousMode = process.env.NODE_ENV;
   try {
     for (const key of variables) delete process.env[key];
-    assert.deepEqual(await runnerHealth('python'), { configured: false, available: false });
-    assert.deepEqual(await runnerHealth('pyspark'), { configured: false, available: false });
+    assert.deepEqual(await runnerHealth('python'), { configured: false, available: false, diagnostic: 'Runner URL or token is missing or invalid.' });
+    assert.deepEqual(await runnerHealth('pyspark'), { configured: false, available: false, diagnostic: 'Runner URL or token is missing or invalid.' });
     process.env.PYTHON_RUNNER_URL = 'http://runner.example.test';
     process.env.PYTHON_RUNNER_TOKEN = 'test-token';
     process.env.NODE_ENV = 'production';
@@ -36,12 +36,13 @@ test('Python and Spark runners remain unavailable until trusted endpoints are co
 
 test('external runner adapter authenticates requests and validates returned test summaries', async (t) => {
   const server = createServer(async (request, response) => {
-    if (request.headers.authorization !== 'Bearer isolated-test-token') {
-      response.writeHead(401).end();
+    if (request.url === '/health') {
+      assert.equal(request.headers.authorization, undefined);
+      response.writeHead(200).end('ok');
       return;
     }
-    if (request.url === '/health') {
-      response.writeHead(200).end('ok');
+    if (request.headers.authorization !== 'Bearer isolated-test-token') {
+      response.writeHead(401).end();
       return;
     }
     const chunks = [];
@@ -76,6 +77,73 @@ test('external runner adapter authenticates requests and validates returned test
     else process.env.PYTHON_RUNNER_URL = previousUrl;
     if (previousToken === undefined) delete process.env.PYTHON_RUNNER_TOKEN;
     else process.env.PYTHON_RUNNER_TOKEN = previousToken;
+    if (previousMode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousMode;
+  }
+});
+
+test('runner health reports upstream HTTP failures without sending the runner token', async (t) => {
+  const server = createServer((request, response) => {
+    assert.equal(request.headers.authorization, undefined);
+    response.writeHead(503).end('unavailable');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const previousUrl = process.env.SPARK_RUNNER_URL;
+  const previousToken = process.env.SPARK_RUNNER_TOKEN;
+  const previousMode = process.env.NODE_ENV;
+  process.env.SPARK_RUNNER_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.SPARK_RUNNER_TOKEN = 'health-test-token';
+  process.env.NODE_ENV = 'development';
+  try {
+    assert.deepEqual(await runnerHealth('pyspark'), {
+      configured: true,
+      available: false,
+      diagnostic: `Runner at 127.0.0.1:${server.address().port} returned HTTP 503.`
+    });
+  } finally {
+    if (previousUrl === undefined) delete process.env.SPARK_RUNNER_URL;
+    else process.env.SPARK_RUNNER_URL = previousUrl;
+    if (previousToken === undefined) delete process.env.SPARK_RUNNER_TOKEN;
+    else process.env.SPARK_RUNNER_TOKEN = previousToken;
+    if (previousMode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousMode;
+  }
+});
+
+test('runner execution reports credential rejection without exposing the token', async (t) => {
+  const server = createServer((request, response) => {
+    assert.equal(request.headers.authorization, 'Bearer execution-test-token');
+    response.writeHead(401).end(JSON.stringify({ error: 'Authentication required' }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const previousUrl = process.env.SPARK_RUNNER_URL;
+  const previousToken = process.env.SPARK_RUNNER_TOKEN;
+  const previousMode = process.env.NODE_ENV;
+  process.env.SPARK_RUNNER_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.SPARK_RUNNER_TOKEN = 'execution-test-token';
+  process.env.NODE_ENV = 'development';
+  try {
+    const result = await executeOnRunner({
+      language: 'pyspark',
+      taskId: 'generated-question',
+      functionName: 'solve',
+      code: 'def solve(input): return input',
+      testCases: [{ name: 'sample', input: { input: [] }, expected: [] }]
+    });
+    assert.deepEqual(result, {
+      status: 'error',
+      message: 'Execution service rejected its credentials (HTTP 401). Check that SPARK_RUNNER_TOKEN matches the runner.'
+    });
+    assert.doesNotMatch(JSON.stringify(result), /execution-test-token/);
+  } finally {
+    if (previousUrl === undefined) delete process.env.SPARK_RUNNER_URL;
+    else process.env.SPARK_RUNNER_URL = previousUrl;
+    if (previousToken === undefined) delete process.env.SPARK_RUNNER_TOKEN;
+    else process.env.SPARK_RUNNER_TOKEN = previousToken;
     if (previousMode === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = previousMode;
   }
@@ -131,6 +199,53 @@ test('Spark job adapter authenticates queue requests and validates owner-facing 
     assert.equal(status.status, 'ok');
     assert.equal(status.job.result.output.rows[0].count, 2);
     assert.equal((await cancelSparkJob(jobId)).status, 'cancelled');
+  } finally {
+    if (previousUrl === undefined) delete process.env.SPARK_RUNNER_URL;
+    else process.env.SPARK_RUNNER_URL = previousUrl;
+    if (previousToken === undefined) delete process.env.SPARK_RUNNER_TOKEN;
+    else process.env.SPARK_RUNNER_TOKEN = previousToken;
+    if (previousMode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousMode;
+  }
+});
+
+test('Spark job adapter logs safe diagnostics for runner gateway failures', async (t) => {
+  const logs = [];
+  t.mock.method(console, 'error', (...values) => logs.push(values.join(' ')));
+  const server = createServer((_request, response) => {
+    response.writeHead(502, {
+      'content-type': 'text/html',
+      'cf-ray': 'diagnostic-ray-123'
+    }).end('<html>upstream failure</html>');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const previousUrl = process.env.SPARK_RUNNER_URL;
+  const previousToken = process.env.SPARK_RUNNER_TOKEN;
+  const previousMode = process.env.NODE_ENV;
+  process.env.SPARK_RUNNER_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.SPARK_RUNNER_TOKEN = 'do-not-log-this-runner-token';
+  process.env.NODE_ENV = 'development';
+  const requestId = '123e4567-e89b-42d3-a456-426614174000';
+  try {
+    const result = await createSparkJob({
+      taskId: 'pyspark-debug-test',
+      functionName: 'solve',
+      code: 'private-learner-code',
+      testCases: [{ name: 'sample', input: {}, expected: {} }],
+      returnOutput: true,
+      requestId
+    });
+
+    assert.deepEqual(result, { status: 'error' });
+    const diagnostic = logs.join('\n');
+    assert.match(diagnostic, /spark_job_runner_response/);
+    assert.match(diagnostic, /"status":502/);
+    assert.match(diagnostic, /text\/html/);
+    assert.match(diagnostic, /diagnostic-ray-123/);
+    assert.match(diagnostic, new RegExp(requestId));
+    assert.doesNotMatch(diagnostic, /do-not-log-this-runner-token|private-learner-code|upstream failure/);
   } finally {
     if (previousUrl === undefined) delete process.env.SPARK_RUNNER_URL;
     else process.env.SPARK_RUNNER_URL = previousUrl;

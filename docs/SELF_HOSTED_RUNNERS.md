@@ -59,4 +59,6 @@ Update the VM by pulling the desired Git commit and rerunning the Compose `up -d
 docker compose --env-file deploy/runners/.env -f docker-compose.runners.yml logs -f spark_runner python_runner caddy
 ```
 
+For a failed PySpark submission, open the browser developer console and find `[PySpark Lab] Spark job creation failed` or `Spark job response could not be read`. Copy the `requestId` and any `cfRay` or `renderRequestId` values; do not share cookies, tokens, or learner code. Search the Render backend logs for the same request ID and `pyspark_job_creation_failed`, `pyspark_job_creation_exception`, or `spark_job_runner_response`. The runner response diagnostic includes its HTTP status, content type, host, and provider request IDs without logging request bodies or credentials. If the browser has a `cfRay` but Render has no matching request ID, the request likely failed before reaching the backend.
+
 The Spark job queue is in memory and limited to one controller; do not run multiple replicas. Back up `deploy/runners/.env` securely and rotate the two runner tokens together in the VM and Render. Do not put them in Cloudflare frontend variables or commit them.

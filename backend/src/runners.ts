@@ -15,6 +15,18 @@ const runnerResultSchema = z.object({
   }).strict().optional()
 }).strict();
 
+function runnerFailureDetails(error: unknown) {
+  const cause = error && typeof error === "object" && "cause" in error ? error.cause : undefined;
+  const code = cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string" && /^[A-Z0-9_]{1,40}$/.test(cause.code)
+    ? cause.code
+    : undefined;
+  return {
+    errorName: error instanceof Error && /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : "Error",
+    ...(code ? { networkCode: code } : {}),
+    ...(error instanceof Error && error.name === "TimeoutError" ? { timedOut: true } : {})
+  };
+}
+
 function runnerConfig(language: RunnerLanguage) {
   const prefix = language === "python" ? "PYTHON_RUNNER" : "SPARK_RUNNER";
   const rawUrl = process.env[`${prefix}_URL`];
@@ -39,19 +51,35 @@ export function isRunnerConfigured(language: RunnerLanguage): boolean {
   return runnerConfig(language) !== null;
 }
 
-export async function runnerHealth(language: RunnerLanguage): Promise<{ configured: boolean; available: boolean }> {
+export async function runnerHealth(language: RunnerLanguage): Promise<{ configured: boolean; available: boolean; diagnostic?: string }> {
   const config = runnerConfig(language);
-  if (!config) return { configured: false, available: false };
+  if (!config) return { configured: false, available: false, diagnostic: "Runner URL or token is missing or invalid." };
+  let diagnostic = "Runner request failed.";
   try {
     const response = await fetch(new URL("/health", config.url), {
-      headers: { Authorization: `Bearer ${config.token}` },
       redirect: "error",
       signal: AbortSignal.timeout(10_000)
     });
-    return { configured: true, available: response.ok };
-  } catch {
-    return { configured: true, available: false };
+    if (response.ok) return { configured: true, available: true };
+    diagnostic = `Runner at ${config.url.host} returned HTTP ${response.status}.`;
+  } catch (error) {
+    const cause = error && typeof error === "object" && "cause" in error ? error.cause : undefined;
+    const code = cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string" && /^[A-Z0-9_]{1,40}$/.test(cause.code)
+      ? cause.code
+      : undefined;
+    diagnostic = error instanceof Error && error.name === "TimeoutError"
+      ? `Runner at ${config.url.host} health request timed out.`
+      : code
+        ? `Runner at ${config.url.host} network request failed (${code}).`
+        : `Runner at ${config.url.host} network request failed.`;
   }
+  console.warn(JSON.stringify({
+    event: "runner_health_check_failed",
+    language,
+    host: config.url.host,
+    diagnostic
+  }));
+  return { configured: true, available: false, diagnostic };
 }
 
 export type RunnerTestCase = { name: string; input: unknown; expected: unknown };
@@ -78,7 +106,13 @@ export async function executeOnRunner(input: {
       signal: AbortSignal.timeout(input.language === "pyspark" ? 150_000 : 15_000)
     });
     const text = await response.text();
-    if (!response.ok || Buffer.byteLength(text, "utf8") > 512_000) return { status: "error" as const, message: "Execution service returned an invalid response." };
+    if (!response.ok) return {
+      status: "error" as const,
+      message: response.status === 401
+        ? "Execution service rejected its credentials (HTTP 401). Check that SPARK_RUNNER_TOKEN matches the runner."
+        : `Execution service returned HTTP ${response.status}.`
+    };
+    if (Buffer.byteLength(text, "utf8") > 512_000) return { status: "error" as const, message: "Execution service returned an invalid response." };
     let json: unknown;
     try {
       json = JSON.parse(text);
@@ -96,8 +130,17 @@ export async function executeOnRunner(input: {
       message: parsed.data.message,
       output: parsed.data.output
     };
-  } catch {
-    return { status: "unavailable" as const, message: "Execution service is unavailable." };
+  } catch (error) {
+    const cause = error && typeof error === "object" && "cause" in error ? error.cause : undefined;
+    const code = cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string" && /^[A-Z0-9_]{1,40}$/.test(cause.code)
+      ? cause.code
+      : undefined;
+    const message = error instanceof Error && error.name === "TimeoutError"
+      ? "Execution service request timed out."
+      : code
+        ? `Execution service network request failed (${code}).`
+        : "Execution service is unavailable.";
+    return { status: "unavailable" as const, message };
   }
 }
 
@@ -110,10 +153,23 @@ const sparkJobResult = z.object({
   message: z.string().max(500).nullable().optional()
 }).strict();
 
-export async function createSparkJob(input: { taskId: string; functionName: string; code: string; testCases: RunnerTestCase[]; returnOutput: boolean }) {
+export async function createSparkJob(input: { taskId: string; functionName: string; code: string; testCases: RunnerTestCase[]; returnOutput: boolean; requestId?: string }) {
   const config = runnerConfig("pyspark");
-  if (!config) return { status: "unavailable" as const };
-  if (Buffer.byteLength(input.code, "utf8") > 32_000 || input.testCases.length < 1 || input.testCases.length > 3 || !/^[a-zA-Z_][a-zA-Z0-9_]{0,100}$/.test(input.functionName)) return { status: "invalid" as const };
+  if (!config) {
+    console.error(JSON.stringify({ event: "spark_job_runner_not_configured", requestId: input.requestId }));
+    return { status: "unavailable" as const };
+  }
+  if (Buffer.byteLength(input.code, "utf8") > 32_000 || input.testCases.length < 1 || input.testCases.length > 3 || !/^[a-zA-Z_][a-zA-Z0-9_]{0,100}$/.test(input.functionName)) {
+    console.warn(JSON.stringify({
+      event: "spark_job_request_invalid",
+      requestId: input.requestId,
+      host: config.url.host,
+      codeBytes: Buffer.byteLength(input.code, "utf8"),
+      testCaseCount: input.testCases.length,
+      functionNameValid: /^[a-zA-Z_][a-zA-Z0-9_]{0,100}$/.test(input.functionName)
+    }));
+    return { status: "invalid" as const };
+  }
   try {
     const response = await fetch(new URL("/v1/jobs", config.url), {
       method: "POST",
@@ -122,12 +178,46 @@ export async function createSparkJob(input: { taskId: string; functionName: stri
       body: JSON.stringify({ language: "pyspark", taskId: input.taskId, functionName: input.functionName, code: input.code, testCases: input.testCases, returnOutput: input.returnOutput }),
       signal: AbortSignal.timeout(8_000)
     });
-    if (response.status === 429) return { status: "capacity" as const };
-    const payload: unknown = await response.json();
-    if (!response.ok) return { status: "error" as const };
+    const contentType = response.headers.get("content-type") || "missing";
+    const requestDetails = {
+      event: "spark_job_runner_response",
+      requestId: input.requestId,
+      host: config.url.host,
+      status: response.status,
+      contentType,
+      runnerRequestId: response.headers.get("x-request-id") || response.headers.get("rndr-id") || undefined,
+      cloudflareRay: response.headers.get("cf-ray") || undefined
+    };
+    if (response.status === 429) {
+      console.warn(JSON.stringify({ ...requestDetails, outcome: "capacity" }));
+      return { status: "capacity" as const };
+    }
+    const text = await response.text();
+    let payload: unknown;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      console.error(JSON.stringify({ ...requestDetails, outcome: "invalid_json", responseBytes: Buffer.byteLength(text, "utf8") }));
+      return { status: "error" as const };
+    }
+    if (!response.ok) {
+      console.error(JSON.stringify({ ...requestDetails, outcome: "http_error" }));
+      return { status: "error" as const };
+    }
     const parsed = z.object({ jobId: z.string().uuid(), status: z.literal("queued"), createdAt: z.string() }).strict().safeParse(payload);
-    return parsed.success ? { status: "ok" as const, job: parsed.data } : { status: "error" as const };
-  } catch {
+    if (!parsed.success) {
+      console.error(JSON.stringify({ ...requestDetails, outcome: "invalid_response_shape" }));
+      return { status: "error" as const };
+    }
+    console.info(JSON.stringify({ ...requestDetails, outcome: "queued" }));
+    return { status: "ok" as const, job: parsed.data };
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "spark_job_runner_request_failed",
+      requestId: input.requestId,
+      host: config.url.host,
+      ...runnerFailureDetails(error)
+    }));
     return { status: "unavailable" as const };
   }
 }
