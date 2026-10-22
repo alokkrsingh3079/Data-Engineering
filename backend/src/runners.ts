@@ -39,35 +39,19 @@ export function isRunnerConfigured(language: RunnerLanguage): boolean {
   return runnerConfig(language) !== null;
 }
 
-export async function runnerHealth(language: RunnerLanguage): Promise<{ configured: boolean; available: boolean; diagnostic?: string }> {
+export async function runnerHealth(language: RunnerLanguage): Promise<{ configured: boolean; available: boolean }> {
   const config = runnerConfig(language);
-  if (!config) return { configured: false, available: false, diagnostic: "Runner URL or token is missing or invalid." };
-  let diagnostic = "Runner request failed.";
+  if (!config) return { configured: false, available: false };
   try {
     const response = await fetch(new URL("/health", config.url), {
+      headers: { Authorization: `Bearer ${config.token}` },
       redirect: "error",
       signal: AbortSignal.timeout(10_000)
     });
-    if (response.ok) return { configured: true, available: true };
-    diagnostic = `Runner at ${config.url.host} returned HTTP ${response.status}.`;
-  } catch (error) {
-    const cause = error && typeof error === "object" && "cause" in error ? error.cause : undefined;
-    const code = cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string" && /^[A-Z0-9_]{1,40}$/.test(cause.code)
-      ? cause.code
-      : undefined;
-    diagnostic = error instanceof Error && error.name === "TimeoutError"
-      ? `Runner at ${config.url.host} health request timed out.`
-      : code
-        ? `Runner at ${config.url.host} network request failed (${code}).`
-        : `Runner at ${config.url.host} network request failed.`;
+    return { configured: true, available: response.ok };
+  } catch {
+    return { configured: true, available: false };
   }
-  console.warn(JSON.stringify({
-    event: "runner_health_check_failed",
-    language,
-    host: config.url.host,
-    diagnostic
-  }));
-  return { configured: true, available: false, diagnostic };
 }
 
 export type RunnerTestCase = { name: string; input: unknown; expected: unknown };
@@ -94,13 +78,7 @@ export async function executeOnRunner(input: {
       signal: AbortSignal.timeout(input.language === "pyspark" ? 150_000 : 15_000)
     });
     const text = await response.text();
-    if (!response.ok) return {
-      status: "error" as const,
-      message: response.status === 401
-        ? "Execution service rejected its credentials (HTTP 401). Check that SPARK_RUNNER_TOKEN matches the runner."
-        : `Execution service returned HTTP ${response.status}.`
-    };
-    if (Buffer.byteLength(text, "utf8") > 512_000) return { status: "error" as const, message: "Execution service returned an invalid response." };
+    if (!response.ok || Buffer.byteLength(text, "utf8") > 512_000) return { status: "error" as const, message: "Execution service returned an invalid response." };
     let json: unknown;
     try {
       json = JSON.parse(text);
@@ -118,17 +96,8 @@ export async function executeOnRunner(input: {
       message: parsed.data.message,
       output: parsed.data.output
     };
-  } catch (error) {
-    const cause = error && typeof error === "object" && "cause" in error ? error.cause : undefined;
-    const code = cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string" && /^[A-Z0-9_]{1,40}$/.test(cause.code)
-      ? cause.code
-      : undefined;
-    const message = error instanceof Error && error.name === "TimeoutError"
-      ? "Execution service request timed out."
-      : code
-        ? `Execution service network request failed (${code}).`
-        : "Execution service is unavailable.";
-    return { status: "unavailable" as const, message };
+  } catch {
+    return { status: "unavailable" as const, message: "Execution service is unavailable." };
   }
 }
 

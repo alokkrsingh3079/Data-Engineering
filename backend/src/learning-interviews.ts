@@ -10,12 +10,7 @@ export async function startLearningInterview(input: {
   count: number;
   durationSeconds: number;
 }) {
-  const match: Record<string, any> = {
-    module_id: input.moduleId,
-    status: "published",
-    type: { $in: ["mcq", "scenario"] },
-    $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: input.userId }]
-  };
+  const match: Record<string, any> = { module_id: input.moduleId, status: "published", type: { $in: ["mcq", "scenario"] } };
   if (input.difficulty !== "mixed") match.difficulty = input.difficulty;
   const questions = await mongoCollection("learning_questions").aggregate([
     { $match: match },

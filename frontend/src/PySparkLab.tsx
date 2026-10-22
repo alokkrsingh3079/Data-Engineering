@@ -32,7 +32,7 @@ type Question = {
   revisionMarked: boolean;
 };
 
-type RunnerState = { configured: boolean; available: boolean; diagnostic?: string };
+type RunnerState = { configured: boolean; available: boolean };
 type RunResult = {
   status?: string;
   correct?: boolean;
@@ -137,31 +137,10 @@ export default function PySparkLab() {
 
   useEffect(() => {
     let mounted = true;
-    let lastDiagnostic = "";
-    const refreshRunnerStatus = () => {
-      void fetch(`${API}/api/learning/runners/status`, { credentials: "include" })
-        .then((response) => response.ok ? readApiJson<{ pyspark: RunnerState }>(response) : null)
-        .then((status) => {
-          if (!mounted || !status?.pyspark) return;
-          setRunner(status.pyspark);
-          const diagnostic = status.pyspark.available ? "" : status.pyspark.diagnostic || "No diagnostic provided.";
-          if (diagnostic && diagnostic !== lastDiagnostic) console.warn("[PySpark Lab] Runner health check failed:", diagnostic);
-          lastDiagnostic = diagnostic;
-        })
-        .catch(() => {});
-    };
-    refreshRunnerStatus();
-    const refreshInterval = window.setInterval(refreshRunnerStatus, 30_000);
-    window.addEventListener("focus", refreshRunnerStatus);
-    return () => {
-      mounted = false;
-      window.clearInterval(refreshInterval);
-      window.removeEventListener("focus", refreshRunnerStatus);
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
+    void fetch(`${API}/api/learning/runners/status`, { credentials: "include" })
+      .then((response) => response.ok ? readApiJson<{ pyspark: RunnerState }>(response) : null)
+      .then((status) => { if (mounted && status?.pyspark) setRunner(status.pyspark); })
+      .catch(() => {});
     Promise.all([
       (async () => {
         const query = "moduleId=pyspark-foundations&type=coding&pageSize=50";
@@ -310,7 +289,7 @@ export default function PySparkLab() {
       <nav aria-label="Main navigation"><a href="/">Learning path</a><a href="/sql"><Database size={15} /> SQL Lab</a><a className="active" href="/pyspark"><Code2 size={15} /> PySpark Lab</a><a href="/ask-ai"><Sparkles size={15} /> Ask AI</a><a href="/interview">Interview</a></nav>
       <a className="sparkLabExit" href="/learn/pyspark-foundations">Learning module <ExternalLink size={14} /></a>
     </header>
-    <section className="sparkLabTitle"><div><p>REAL SPARK EXECUTION · LOCAL MODE</p><h1>PySpark Lab</h1><span>Interview exercises against a pinned Spark runtime.</span></div><div className={`sparkRunnerBadge ${runner.available ? "ready" : "offline"}`} title={runner.diagnostic}><span />{runner.available ? "Spark runner ready" : runner.configured ? `Runner health check failed${runner.diagnostic ? `: ${runner.diagnostic}` : ""}` : "Runner not configured"}</div></section>
+    <section className="sparkLabTitle"><div><p>REAL SPARK EXECUTION · LOCAL MODE</p><h1>PySpark Lab</h1><span>Interview exercises against a pinned Spark runtime.</span></div><div className={`sparkRunnerBadge ${runner.available ? "ready" : "offline"}`}><span />{runner.available ? "Spark runner ready" : runner.configured ? "Runner health check failed" : "Runner not configured"}</div></section>
     {error && <div className="sparkLabError" role="alert">{error}</div>}
     <div className="sparkLabLayout">
       <aside className="sparkQuestionRail" aria-label="PySpark question bank">

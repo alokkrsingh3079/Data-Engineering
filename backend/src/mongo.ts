@@ -28,7 +28,6 @@ export async function connectMongo(): Promise<Db> {
     database.collection("sessions").createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
     database.collection("app_databases").createIndex({ slug: 1 }, { unique: true }),
     database.collection("app_databases").createIndex({ owner_user_id: 1, created_at: -1 }),
-    database.collection("question_datasets").createIndex({ owner_user_id: 1, created_at: -1 }),
     database.collection("challenges").createIndex({ database_id: 1, created_at: -1 }),
     database.collection("challenges").createIndex({ question_set_id: 1, created_at: 1 }),
     database.collection("question_sets").createIndex({ database_id: 1, created_at: -1 }),

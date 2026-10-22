@@ -14,9 +14,8 @@ const expectedToken = process.env.PYTHON_RUNNER_TOKEN || "";
 const pythonExecutable = process.env.PYTHON_EXECUTABLE || "/usr/bin/python3";
 
 const requestSchema = z.object({
-  taskId: z.string().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/),
+  taskId: z.enum(["python-dedupe-events"]),
   language: z.literal("python"),
-  functionName: z.string().min(1).max(101).regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/).optional(),
   code: z.string().min(1).max(32_000),
   testCases: z.array(z.object({
     name: z.string().min(1).max(120),
@@ -142,7 +141,7 @@ export function runSandboxedPython(input: z.infer<typeof requestSchema>): Promis
     child.stdin.end(JSON.stringify({
       code: input.code,
       testCases: input.testCases,
-      functionName: input.functionName || (input.taskId === "python-dedupe-events" ? "dedupe_events" : "")
+      functionName: input.taskId === "python-dedupe-events" ? "dedupe_events" : ""
     }));
   });
 }

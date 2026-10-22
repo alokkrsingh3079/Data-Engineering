@@ -486,14 +486,6 @@ function escapedRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function visibleQuestionFilter(userId: string) {
-  return { $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] };
-}
-
-function accessibleQuestionFilter(questionId: string, userId: string) {
-  return { _id: questionId, ...visibleQuestionFilter(userId) };
-}
-
 async function userQuestionState(userId: string, questionIds: string[]) {
   if (!questionIds.length) return { bookmarks: new Set<string>(), completed: new Set<string>(), revisions: new Set<string>() };
   const [bookmarks, progress, revisions] = await Promise.all([
@@ -534,7 +526,6 @@ export async function seedLearningQuestions(): Promise<void> {
 export async function listLearningQuestions(userId: string, input: LearningQuestionFilters) {
   const filters = normalizeQuestionFilters(input);
   const query: Record<string, any> = { status: "published" };
-  query.$and = [visibleQuestionFilter(userId)];
   if (filters.moduleId) query.module_id = filters.moduleId;
   if (filters.topic) query.topic = filters.topic;
   if (filters.difficulty) query.difficulty = filters.difficulty;
@@ -587,7 +578,7 @@ export async function listLearningQuestions(userId: string, input: LearningQuest
 }
 
 export async function getLearningQuestion(questionId: string, userId: string) {
-  const question = await mongoCollection("learning_questions").findOne({ ...accessibleQuestionFilter(questionId, userId), status: "published" });
+  const question = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published" });
   if (!question) return null;
   const state = await userQuestionState(userId, [questionId]);
   return {
@@ -600,7 +591,7 @@ export async function getLearningQuestion(questionId: string, userId: string) {
 }
 
 export async function submitLearningAnswer(userId: string, questionId: string, optionId: string) {
-  const question = await mongoCollection("learning_questions").findOne({ ...accessibleQuestionFilter(questionId, userId), status: "published" });
+  const question = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published" });
   if (!question) return { status: "not_found" as const };
   if (question.type !== "mcq" && question.type !== "scenario") return { status: "unsupported" as const };
   if (!(question.options || []).some((option: any) => option.id === optionId)) return { status: "invalid_answer" as const };
@@ -636,7 +627,7 @@ export async function submitLearningAnswer(userId: string, questionId: string, o
 }
 
 export async function submitLearningCode(userId: string, questionId: string, code: string) {
-  const question = await mongoCollection("learning_questions").findOne({ ...accessibleQuestionFilter(questionId, userId), status: "published", type: "coding" });
+  const question = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published", type: "coding" });
   if (!question) return { status: "not_found" as const };
   const language = question.language as RunnerLanguage;
   const result = await executeOnRunner({ language, taskId: questionId, functionName: question.function_name || (questionId === "python-dedupe-events" ? "dedupe_events" : questionId.replace(/-/g, "_")), code, testCases: question.test_cases || [] });
@@ -676,7 +667,7 @@ export async function submitLearningCode(userId: string, questionId: string, cod
 const terminalSparkStates = ["succeeded", "failed", "timed_out", "cancelled", "resource_limit_exceeded"];
 
 export async function createLearningExecution(userId: string, questionId: string, code: string, mode: "run" | "submit") {
-  const question = await mongoCollection("learning_questions").findOne({ ...accessibleQuestionFilter(questionId, userId), status: "published", type: "coding", language: "pyspark" });
+  const question = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published", type: "coding", language: "pyspark" });
   if (!question) return { status: "not_found" as const };
   const testCases = mode === "run"
     ? (question.public_examples || []).map((example: any, index: number) => ({ name: `Example ${index + 1}`, input: example.input, expected: example.expected }))
@@ -780,8 +771,8 @@ export async function cancelLearningExecution(userId: string, jobId: string) {
   return cancelled.status === "complete" ? { status: "complete" as const } : { status: cancelled.status as "not_found" | "unavailable" | "error" };
 }
 
-export async function executeLearningExample(questionId: string, userId: string, code: string) {
-  const question = await mongoCollection("learning_questions").findOne({ ...accessibleQuestionFilter(questionId, userId), status: "published", type: "coding" });
+export async function executeLearningExample(questionId: string, code: string) {
+  const question = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published", type: "coding" });
   if (!question) return { status: "not_found" as const };
   const examples = Array.isArray(question.public_examples) ? question.public_examples : [];
   if (!examples.length) return { status: "invalid" as const, message: "This exercise has no public example to run." };
@@ -814,8 +805,8 @@ export function publicLearningQuestionReview(question: any) {
   };
 }
 
-export async function getLearningQuestionReview(questionId: string, userId: string) {
-  const question = await mongoCollection("learning_questions").findOne({ ...accessibleQuestionFilter(questionId, userId), status: "published" });
+export async function getLearningQuestionReview(questionId: string) {
+  const question = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published" });
   if (!question) return { status: "not_found" as const };
   return publicLearningQuestionReview(question);
 }
@@ -826,7 +817,7 @@ export async function learningRunnerStatus() {
 }
 
 export async function setLearningBookmark(userId: string, questionId: string, marked: boolean) {
-  const questionExists = await mongoCollection("learning_questions").findOne({ ...accessibleQuestionFilter(questionId, userId), status: "published" }, { projection: { _id: 1 } });
+  const questionExists = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published" }, { projection: { _id: 1 } });
   if (!questionExists) return false;
   const bookmarks = mongoCollection("learning_bookmarks");
   if (!marked) {
@@ -842,7 +833,7 @@ export async function setLearningBookmark(userId: string, questionId: string, ma
 }
 
 export async function setLearningRevisionMark(userId: string, questionId: string, marked: boolean) {
-  const questionExists = await mongoCollection("learning_questions").findOne({ ...accessibleQuestionFilter(questionId, userId), status: "published" }, { projection: { _id: 1 } });
+  const questionExists = await mongoCollection("learning_questions").findOne({ _id: questionId, status: "published" }, { projection: { _id: 1 } });
   if (!questionExists) return false;
   const marks = mongoCollection("learning_revision_marks");
   if (!marked) {
@@ -866,7 +857,7 @@ export async function listRevisionQueue(userId: string) {
   const learningIds = learningMarks.map((mark) => String(mark.question_id));
   const sqlIds = sqlMarks.map((mark) => String(mark.challenge_id));
   const [learningQuestions, sqlQuestions] = await Promise.all([
-    learningIds.length ? mongoCollection("learning_questions").find({ _id: { $in: learningIds }, status: "published", ...visibleQuestionFilter(userId) }, { projection: { title: 1, module_id: 1, topic: 1 } }).toArray() : Promise.resolve([]),
+    learningIds.length ? mongoCollection("learning_questions").find({ _id: { $in: learningIds }, status: "published" }, { projection: { title: 1, module_id: 1, topic: 1 } }).toArray() : Promise.resolve([]),
     sqlIds.length ? mongoCollection("challenges").find({ _id: { $in: sqlIds } }, { projection: { id: 1, title: 1, topic: 1, database_id: 1 } }).toArray() : Promise.resolve([])
   ]);
   const learningById = new Map(learningQuestions.map((question) => [String(question._id), question]));
@@ -893,7 +884,7 @@ export async function listLearningBookmarks(userId: string) {
   const ids = rows.map((row) => String(row.question_id));
   if (!ids.length) return [];
   const questions = await mongoCollection("learning_questions").find(
-    { _id: { $in: ids }, status: "published", ...visibleQuestionFilter(userId) },
+    { _id: { $in: ids }, status: "published" },
     { projection: { answer_id: 0, reference_answer: 0, explanation: 0, common_mistakes: 0 } }
   ).toArray();
   const byId = new Map(questions.map((question) => [String(question._id), question]));
@@ -905,7 +896,7 @@ export async function listLearningBookmarks(userId: string) {
 
 export async function topicProgress(userId: string) {
   const [questions, completed] = await Promise.all([
-    mongoCollection("learning_questions").find({ status: "published", ...visibleQuestionFilter(userId) }, { projection: { module_id: 1, topic: 1 } }).toArray(),
+    mongoCollection("learning_questions").find({ status: "published" }, { projection: { module_id: 1, topic: 1 } }).toArray(),
     mongoCollection("learning_question_progress").find({ user_id: userId, completed: true }, { projection: { question_id: 1 } }).toArray()
   ]);
   const completeIds = new Set(completed.map((row) => String(row.question_id)));
@@ -922,8 +913,8 @@ export async function topicProgress(userId: string) {
   return [...groups.values()].sort((left, right) => left.module_id.localeCompare(right.module_id) || left.topic.localeCompare(right.topic));
 }
 
-export async function listLearningTopics(moduleId: string, userId: string) {
-  const topics = await mongoCollection("learning_questions").distinct("topic", { module_id: moduleId, status: "published", ...visibleQuestionFilter(userId) });
+export async function listLearningTopics(moduleId: string) {
+  const topics = await mongoCollection("learning_questions").distinct("topic", { module_id: moduleId, status: "published" });
   return topics.filter((topic): topic is string => typeof topic === "string").sort((left, right) => left.localeCompare(right));
 }
 

@@ -278,15 +278,15 @@ export async function dailyProgress(userId: string, days = 30, timeZone = "UTC",
   ]);
   const learningQuestionIds = [...new Set(learningAttempts.map((attempt: any) => String(attempt.question_id)))];
   const learningQuestions = learningQuestionIds.length
-    ? await mongoCollection("learning_questions").find({ _id: { $in: learningQuestionIds }, $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] }, { projection: { module_id: 1 } }).toArray()
+    ? await mongoCollection("learning_questions").find({ _id: { $in: learningQuestionIds } }, { projection: { module_id: 1 } }).toArray()
     : [];
   const moduleByQuestionId = new Map(learningQuestions.map((question: any) => [String(question._id), String(question.module_id || "unknown")]));
   const completedLearningQuestionIds = [...new Set(learningCompletions.map((item: any) => String(item.question_id)))];
   const completedLearningQuestions = completedLearningQuestionIds.length
-    ? await mongoCollection("learning_questions").find({ _id: { $in: completedLearningQuestionIds }, $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] }, { projection: { module_id: 1 } }).toArray()
+    ? await mongoCollection("learning_questions").find({ _id: { $in: completedLearningQuestionIds } }, { projection: { module_id: 1 } }).toArray()
     : [];
   const learningQuestionCounts = await mongoCollection("learning_questions").aggregate([
-    { $match: { status: "published", $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] } },
+    { $match: { status: "published" } },
     { $group: { _id: "$module_id", total: { $sum: 1 } } }
   ]).toArray();
   const allTimeTracks = summarizeAllTimeSolved(

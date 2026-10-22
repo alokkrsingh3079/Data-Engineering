@@ -45,19 +45,6 @@ function getPracticePool(schemaName:string){
  return practicePool;
 }
 
-async function connectPracticeClient(schemaName: string): Promise<PoolClient> {
- const practicePool = getPracticePool(schemaName);
- try {
-  return await practicePool.connect();
- } catch (error) {
-  if (!error || typeof error !== "object" || !("code" in error) || error.code !== "28P01") throw error;
-  if (practicePools.get(schemaName) === practicePool) practicePools.delete(schemaName);
-  await practicePool.end();
-  await grantPracticeSchema(schemaName);
-  return await getPracticePool(schemaName).connect();
- }
-}
-
 export async function closePracticePools():Promise<void>{await Promise.all([...practicePools.values()].map((practicePool)=>practicePool.end()));practicePools.clear()}
 export async function dropPracticeSchema(schemaName:string):Promise<void>{if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error('Invalid schema name');const cached=practicePools.get(schemaName);if(cached){practicePools.delete(schemaName);await cached.end()}await pool.query(`DROP SCHEMA IF EXISTS ${quoteIdent(schemaName)} CASCADE`);const role=derivePracticeRoleCredentials(schemaName);await pool.query(`DROP ROLE IF EXISTS ${quoteIdent(role.name)}`)}
 
@@ -139,10 +126,10 @@ export async function schemaSnapshot(schemaName:string){
 export async function executeReadOnly(schemaName:string,sql:string){
  const cleaned=validatePracticeRead(schemaName,sql);
  if(cleaned.includes(';'))throw new Error("Only one SQL statement is allowed per practice run.");
- const client=await connectPracticeClient(schemaName);const started=Date.now();try{await client.query('BEGIN');await client.query("SET LOCAL statement_timeout='5000ms'");await client.query("SET LOCAL idle_in_transaction_session_timeout='6000ms'");await client.query("SET LOCAL transaction_read_only=on");await client.query("SET LOCAL work_mem='16MB'");await client.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);const r=await client.query(`SELECT * FROM (${cleaned}) AS practice_result LIMIT 1000`);await client.query('ROLLBACK');const limited=limitPracticeResult(r.rows);return{columns:r.fields.map((f:FieldDef)=>f.name),rows:limited.rows,rowCount:r.rowCount??r.rows.length,truncated:limited.truncated||r.rows.length===1000,executionMs:Date.now()-started};}catch(e){try{await client.query('ROLLBACK')}catch{}throw e}finally{client.release()}
+ const client=await getPracticePool(schemaName).connect();const started=Date.now();try{await client.query('BEGIN');await client.query("SET LOCAL statement_timeout='5000ms'");await client.query("SET LOCAL idle_in_transaction_session_timeout='6000ms'");await client.query("SET LOCAL transaction_read_only=on");await client.query("SET LOCAL work_mem='16MB'");await client.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);const r=await client.query(`SELECT * FROM (${cleaned}) AS practice_result LIMIT 1000`);await client.query('ROLLBACK');const limited=limitPracticeResult(r.rows);return{columns:r.fields.map((f:FieldDef)=>f.name),rows:limited.rows,rowCount:r.rowCount??r.rows.length,truncated:limited.truncated||r.rows.length===1000,executionMs:Date.now()-started};}catch(e){try{await client.query('ROLLBACK')}catch{}throw e}finally{client.release()}
 }
 
-export async function executeImport(schemaName:string,sql:string){const validated=validatePracticeImport(schemaName,sql);const c=await connectPracticeClient(schemaName);try{await c.query('BEGIN');await c.query("SET LOCAL statement_timeout='30000ms'");await c.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);await c.query(validated);await c.query('COMMIT')}catch(e){try{await c.query('ROLLBACK')}catch{}throw e}finally{c.release()}}
+export async function executeImport(schemaName:string,sql:string){const validated=validatePracticeImport(schemaName,sql);const c=await getPracticePool(schemaName).connect();try{await c.query('BEGIN');await c.query("SET LOCAL statement_timeout='30000ms'");await c.query(`SET LOCAL search_path TO ${quoteIdent(schemaName)}`);await c.query(validated);await c.query('COMMIT')}catch(e){try{await c.query('ROLLBACK')}catch{}throw e}finally{c.release()}}
 
 export async function clearPracticeSchema(schemaName:string){await pool.query(`DROP SCHEMA IF EXISTS ${quoteIdent(schemaName)} CASCADE`);await createPracticeSchema(schemaName)}
 export async function schemaDDL(schemaName:string){const tables=await listTables(schemaName);const lines:string[]=[];for(const t of tables){lines.push(`CREATE TABLE ${quoteIdent(t.name)} (`);lines.push(t.columns.map((c:any)=>`  ${quoteIdent(c.column_name)} ${c.data_type.toUpperCase()}${c.is_nullable==='NO'?' NOT NULL':''}${c.is_primary_key?' PRIMARY KEY':''}`).join(',\n'));lines.push(');')}const snap=await schemaSnapshot(schemaName);for(const fk of snap.relationships)lines.push(`ALTER TABLE ${quoteIdent(fk.table_name)} ADD CONSTRAINT ${quoteIdent(fk.constraint_name)} FOREIGN KEY (${quoteIdent(fk.column_name)}) REFERENCES ${quoteIdent(fk.foreign_table_name)} (${quoteIdent(fk.foreign_column_name)});`);return lines.join('\n')}
