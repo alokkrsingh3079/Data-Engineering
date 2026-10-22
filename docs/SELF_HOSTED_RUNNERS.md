@@ -49,7 +49,7 @@ The runner controllers require access to the host Docker socket so they can crea
    PYTHON_RUNNER_TOKEN=<same Python token as on the VM>
    ```
 
-   Save and redeploy the backend and runner controllers. On startup, the backend and runner logs emit `runner_token_fingerprint` entries containing the component, language, host (backend only), and first 16 hex characters of the token's SHA-256 digest. Compare the backend and corresponding runner fingerprints without revealing either token. Matching fingerprints confirm the running processes loaded the same token. Open `/api/learning/runners/status` on the API to verify both runners report configured and available, then try one Python and one PySpark submission. A `rejected the configured token` diagnostic means the active backend and runner bearer tokens differ; a health-check HTTP error identifies endpoint or reachability problems.
+   Save and redeploy the backend and runner controllers. Open `/api/learning/runners/status` on the API to verify both runners report configured and available, then try one Python and one PySpark submission. A `rejected the configured token` diagnostic means the active backend and runner bearer tokens differ; a health-check HTTP error identifies endpoint or reachability problems.
 
 ## Operations
 

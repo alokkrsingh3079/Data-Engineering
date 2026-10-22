@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { z } from "zod";
 
 export type RunnerLanguage = "python" | "pyspark";
@@ -44,17 +43,6 @@ function runnerConfig(language: RunnerLanguage) {
 
 export function isRunnerConfigured(language: RunnerLanguage): boolean {
   return runnerConfig(language) !== null;
-}
-
-export function runnerTokenFingerprints(): { language: RunnerLanguage; host: string; fingerprint: string }[] {
-  return (["python", "pyspark"] as const).flatMap((language) => {
-    const config = runnerConfig(language);
-    return config ? [{
-      language,
-      host: config.url.host,
-      fingerprint: crypto.createHash("sha256").update(config.token).digest("hex").slice(0, 16)
-    }] : [];
-  });
 }
 
 export async function runnerHealth(language: RunnerLanguage): Promise<{ configured: boolean; available: boolean; diagnostic?: string }> {

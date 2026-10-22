@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import socket
@@ -348,12 +347,6 @@ def main():
         raise RuntimeError("SPARK_RUNNER_TOKEN is required")
     client.ping()
     client.images.get(JOB_IMAGE)
-    print(json.dumps({
-        "event": "runner_token_fingerprint",
-        "component": "runner",
-        "language": "pyspark",
-        "fingerprint": hashlib.sha256(TOKEN.encode()).hexdigest()[:16],
-    }), flush=True)
     ThreadingHTTPServer((os.environ.get("SPARK_RUNNER_HOST", "0.0.0.0"), int(os.environ.get("SPARK_RUNNER_PORT", "4021"))), Handler).serve_forever()
 
 
