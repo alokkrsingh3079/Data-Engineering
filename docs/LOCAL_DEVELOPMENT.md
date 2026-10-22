@@ -36,6 +36,9 @@ sed -i \
   -e "s|replace-with-a-stable-random-secret|${PRACTICE_ROLE_SECRET}|" \
   -e "s|replace-with-at-least-32-random-characters|${AUTH_SECRET}|" \
   -e 's|replace-with-a-unique-password|LocalDevAdmin!42|' \
+  -e 's|^DATABASE_URL=.*|DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/sql_practice|' \
+  -e 's|^PRACTICE_DATABASE_URL=.*|PRACTICE_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/sql_practice|' \
+  -e 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://127.0.0.1:27017|' \
   -e 's|^PYTHON_RUNNER_URL=.*|PYTHON_RUNNER_URL=http://127.0.0.1:4020|' \
   -e 's|^PYTHON_RUNNER_TOKEN=.*|PYTHON_RUNNER_TOKEN=local-development-python-token|' \
   -e 's|^SPARK_RUNNER_URL=.*|SPARK_RUNNER_URL=http://127.0.0.1:4021|' \
@@ -46,7 +49,7 @@ unset AUTH_SECRET PRACTICE_ROLE_SECRET
 
 These values are for local development only. `backend/.env` is ignored by Git. Do not reuse the sample local admin password or runner tokens in production. `OPENAI_API_KEY` is optional for normal app startup, but AI features and SQL question generation require a valid key.
 
-The example file points both PostgreSQL URLs at the Compose `sql_practice` database and MongoDB at `127.0.0.1:27017`. The backend uses MongoDB for platform records and keeps PostgreSQL for SQL-practice schemas and query execution.
+The local setup explicitly points both PostgreSQL URLs at the Compose `sql_practice` database and MongoDB at `127.0.0.1:27017`, even if an existing `backend/.env` contains cloud database URLs. The backend uses MongoDB for platform records and keeps PostgreSQL for SQL-practice schemas and query execution. The local runner tokens must match the Compose defaults (`local-development-python-token` and `local-development-only-token`); if you change either token in Compose, change the matching backend value too.
 
 ## 3. Install dependencies
 

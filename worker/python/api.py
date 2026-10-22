@@ -125,6 +125,18 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_GET(self):
+        if self.path == "/v1/auth-check":
+            if not self.authorized():
+                self.send_json(401, {"error": "Authentication required"})
+                return
+            try:
+                client.ping()
+                client.images.get(IMAGE)
+            except (DockerException, NotFound):
+                self.send_json(503, {"ok": False, "error": "Docker executor is not ready"})
+                return
+            self.send_json(200, {"ok": True, "language": "python"})
+            return
         if self.path != "/health":
             self.send_json(404,{"error":"Not found"})
             return

@@ -41,6 +41,11 @@ test('external runner adapter authenticates requests and validates returned test
       response.writeHead(200).end('ok');
       return;
     }
+    if (request.url === '/v1/auth-check') {
+      assert.equal(request.headers.authorization, 'Bearer isolated-test-token');
+      response.writeHead(200).end('ok');
+      return;
+    }
     if (request.headers.authorization !== 'Bearer isolated-test-token') {
       response.writeHead(401).end();
       return;
@@ -51,7 +56,7 @@ test('external runner adapter authenticates requests and validates returned test
     assert.equal(payload.language, 'python');
     assert.equal(payload.code, 'def solve(): return 1');
     response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({
-      status: 'passed', executionMs: 12, tests: payload.testCases.map((testCase) => ({ name: testCase.name, passed: true })), message: null
+      status: 'passed', executionMs: 12, tests: payload.testCases.map((testCase) => ({ name: testCase.name, passed: true, status: 'succeeded', executionMs: 6 })), message: null
     }));
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -84,7 +89,13 @@ test('external runner adapter authenticates requests and validates returned test
 
 test('runner health reports upstream HTTP failures without sending the runner token', async (t) => {
   const server = createServer((request, response) => {
-    assert.equal(request.headers.authorization, undefined);
+    if (request.url === '/health') {
+      assert.equal(request.headers.authorization, undefined);
+      response.writeHead(200).end('ok');
+      return;
+    }
+    assert.equal(request.url, '/v1/auth-check');
+    assert.equal(request.headers.authorization, 'Bearer health-test-token');
     response.writeHead(503).end('unavailable');
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -100,7 +111,42 @@ test('runner health reports upstream HTTP failures without sending the runner to
     assert.deepEqual(await runnerHealth('pyspark'), {
       configured: true,
       available: false,
-      diagnostic: `Runner at 127.0.0.1:${server.address().port} returned HTTP 503.`
+      diagnostic: `Runner at 127.0.0.1:${server.address().port} authenticated health check returned HTTP 503.`
+    });
+  } finally {
+    if (previousUrl === undefined) delete process.env.SPARK_RUNNER_URL;
+    else process.env.SPARK_RUNNER_URL = previousUrl;
+    if (previousToken === undefined) delete process.env.SPARK_RUNNER_TOKEN;
+    else process.env.SPARK_RUNNER_TOKEN = previousToken;
+    if (previousMode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousMode;
+  }
+});
+
+test('runner health verifies the configured credential and reports authentication failures', async (t) => {
+  const server = createServer((request, response) => {
+    if (request.url === '/health') {
+      response.writeHead(200).end('ok');
+      return;
+    }
+    assert.equal(request.url, '/v1/auth-check');
+    assert.equal(request.headers.authorization, 'Bearer wrong-token');
+    response.writeHead(401).end('unauthorized');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const previousUrl = process.env.SPARK_RUNNER_URL;
+  const previousToken = process.env.SPARK_RUNNER_TOKEN;
+  const previousMode = process.env.NODE_ENV;
+  process.env.SPARK_RUNNER_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.SPARK_RUNNER_TOKEN = 'wrong-token';
+  process.env.NODE_ENV = 'development';
+  try {
+    assert.deepEqual(await runnerHealth('pyspark'), {
+      configured: true,
+      available: false,
+      diagnostic: `Runner at 127.0.0.1:${server.address().port} rejected the configured token (HTTP 401).`
     });
   } finally {
     if (previousUrl === undefined) delete process.env.SPARK_RUNNER_URL;
@@ -136,7 +182,7 @@ test('runner execution reports credential rejection without exposing the token',
     });
     assert.deepEqual(result, {
       status: 'error',
-      message: 'Execution service rejected its credentials (HTTP 401). Check that SPARK_RUNNER_TOKEN matches the runner.'
+      message: "Execution service rejected the configured bearer token (HTTP 401). Verify the backend token matches the runner's active token."
     });
     assert.doesNotMatch(JSON.stringify(result), /execution-test-token/);
   } finally {

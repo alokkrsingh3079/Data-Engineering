@@ -5,7 +5,13 @@ export type RunnerLanguage = "python" | "pyspark";
 const runnerResultSchema = z.object({
   status: z.enum(["passed", "failed", "timeout", "error", "resource_limit_exceeded", "cancelled"]),
   executionMs: z.number().int().min(0).max(120_000),
-  tests: z.array(z.object({ name: z.string().min(1).max(120), passed: z.boolean() }).strict()).max(100),
+  tests: z.array(z.object({
+    name: z.string().min(1).max(120),
+    passed: z.boolean(),
+    status: z.string().max(40).optional(),
+    executionMs: z.number().int().min(0).optional(),
+    message: z.string().max(500).optional()
+  }).strict()).max(100),
   message: z.string().max(500).nullable().optional(),
   output: z.object({
     columns: z.array(z.string().max(128)).max(100).optional(),
@@ -48,8 +54,19 @@ export async function runnerHealth(language: RunnerLanguage): Promise<{ configur
       redirect: "error",
       signal: AbortSignal.timeout(10_000)
     });
-    if (response.ok) return { configured: true, available: true };
-    diagnostic = `Runner at ${config.url.host} returned HTTP ${response.status}.`;
+    if (!response.ok) {
+      diagnostic = `Runner at ${config.url.host} health check returned HTTP ${response.status}.`;
+    } else {
+      const authResponse = await fetch(new URL("/v1/auth-check", config.url), {
+        headers: { Authorization: `Bearer ${config.token}` },
+        redirect: "error",
+        signal: AbortSignal.timeout(10_000)
+      });
+      if (authResponse.ok) return { configured: true, available: true };
+      diagnostic = authResponse.status === 401
+        ? `Runner at ${config.url.host} rejected the configured token (HTTP 401).`
+        : `Runner at ${config.url.host} authenticated health check returned HTTP ${authResponse.status}.`;
+    }
   } catch (error) {
     const cause = error && typeof error === "object" && "cause" in error ? error.cause : undefined;
     const code = cause && typeof cause === "object" && "code" in cause && typeof cause.code === "string" && /^[A-Z0-9_]{1,40}$/.test(cause.code)
@@ -97,7 +114,7 @@ export async function executeOnRunner(input: {
     if (!response.ok) return {
       status: "error" as const,
       message: response.status === 401
-        ? "Execution service rejected its credentials (HTTP 401). Check that SPARK_RUNNER_TOKEN matches the runner."
+        ? "Execution service rejected the configured bearer token (HTTP 401). Verify the backend token matches the runner's active token."
         : `Execution service returned HTTP ${response.status}.`
     };
     if (Buffer.byteLength(text, "utf8") > 512_000) return { status: "error" as const, message: "Execution service returned an invalid response." };
