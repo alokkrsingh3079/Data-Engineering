@@ -57,10 +57,6 @@ export async function connectMongo(): Promise<Db> {
     database.collection("ai_chat_messages").createIndex({ conversation_id: 1, created_at: 1 }),
     database.collection("ai_chat_attachments").createIndex({ conversation_id: 1, user_id: 1 }),
     database.collection("spark_execution_jobs").createIndex({ user_id: 1, created_at: -1 }),
-    database.collection("spark_execution_jobs").createIndex(
-      { user_id: 1, idempotency_key: 1 },
-      { unique: true, partialFilterExpression: { idempotency_key: { $type: "string" } }, name: "spark_jobs_user_idempotency_unique" }
-    ),
     database.collection("spark_execution_jobs").createIndex({ expire_at: 1 }, { expireAfterSeconds: 0 }),
     database.collection("interview_sessions").createIndex({ user_id: 1, created_at: -1 }),
     database.collection("interview_sessions").createIndex({ deadline_at: 1 }, { expireAfterSeconds: 2592000 })

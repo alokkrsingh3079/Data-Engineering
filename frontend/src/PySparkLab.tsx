@@ -44,19 +44,19 @@ type RunResult = {
 
 const API = "";
 
-async function readApiJson<T>(response: Response, path = "API request"): Promise<T> {
+async function readApiJson<T>(response: Response): Promise<T> {
   const contentType = response.headers.get("content-type") || "";
   const body = await response.text();
   if (!contentType.toLowerCase().includes("application/json")) {
     const detail = body.trimStart().startsWith("<")
-      ? "The API gateway returned an HTML page."
+      ? "The server returned an HTML page. Check the Render API URL and deployment."
       : "The server returned a non-JSON response.";
-    throw new Error(`${detail} Request: ${path} (HTTP ${response.status}).`);
+    throw new Error(`${detail} (HTTP ${response.status})`);
   }
   try {
     return JSON.parse(body) as T;
   } catch {
-    throw new Error(`The API returned invalid JSON. Request: ${path} (HTTP ${response.status}).`);
+    throw new Error(`The API returned invalid JSON (HTTP ${response.status}).`);
   }
 }
 
@@ -197,56 +197,19 @@ export default function PySparkLab() {
     setError("");
     setResult(null);
     try {
-      const createJobPath = `${API}/api/learning/questions/${question.id}/jobs`;
-      const idempotencyKey = crypto.randomUUID();
-      let response: Response | undefined;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          response = await fetch(createJobPath, {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
-            body: JSON.stringify({ code, mode: submit ? "submit" : "run" }),
-          });
-          if (![502, 503, 504].includes(response.status) || attempt === 2) break;
-          await response.body?.cancel();
-        } catch (cause) {
-          if (attempt === 2) throw new Error(`Spark job creation request failed. Request: ${createJobPath}.`);
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 700 * 2 ** attempt));
-      }
-      if (!response) throw new Error(`Spark job creation request failed. Request: ${createJobPath}.`);
-      const body = await readApiJson<any>(response, createJobPath);
+      const response = await fetch(`${API}/api/learning/questions/${question.id}/jobs`, {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, mode: submit ? "submit" : "run" }),
+      });
+      const body = await readApiJson<any>(response);
       if (!response.ok) throw new Error(body.error || "Execution failed.");
       setActiveJobId(body.jobId);
       setJobStatus(body.status || "queued");
       let completedJob: any = null;
       const deadline = Date.now() + 180_000;
-      let transientFailures = 0;
       while (Date.now() < deadline) {
         await new Promise((resolve) => window.setTimeout(resolve, 900));
-        const statusPath = `${API}/api/learning/jobs/${body.jobId}`;
-        let statusResponse: Response;
-        try {
-          statusResponse = await fetch(statusPath, { credentials: "include" });
-        } catch (cause) {
-          transientFailures += 1;
-          if (transientFailures > 5) throw new Error(`Spark job status request failed. Request: ${statusPath}.`);
-          await new Promise((resolve) => window.setTimeout(resolve, Math.min(900 * 2 ** transientFailures, 7_200)));
-          continue;
-        }
-        if ([502, 503, 504].includes(statusResponse.status)) {
-          transientFailures += 1;
-          if (transientFailures > 5) {
-            const failure = await readApiJson<any>(statusResponse, statusPath);
-            throw new Error(failure.error || `Spark job status remained unavailable. Request: ${statusPath} (HTTP ${statusResponse.status}).`);
-          }
-          await statusResponse.body?.cancel();
-          await new Promise((resolve) => window.setTimeout(resolve, Math.min(900 * 2 ** transientFailures, 7_200)));
-          continue;
-        }
-        transientFailures = 0;
-        const statusBody = await readApiJson<any>(statusResponse, statusPath);
+        const statusResponse = await fetch(`${API}/api/learning/jobs/${body.jobId}`, { credentials: "include" });
+        const statusBody = await readApiJson<any>(statusResponse);
         if (!statusResponse.ok) throw new Error(statusBody.error || "Spark job status is unavailable.");
         setJobStatus(statusBody.status);
         if (!["queued", "running", "finalizing"].includes(statusBody.status)) {
@@ -279,7 +242,7 @@ export default function PySparkLab() {
   async function cancelExecution() {
     if (!activeJobId) return;
     const response = await fetch(`${API}/api/learning/jobs/${activeJobId}`, { method: "DELETE", credentials: "include" });
-    const body = await readApiJson<any>(response, `${API}/api/learning/jobs/${activeJobId}`);
+    const body = await readApiJson<any>(response);
     if (!response.ok) { setError(body.error || "Spark job could not be cancelled."); return; }
     setError("Spark job cancelled.");
     setBusy("");

@@ -38,7 +38,7 @@ PostgreSQL remains required even though accounts and platform records are stored
 3. Set Render's `ALLOWED_ORIGIN` to the Cloudflare `workers.dev` origin after the first Worker deploy (for example, `https://sql-software.<your-subdomain>.workers.dev`), then redeploy/restart the API. The browser calls `/api` on the Worker origin, and the Worker forwards requests and session cookies to Render.
 4. Push or merge to `main`. GitHub Actions builds and deploys the Worker; Render auto-deploys the API from its connected Git branch. Visit the Worker URL and verify login, registration, SQL schema import, SQL execution, and persistence after refresh.
 
-The Worker proxies API requests to Render; it does not host the Express API or databases. It retries transient 502/503/504 responses up to five times for GET/HEAD requests and POST requests carrying an `Idempotency-Key`, with a bounded exponential backoff; other writes are not retried. If the upstream still fails, the Worker returns a JSON error instead of an HTML gateway page. MongoDB writes persist directly to Atlas and are read back through the API. This app does not currently implement MongoDB change streams or WebSocket push, so it provides live database-backed requests, not cross-client live notifications.
+The Worker proxies API requests to Render; it does not host the Express API or databases. MongoDB writes persist directly to Atlas and are read back through the API. This app does not currently implement MongoDB change streams or WebSocket push, so it provides live database-backed requests, not cross-client live notifications.
 
 ### 4. Python and Spark execution
 

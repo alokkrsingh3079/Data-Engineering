@@ -675,15 +675,7 @@ export async function submitLearningCode(userId: string, questionId: string, cod
 
 const terminalSparkStates = ["succeeded", "failed", "timed_out", "cancelled", "resource_limit_exceeded"];
 
-export async function createLearningExecution(userId: string, questionId: string, code: string, mode: "run" | "submit", idempotencyKey?: string) {
-  const jobs = mongoCollection("spark_execution_jobs");
-  if (idempotencyKey) {
-    const existing = await jobs.findOne({ user_id: userId, idempotency_key: idempotencyKey });
-    if (existing) {
-      if (existing.question_id !== questionId || existing.mode !== mode || existing.code !== code) return { status: "idempotency_conflict" as const };
-      return { status: "ok" as const, jobId: existing._id, state: existing.status, createdAt: existing.created_at };
-    }
-  }
+export async function createLearningExecution(userId: string, questionId: string, code: string, mode: "run" | "submit") {
   const question = await mongoCollection("learning_questions").findOne({ ...accessibleQuestionFilter(questionId, userId), status: "published", type: "coding", language: "pyspark" });
   if (!question) return { status: "not_found" as const };
   const testCases = mode === "run"
@@ -698,14 +690,13 @@ export async function createLearningExecution(userId: string, questionId: string
   const id = crypto.randomUUID();
   const createdAt = new Date();
   try {
-    await jobs.insertOne({
+    await mongoCollection("spark_execution_jobs").insertOne({
       _id: id,
       user_id: userId,
       question_id: questionId,
       runner_job_id: started.job.jobId,
       mode,
       code,
-      ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
       status: "queued",
       created_at: createdAt,
       updated_at: createdAt,
@@ -713,13 +704,6 @@ export async function createLearningExecution(userId: string, questionId: string
     });
   } catch (error) {
     await cancelSparkJob(started.job.jobId);
-    if (idempotencyKey && error && typeof error === "object" && "code" in error && error.code === 11000) {
-      const existing = await jobs.findOne({ user_id: userId, idempotency_key: idempotencyKey });
-      if (existing && existing.question_id === questionId && existing.mode === mode && existing.code === code) {
-        return { status: "ok" as const, jobId: existing._id, state: existing.status, createdAt: existing.created_at };
-      }
-      if (existing) return { status: "idempotency_conflict" as const };
-    }
     throw error;
   }
   return { status: "ok" as const, jobId: id, state: "queued" as const, createdAt };
