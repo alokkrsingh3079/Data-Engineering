@@ -17,8 +17,6 @@ services:
         value: sql_software
       - key: DATABASE_URL
         sync: false
-      - key: PRACTICE_DATABASE_URL
-        sync: false
       - key: AUTH_SECRET
         generateValue: true
       - key: PRACTICE_ROLE_SECRET

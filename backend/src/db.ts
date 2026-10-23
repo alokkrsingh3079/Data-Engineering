@@ -35,8 +35,8 @@ export function derivePracticeRoleCredentials(schemaName: string, secret = proce
  return {name:`practice_${crypto.createHash('sha256').update(schemaName).digest('hex').slice(0,24)}`,password:crypto.createHmac('sha256',secret).update(schemaName).digest('base64url')};
 }
 function getPracticePool(schemaName:string){
- const connectionString=process.env.PRACTICE_DATABASE_URL||(process.env.NODE_ENV==='production'?undefined:process.env.DATABASE_URL);
- if(!connectionString)throw new Error('PRACTICE_DATABASE_URL must be configured for isolated SQL execution');
+ const connectionString=process.env.PRACTICE_DATABASE_URL||process.env.DATABASE_URL;
+ if(!connectionString)throw new Error('DATABASE_URL must be configured for isolated SQL execution');
  if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schemaName))throw new Error('Invalid schema name');
  let practicePool=practicePools.get(schemaName);
  if(practicePool){practicePools.delete(schemaName);practicePools.set(schemaName,practicePool);return practicePool}
