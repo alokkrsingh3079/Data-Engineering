@@ -31,18 +31,28 @@ function runnerConfig(language: RunnerLanguage) {
   const prefix = language === "python" ? "PYTHON_RUNNER" : "SPARK_RUNNER";
   const rawUrl = process.env[`${prefix}_URL`];
   const token = process.env[`${prefix}_TOKEN`];
-  if (!rawUrl || !token) return null;
+  if (!rawUrl || !token) {
+    console.warn(JSON.stringify({ event: "runner_config_missing", language, env: { url: Boolean(rawUrl), token: Boolean(token) }, host: undefined }));
+    return null;
+  }
   let url: URL;
   try {
     url = new URL(rawUrl);
   } catch {
+    console.warn(JSON.stringify({ event: "runner_config_invalid", language, rawUrl: rawUrl.slice(0, 200), reason: "invalid_url" }));
     return null;
   }
   const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname) || (process.env.NODE_ENV !== "production" && url.hostname === "spark_runner");
   const privateSparkHttp = language === "pyspark" && process.env.SPARK_RUNNER_ALLOW_PRIVATE_HTTP === "true" && url.hostname === "spark_runner" && url.protocol === "http:";
   const privatePythonHttp = language === "python" && process.env.PYTHON_RUNNER_ALLOW_PRIVATE_HTTP === "true" && url.hostname === "python_runner" && url.protocol === "http:";
-  if (url.protocol !== "https:" && !(process.env.NODE_ENV !== "production" && local && url.protocol === "http:") && !privateSparkHttp && !privatePythonHttp) return null;
-  if (url.username || url.password || url.search || url.hash) return null;
+  if (url.protocol !== "https:" && !(process.env.NODE_ENV !== "production" && local && url.protocol === "http:") && !privateSparkHttp && !privatePythonHttp) {
+    console.warn(JSON.stringify({ event: "runner_config_invalid", language, host: url.host, protocol: url.protocol, reason: "unsafe_protocol" }));
+    return null;
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    console.warn(JSON.stringify({ event: "runner_config_invalid", language, host: url.host, reason: "credentials_or_query_in_url" }));
+    return null;
+  }
   url.pathname = url.pathname.replace(/\/$/, "");
   return { url, token };
 }

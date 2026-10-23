@@ -156,15 +156,28 @@ export default function PySparkLab() {
     let lastDiagnostic = "";
     const refreshRunnerStatus = () => {
       void fetch(`${API}/api/learning/runners/status`, { credentials: "include" })
-        .then((response) => response.ok ? readApiJson<{ pyspark: RunnerState }>(response) : null)
-        .then((status) => {
+        .then(async (response) => {
+          if (!response.ok) {
+            if (response.status === 401 || response.status === 403) {
+              if (!mounted) return;
+              setRunner({ configured: true, available: false, diagnostic: "Sign in to view live runner status." });
+              return;
+            }
+            if (!mounted) return;
+            setRunner({ configured: false, available: false, diagnostic: `Runner status endpoint returned HTTP ${response.status}.` });
+            return;
+          }
+          const status = await readApiJson<{ pyspark: RunnerState }>(response);
           if (!mounted || !status?.pyspark) return;
           setRunner(status.pyspark);
           const diagnostic = status.pyspark.available ? "" : status.pyspark.diagnostic || "No diagnostic provided.";
           if (diagnostic && diagnostic !== lastDiagnostic) console.warn("[PySpark Lab] Runner health check failed:", diagnostic);
           lastDiagnostic = diagnostic;
         })
-        .catch(() => {});
+        .catch((cause) => {
+          if (!mounted) return;
+          setRunner({ configured: false, available: false, diagnostic: cause instanceof Error ? cause.message : "Runner status check failed." });
+        });
     };
     refreshRunnerStatus();
     const refreshInterval = window.setInterval(refreshRunnerStatus, 30_000);

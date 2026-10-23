@@ -25,9 +25,10 @@ const buckets=new Map<string,{n:number,t:number}>();
 app.use((req,res,next)=>{const expensiveRoute=req.path.match(/^\/api\/question-datasets\/[^/]+\/generate$/)?'/api/question-generation':req.path.match(/^\/learning\/questions\/[^/]+\/(?:run|execute|jobs)$/)?'/learning/questions/:id/run':req.path.match(/^\/interview\/learning\/[^/]+\/answer$/)?'/interview/learning/:id/answer':req.path;const key=(req.ip||'unknown')+':'+expensiveRoute;const now=Date.now(),b=buckets.get(key),limit=expensiveRoute==='/api/question-generation'?6:expensiveRoute==='/learning/questions/:id/run'?10:expensiveRoute==='/interview/learning/:id/answer'?20:Number(process.env.RATE_LIMIT_PER_MINUTE||180);if(!b||now-b.t>60000){if(buckets.size>=10000)buckets.delete(buckets.keys().next().value!);buckets.set(key,{n:1,t:now})}else{b.n++;if(b.n>limit)return res.status(429).json({error:'Rate limit exceeded'});}next()});
 function setSessionCookie(res:any,token:string){const secure=process.env.NODE_ENV==='production'?'; Secure':'';const maxAge=Number(process.env.SESSION_DAYS||7)*86400;res.setHeader('Set-Cookie',`sql_practice_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`)}
 function clearSessionCookie(res:any){const secure=process.env.NODE_ENV==='production'?'; Secure':'';res.setHeader('Set-Cookie',`sql_practice_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`)}
+export function isPublicApiRoute(path:string){return path==='/health'||path==='/auth/login'||path==='/auth/register'||path==='/learning/runners/status'||path==='/learning/runners/status/'||path==='/learning/runners/status?';}
 function pysparkRequestId(req:any){const supplied=req.get('X-Client-Request-Id');return z.string().uuid().safeParse(supplied).success?supplied:crypto.randomUUID()}
 app.use('/api',async(req,res,next)=>{
- if(req.path==='/health'||req.path==='/auth/login'||req.path==='/auth/register'||req.method==='OPTIONS')return next();
+ if(isPublicApiRoute(req.path)||req.method==='OPTIONS')return next();
  try{
   const user=await getUserFromToken(requestToken(req));
   if(!user||user.status!=='active')return res.status(401).json({error:'Authentication required'});

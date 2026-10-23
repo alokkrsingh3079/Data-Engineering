@@ -2,6 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { cancelSparkJob, createSparkJob, executeOnRunner, getSparkJob, isRunnerConfigured, runnerHealth } from '../src/runners.ts';
+import { isPublicApiRoute } from '../src/server.ts';
+
+test('public runner status route is exposed without forcing a login', () => {
+  assert.equal(isPublicApiRoute('/health'), true);
+  assert.equal(isPublicApiRoute('/learning/runners/status'), true);
+  assert.equal(isPublicApiRoute('/learning/questions/abc'), false);
+});
 
 test('Python and Spark runners remain unavailable until trusted endpoints are configured', async () => {
   const variables = ['PYTHON_RUNNER_URL', 'PYTHON_RUNNER_TOKEN', 'SPARK_RUNNER_URL', 'SPARK_RUNNER_TOKEN', 'SPARK_RUNNER_ALLOW_PRIVATE_HTTP'];
