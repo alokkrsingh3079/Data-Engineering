@@ -3,6 +3,9 @@
   "name": "dataengineering",
   "main": "worker/index.js",
   "compatibility_date": "2026-10-07",
+  "vars": {
+    "API_ORIGIN": "https://data-engineering-api.onrender.com"
+  },
   "assets": {
     "directory": "./frontend/dist",
     "binding": "ASSETS",

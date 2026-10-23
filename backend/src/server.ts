@@ -15,9 +15,11 @@ import { answerLearningInterview, finishLearningInterview, getLearningInterview,
 import { cancelLearningExecution, createLearningExecution, executeLearningExample, getLearningExecution, getLearningQuestion, getLearningQuestionReview, learningRunnerStatus, listLearningAttempts, listLearningBookmarks, listLearningQuestions, listLearningTopics, listRevisionQueue, seedLearningQuestions, setLearningBookmark, setLearningRevisionMark, submitLearningAnswer, submitLearningCode, topicProgress } from "./learning-engine.js";
 import { createQuestionDataset, deleteQuestionDataset, getQuestionDataset, listQuestionDatasets, updateQuestionDataset } from "./question-datasets.js";
 import { validateLearningQuestion } from "./learning-engine.js";
-import { executeOnRunner } from "./runners.js";
+import { executeOnRunner, normalizeRunnerInput } from "./runners.js";
 import { MAX_DATASET_BYTES } from "./dataset-files.js";
-const app=express(),port=Number(process.env.PORT||4000),upload=multer({storage:multer.memoryStorage(),limits:{fileSize:8*1024*1024}});app.use(cors({origin:process.env.ALLOWED_ORIGIN||"http://localhost:5173",credentials:true}));app.use(express.json({limit:'8mb'}));
+import { parseJsonLike } from "./ai.js";
+import { isAllowedOrigin } from "./cors-config.js";
+const app=express(),port=Number(process.env.PORT||4000),upload=multer({storage:multer.memoryStorage(),limits:{fileSize:8*1024*1024}});app.use(cors({origin:(origin,callback)=>{if(!origin||isAllowedOrigin(origin))return callback(null,origin||true);callback(null,false)},credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','X-Client-Request-Id','x-practice-session']}));app.use(express.json({limit:'8mb'}));
 app.use((req,res,next)=>{const sendJson=res.json.bind(res);(res as any).json=(body:any)=>{const hideSolution=(item:any)=>{if(!item||typeof item!=='object')return item;const{reference_sql,expected,...visible}=item;return{...visible,...(visible.expected_json===undefined&&expected!==undefined?{expected_json:expected}:{})}};if(req.method==='GET'&&req.path==='/api/questions'&&Array.isArray(body))body=body.map(hideSolution);if(req.method==='POST'&&req.path==='/api/questions/generate'&&body&&Array.isArray(body.accepted))body={...body,accepted:body.accepted.map(hideSolution),rejected:Array.isArray(body.rejected)?body.rejected.map((item:any)=>({...item,question:hideSolution(item.question)})):body.rejected};return sendJson(body)};next()});
 app.disable('x-powered-by');
 app.use((req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('Permissions-Policy','camera=(),microphone=(),geolocation=()');res.setHeader('Content-Security-Policy',"default-src 'self'; frame-ancestors 'none'; base-uri 'self'");next()});
@@ -81,14 +83,27 @@ app.post('/api/question-datasets/:datasetId/generate',async(req,res)=>{
    try{
     const testCases=Array.isArray(raw.test_cases)?raw.test_cases.map((test,index)=>{
      if(typeof test.input_json!=='string'||typeof test.expected_json!=='string')throw new Error('AI test data is malformed');
-     const testInput:unknown=JSON.parse(test.input_json);const expected:unknown=JSON.parse(test.expected_json);
-     if(!testInput||typeof testInput!=='object'||Array.isArray(testInput))throw new Error('Test input must be a JSON object');
-     return{name:String(test.name||`Case ${index+1}`).slice(0,120),input:testInput,expected};
+     const testInput:unknown=parseJsonLike(test.input_json);const expected:unknown=parseJsonLike(test.expected_json);
+     const normalizedInput = normalizeRunnerInput(testInput);
+     if(!normalizedInput||typeof normalizedInput!=='object')throw new Error('Test input must be a JSON object or a single list payload');
+     return{name:String(test.name||`Case ${index+1}`).slice(0,120),input:normalizedInput,expected};
     }):[];
     const functionName=String(raw.function_name||'');
     if(!/^[a-zA-Z_][a-zA-Z0-9_]{0,100}$/.test(functionName))throw new Error('Generated question function_name must be a valid Python identifier');
+    const starterCode=String(raw.starter_code||'');
+    const referenceSolution=String(raw.reference_solution||'');
+    const functionMatcher=/^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*:/m;
+    const starterMatch=starterCode.match(functionMatcher);
+    const referenceMatch=referenceSolution.match(functionMatcher);
+    if(!starterMatch||!referenceMatch)throw new Error('Generated solution must include a valid Python function definition');
+    if(starterMatch[1]!==functionName||referenceMatch[1]!==functionName)throw new Error('Generated function name must match the starter and reference definition');
+    const signatureArgs = starterMatch[2].split(',').map((part)=>part.trim()).filter(Boolean);
+    const refArgs = referenceMatch[2].split(',').map((part)=>part.trim()).filter(Boolean);
+    if(signatureArgs.length !== 1 || refArgs.length !== 1 || /\*|\*\*|=/.test(starterMatch[2]) || /\*|\*\*|=/.test(referenceMatch[2])) {
+      throw new Error('Generated PySpark function must define exactly one parameter and no default arguments');
+    }
     if(testCases.length!==2)throw new Error(`Generated question must include exactly two valid test cases; received ${testCases.length}`);
-    const question={id,module_id:input.data.language==='python'?'python-etl':'pyspark-foundations',dataset_id:dataset.id,owner_user_id:userId,language:input.data.language,type:'coding',title:String(raw.title||''),prompt:String(raw.prompt||''),topic:String(raw.topic||input.data.topic),subtopic:input.data.topic,difficulty:input.data.difficulty==='mixed'?String(raw.difficulty):input.data.difficulty,tags:[input.data.language,input.data.topic,'dataset-generated'],function_name:functionName,starter_code:String(raw.starter_code||''),reference_solution:String(raw.reference_solution||''),explanation:String(raw.explanation||''),hints:Array.isArray(raw.hints)?raw.hints.filter((hint):hint is string=>typeof hint==='string').slice(0,5):[],test_cases:testCases,public_examples:testCases.slice(0,1).map(({name,...item})=>item),input_description:'Use the uploaded dataset sample supplied to the isolated function runner.',output_description:'Return the requested transformation result.',status:'published',source:'dataset-generation',created_at:new Date()};
+    const question={id,module_id:input.data.language==='python'?'python-etl':'pyspark-foundations',dataset_id:dataset.id,owner_user_id:userId,language:input.data.language,type:'coding',title:String(raw.title||''),prompt:String(raw.prompt||''),topic:String(raw.topic||input.data.topic),subtopic:input.data.topic,difficulty:input.data.difficulty==='mixed'?String(raw.difficulty):input.data.difficulty,tags:[input.data.language,input.data.topic,'dataset-generated'],function_name:functionName,starter_code:starterCode,reference_solution:referenceSolution,explanation:String(raw.explanation||''),hints:Array.isArray(raw.hints)?raw.hints.filter((hint):hint is string=>typeof hint==='string').slice(0,5):[],test_cases:testCases,public_examples:testCases.slice(0,1).map(({name,...item})=>item),input_description:'Use the uploaded dataset sample supplied to the isolated function runner.',output_description:'Return the requested transformation result.',status:'published',source:'dataset-generation',created_at:new Date()};
     const validation=validateLearningQuestion(question);if(validation.length)throw new Error(validation.join('; '));
     const duplicate=await mongoCollection('learning_questions').findOne({owner_user_id:userId,dataset_id:dataset.id,title:question.title,language:input.data.language},{projection:{_id:1}});if(duplicate)throw new Error('A question with this title already exists for the dataset');
     const checked=await executeOnRunner({language:input.data.language,taskId:id,functionName,code:question.reference_solution,testCases});

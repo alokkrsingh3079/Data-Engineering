@@ -2,18 +2,63 @@ import { z } from "zod";
 
 export type RunnerLanguage = "python" | "pyspark";
 
+export function normalizeRunnerInput(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const candidate = input as Record<string, unknown>;
+  const keys = Object.keys(candidate);
+  if (keys.length === 1 && "input" in candidate) return candidate.input;
+  return input;
+}
+
+const runnerStatus = z.enum(["passed", "failed", "timeout", "error", "resource_limit_exceeded", "cancelled", "succeeded", "incorrect", "runtime_error"]);
+
+const runnerTestResultSchema = z.object({
+  name: z.string().min(1).max(120).default("case"),
+  passed: z.coerce.boolean(),
+  status: z.union([z.string().max(40), z.null()]).optional().transform((value) => value ?? undefined),
+  message: z.union([z.string().max(500), z.null()]).optional().transform((value) => value ?? undefined)
+}).passthrough();
+
+const runnerOutputSchema = z.object({
+  columns: z.array(z.string().max(128)).max(100).optional(),
+  schema: z.array(z.object({ name: z.string().max(128), type: z.string().max(80) }).strict()).max(100).optional(),
+  rows: z.array(z.record(z.string(), z.unknown())).max(500).optional(),
+  console: z.string().max(16_000).optional()
+}).strict().optional();
+
 const runnerResultSchema = z.object({
-  status: z.enum(["passed", "failed", "timeout", "error", "resource_limit_exceeded", "cancelled"]),
-  executionMs: z.number().int().min(0).max(120_000),
-  tests: z.array(z.object({ name: z.string().min(1).max(120), passed: z.boolean() }).strict()).max(100),
-  message: z.string().max(500).nullable().optional(),
-  output: z.object({
-    columns: z.array(z.string().max(128)).max(100).optional(),
-    schema: z.array(z.object({ name: z.string().max(128), type: z.string().max(80) }).strict()).max(100).optional(),
-    rows: z.array(z.record(z.string(), z.unknown())).max(500).optional(),
-    console: z.string().max(16_000).optional()
-  }).strict().optional()
+  status: runnerStatus,
+  executionMs: z.union([z.number().int().min(0).max(120_000), z.string().regex(/^\d+$/).transform(Number)]),
+  tests: z.array(runnerTestResultSchema).min(1).max(100),
+  message: z.union([z.string().max(500), z.null()]).optional().transform((value) => value ?? undefined),
+  output: z.union([runnerOutputSchema, z.null()]).optional().transform((value) => value ?? undefined)
 }).strict();
+
+function normalizeRunnerResponse(payload: unknown): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  const cast = payload as Record<string, unknown>;
+  const normalized: Record<string, unknown> = { ...cast };
+  if (typeof normalized.executionMs === "string" && /^\d+$/.test(normalized.executionMs.trim())) {
+    normalized.executionMs = Number(normalized.executionMs);
+  }
+  if (normalized.output === null) {
+    normalized.output = undefined;
+  }
+  if (Array.isArray(normalized.tests)) {
+    normalized.tests = normalized.tests.map((entry, index) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return { name: `case_${index + 1}`, passed: false };
+      const item = entry as Record<string, unknown>;
+      return {
+        ...item,
+        name: typeof item.name === "string" && item.name.trim() ? item.name : `case_${index + 1}`,
+        passed: typeof item.passed === "boolean" ? item.passed : false,
+        status: typeof item.status === "string" ? item.status : undefined,
+        message: typeof item.message === "string" || item.message === null ? item.message ?? undefined : undefined
+      };
+    });
+  }
+  return normalized;
+}
 
 function runnerFailureDetails(error: unknown) {
   const cause = error && typeof error === "object" && "cause" in error ? error.cause : undefined;
@@ -129,9 +174,10 @@ export async function executeOnRunner(input: {
     } catch {
       return { status: "error" as const, message: "Execution service returned invalid data." };
     }
-    const parsed = runnerResultSchema.safeParse(json);
-    if (!parsed.success || parsed.data.tests.length !== input.testCases.length) return { status: "error" as const, message: "Execution service response did not match the task contract." };
-    const passed = parsed.data.status === "passed" && parsed.data.tests.every((testCase) => testCase.passed);
+    const normalized = normalizeRunnerResponse(json);
+    const parsed = runnerResultSchema.safeParse(normalized);
+    if (!parsed.success || parsed.data.tests.length < 1) return { status: "error" as const, message: "Execution service response did not match the task contract." };
+    const passed = ["passed", "succeeded"].includes(parsed.data.status) && parsed.data.tests.every((testCase) => testCase.passed);
     return {
       status: parsed.data.status,
       correct: passed,

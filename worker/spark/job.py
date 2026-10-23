@@ -34,6 +34,8 @@ def main():
                     if not callable(function):
                         raise ValueError("Define the required function: " + request["functionName"])
                     raw_input = test_case["input"]
+                    if isinstance(raw_input, dict) and set(raw_input.keys()) == {"input"}:
+                        raw_input = raw_input["input"]
                     if isinstance(raw_input, list):
                         arguments = [case_spark.createDataFrame(raw_input)]
                     elif isinstance(raw_input, dict):

@@ -55,6 +55,16 @@ export default function QuestionGeneration() {
   const activeRunnerReady = language === "SQL" || runnerReady[language.toLowerCase() as "python" | "pyspark"] === true;
   const generationReady = Boolean(selected && aiConfigured && activeRunnerReady);
 
+  async function parseJsonResponse<T>(response: Response): Promise<T | null> {
+    const text = await response.text();
+    if (!text.trim()) return null;
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw new Error(response.ok ? "The server returned an invalid JSON response." : "The server returned an invalid error response.");
+    }
+  }
+
   async function loadDatasets() {
     const response = await fetch("/api/question-datasets", { credentials: "include" });
     if (response.status === 401) {
@@ -62,7 +72,7 @@ export default function QuestionGeneration() {
       return;
     }
     if (!response.ok) throw new Error("Dataset library is unavailable.");
-    const items = (await response.json()) as Dataset[];
+    const items = (await parseJsonResponse<Dataset[]>(response)) ?? [];
     setDatasets(items);
     setSelectedId((current) => items.some((item) => item.id === current) ? current : items[0]?.id || "");
   }
@@ -74,8 +84,8 @@ export default function QuestionGeneration() {
       fetch("/api/learning/runners/status", { credentials: "include" })
     ]).then(async ([aiResponse, runnerResponse]) => {
       if (!aiResponse.ok || !runnerResponse.ok) throw new Error("Generation services could not be checked.");
-      const ai = await aiResponse.json();
-      const runners = await runnerResponse.json();
+      const ai = (await parseJsonResponse<{ configured?: boolean }>(aiResponse)) ?? { configured: false };
+      const runners = (await parseJsonResponse<{ python?: { available?: boolean }; pyspark?: { available?: boolean } }>(runnerResponse)) ?? {};
       setAiConfigured(Boolean(ai.configured));
       setRunnerReady({ python: Boolean(runners.python?.available), pyspark: Boolean(runners.pyspark?.available) });
     }).catch(() => {
@@ -100,10 +110,10 @@ export default function QuestionGeneration() {
       const body = new FormData();
       body.append("file", file);
       const response = await fetch("/api/question-datasets", { method: "POST", body, credentials: "include" });
-      const result = await response.json();
+      const result = (await parseJsonResponse<{ id?: string; error?: string }>(response)) ?? {};
       if (!response.ok) throw new Error(result.error || "Upload failed.");
       await loadDatasets();
-      setSelectedId(result.id);
+      setSelectedId(result.id ?? "");
       setFile(null);
       setNotice("Dataset uploaded and previewed. SQL tables are available in SQL Lab.");
     } catch (cause) {
@@ -122,7 +132,7 @@ export default function QuestionGeneration() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, description })
     });
-    const result = await response.json();
+    const result = (await parseJsonResponse<{ error?: string }>(response)) ?? {};
     if (!response.ok) {
       setError(result.error || "Dataset details could not be saved.");
       return;
@@ -135,7 +145,7 @@ export default function QuestionGeneration() {
     if (!selected || !confirm(`Delete "${selected.name}" and its generated questions? This cannot be undone.`)) return;
     setError("");
     const response = await fetch(`/api/question-datasets/${selected.id}`, { method: "DELETE", credentials: "include" });
-    const result = await response.json();
+    const result = (await parseJsonResponse<{ error?: string }>(response)) ?? {};
     if (!response.ok) {
       setError(result.error || "Dataset could not be deleted.");
       return;
@@ -151,8 +161,18 @@ export default function QuestionGeneration() {
     setGenerationFailures([]);
     setGenerating(true);
     try {
+      const requestedCount = Number.parseInt(String(count), 10);
+      if (!Number.isInteger(requestedCount) || requestedCount < 1) {
+        throw new Error("Enter a valid number of questions before generating.");
+      }
+      const maxCount = language === "SQL" ? 100 : 10;
+      if (requestedCount > maxCount) {
+        throw new Error(language === "SQL"
+          ? "SQL generation supports up to 100 questions per request."
+          : "Python and PySpark generation are limited to 10 questions per validated request.");
+      }
       if (language === "SQL") {
-        const total = Number(count);
+        const total = requestedCount;
         const plan = difficulty === "mixed"
           ? [{ difficulty: "beginner", count: Math.round(total * 0.4) }, { difficulty: "intermediate", count: Math.round(total * 0.4) }, { difficulty: "advanced", count: total - Math.round(total * 0.4) * 2 }]
           : [{ difficulty, count: total }];
@@ -165,7 +185,7 @@ export default function QuestionGeneration() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ databaseId: selected.database.id, count: batch.count, difficulty: batch.difficulty, topic })
           });
-          const result = await response.json();
+          const result = (await parseJsonResponse<{ error?: string; accepted?: { id: string }[]; rejected?: { error?: string }[] }>(response)) ?? {};
           if (!response.ok) throw new Error(result.error || "SQL question generation failed.");
           accepted.push(...(result.accepted || []));
           failures = failures.concat((result.rejected || []).map((item: { error?: string }) => item.error || "Question rejected"));
@@ -174,14 +194,13 @@ export default function QuestionGeneration() {
         const first = accepted[0]?.id;
         if (first) location.href = `/sql?databaseId=${encodeURIComponent(selected.database.id)}&questionId=${encodeURIComponent(first)}`;
       } else {
-        if (Number(count) > 10) throw new Error("Python and PySpark generation is limited to 10 questions per request so every reference solution can be run and validated.");
         const response = await fetch(`/api/question-datasets/${selected.id}/generate`, {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ language: language.toLowerCase(), count: Number(count), difficulty, topic, tableName: selectedTable?.name })
+          body: JSON.stringify({ language: language.toLowerCase(), count: requestedCount, difficulty, topic, tableName: selectedTable?.name })
         });
-        const result = await response.json();
+        const result = (await parseJsonResponse<{ error?: string; rejected?: unknown[]; validated?: number; failed?: number; questionIds?: string[] }>(response)) ?? {};
         if (!response.ok) throw new Error(result.error || "Question generation failed.");
         setGenerationFailures(Array.isArray(result.rejected) ? result.rejected.filter((reason: unknown): reason is string => typeof reason === "string") : []);
         setNotice(`${result.validated} question(s) validated; ${result.failed} failed validation.`);
@@ -241,10 +260,10 @@ export default function QuestionGeneration() {
           {language !== "SQL" && runnerReady[language.toLowerCase() as "python" | "pyspark"] === false && <p className="qgLimit">The isolated {language} runner is not configured or available. Generation stays disabled until it is healthy.</p>}
           <label className="qgField">Dataset<select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option value="">Select a dataset</option>{datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{dataset.name}</option>)}</select></label>
           <label className="qgField">Target lab<select value={language} onChange={(event) => { const value = event.target.value as keyof typeof topics; setLanguage(value); setTopic(topics[value][0]); if (value !== "SQL" && Number(count) > 10) setCount("10"); }}><option>SQL</option><option>Python</option><option>PySpark</option></select></label>
-          <label className="qgField">Number of questions<select value={count} onChange={(event) => setCount(event.target.value)}>{["10","20","50","100"].map((value) => <option key={value} value={value} disabled={language !== "SQL" && Number(value) > 10}>{value}{language !== "SQL" && Number(value) > 10 ? " (not available for code runners)" : ""}</option>)}</select></label>
+          <label className="qgField">Number of questions<input type="number" min={1} max={language === "SQL" ? 100 : 10} step={1} value={count} onChange={(event) => setCount(event.target.value)} placeholder={language === "SQL" ? "e.g. 3" : "e.g. 1"} /></label>
           <label className="qgField">Difficulty<select value={difficulty} onChange={(event) => setDifficulty(event.target.value)}><option value="mixed">Mixed</option><option value="beginner">Easy</option><option value="intermediate">Medium</option><option value="advanced">Hard</option></select></label>
           <label className="qgField">Topic<select value={topic} onChange={(event) => setTopic(event.target.value)}>{topics[language].map((item) => <option key={item}>{item}</option>)}</select></label>
-          {language !== "SQL" && <p className="qgLimit">Python/PySpark is currently limited to 10 questions per validated request. Higher counts require background generation support.</p>}
+          {language !== "SQL" && <p className="qgLimit">Python and PySpark support custom counts from 1 to 10 per validated request. For example: 1, 2, 3, or 10.</p>}
           <button className="qgPrimary" onClick={() => void generate()} disabled={!generationReady || generating}>{generating ? <LoaderCircle className="qgSpin" size={16} /> : <Sparkles size={16} />} Generate and validate</button>
           <p className="qgSmall">Generated Python and PySpark challenges are saved in your existing learning question bank. SQL uses the selected dataset's real PostgreSQL tables.</p>
           {selected && <a className="qgLabLink" href={`/sql?databaseId=${encodeURIComponent(selected.database.id)}`}>Open dataset in SQL Lab <ArrowRight size={14} /></a>}
