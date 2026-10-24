@@ -1,1 +1,30 @@
-.todayTrackRings{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:16px;margin-top:5px;padding-top:12px;border-top:1px solid #1b4059}.todayTrackRingsTitle{display:grid;gap:4px;min-width:105px;color:#64d4e8;font:700 9px Arial,sans-serif;letter-spacing:.7px}.todayTrackRingsHeading{display:flex;align-items:center;justify-content:space-between;gap:7px}.todayTrackStreak{display:inline-flex;align-items:center;gap:3px;padding:3px 5px;border:1px solid #70552d;border-radius:4px;background:#302719;color:#ffcb70;font:700 8px Arial,sans-serif;letter-spacing:0;white-space:nowrap}.todayTrackRingsTitle small{color:#829bad;font:9px Arial,sans-serif;letter-spacing:0}.todayTrackRingList{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}.todayTrackRingItem{display:flex;min-width:0;align-items:center;justify-content:center;gap:7px;padding:5px 7px;border-left:1px solid #193a51}.todayTrackRing{display:grid;width:34px;height:34px;flex:none;place-items:center;border-radius:50%;background:conic-gradient(var(--ring-color) var(--ring-fill),#193b56 0);box-shadow:0 0 10px color-mix(in srgb,var(--ring-color) 15%,transparent)}.todayTrackRing strong{display:grid;width:27px;height:27px;place-items:center;border:1px solid #25455d;border-radius:50%;background:#0b1e35;color:#effaff;font:700 11px Arial,sans-serif}.todayTrackRingLabel{display:grid;min-width:0;gap:3px}.todayTrackRingLabel b{overflow:hidden;color:#d7e8f2;font:600 9px Arial,sans-serif;text-overflow:ellipsis;white-space:nowrap}.todayTrackRingLabel small{color:#8198aa;font:8px Arial,sans-serif}.todayTrackRingItem.tone-sql{--ring-color:#48c9e0}.todayTrackRingItem.tone-python{--ring-color:#55d5a8}.todayTrackRingItem.tone-spark{--ring-color:#ab9cff}.todayTrackRingItem.tone-etl{--ring-color:#f19bb1}.todayTrackRingItem.tone-databricks{--ring-color:#ffc16f}.todayTrackRingItem.tone-azure{--ring-color:#77aef4}@media(max-width:980px){.todayTrackRings{grid-template-columns:1fr;gap:8px}.todayTrackRingList{grid-template-columns:repeat(3,minmax(0,1fr))}.todayTrackRingItem{justify-content:flex-start}}@media(max-width:520px){.todayTrackRings{margin-top:2px}.todayTrackRingList{grid-template-columns:repeat(2,minmax(0,1fr))}.todayTrackRingItem{padding:5px 3px}}
+.todayTrackRings{grid-column:1/-1;display:grid;grid-template-columns:165px minmax(0,1fr);align-items:center;gap:18px;margin-top:4px;padding-top:12px;border-top:1px solid #1b4059}
+.todayTrackRingsTitle{display:grid;gap:7px;color:#64d4e8;font:700 11px Arial,sans-serif;letter-spacing:.7px}
+.todayTrackRingsHeading{display:flex;align-items:center;justify-content:space-between;gap:7px}
+.todayTrackStreak{display:inline-flex;align-items:center;gap:4px;padding:5px 7px;border:1px solid #70552d;border-radius:4px;background:#302719;color:#ffcb70;font:700 10px Arial,sans-serif;letter-spacing:0;white-space:nowrap}
+.todayTrackRingsTitle>small{color:#9ab0c1;font:11px Arial,sans-serif;letter-spacing:0}
+.todayTrackRingList{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.todayTrackRingItem{display:grid;min-width:0;gap:6px;padding:13px;border:1px solid #1b3b53;border-radius:7px;background:linear-gradient(145deg,#0d2339,#0a1c30)}
+.todayTrackCardHeading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.todayTrackCardHeading>b{overflow:hidden;color:#e3f0f7;font:600 14px Arial,sans-serif;text-overflow:ellipsis;white-space:nowrap}
+.todayTrackCardHeading>span{display:flex;align-items:baseline;gap:5px;color:var(--ring-color);white-space:nowrap}
+.todayTrackCardHeading strong{font:700 20px Arial,sans-serif}
+.todayTrackCardHeading small{color:#9ab1c2;font:10px Arial,sans-serif}
+.todayTrackAllTime{margin:0;color:#c6d6e1;font:600 12px Arial,sans-serif}
+.todayTrackAllTime span{color:#8298aa;font-weight:400}
+.todayTrackDifficultyGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:5px}
+.todayTrackDifficultyStat{display:grid;gap:5px;min-width:0;padding:8px 10px;border-radius:4px;background:#08182a}
+.todayTrackDifficultyStat>span{color:#a0b4c2;font:600 9px Arial,sans-serif;text-transform:uppercase;letter-spacing:.45px}
+.todayTrackDifficultyStat strong{overflow:hidden;color:#e0edf5;font:600 12px ui-monospace,monospace;text-overflow:ellipsis;white-space:nowrap}
+.todayTrackDifficultyStat i{padding:0 1px;color:#7891a5;font-style:normal}
+.todayTrackDifficultyStat.difficulty-easy{border-top:1px solid #3caa87}
+.todayTrackDifficultyStat.difficulty-medium{border-top:1px solid #c79850}
+.todayTrackDifficultyStat.difficulty-hard{border-top:1px solid #cb6978}
+.todayTrackRingItem.tone-sql{--ring-color:#48c9e0}
+.todayTrackRingItem.tone-python{--ring-color:#55d5a8}
+.todayTrackRingItem.tone-spark{--ring-color:#ab9cff}
+.todayTrackRingItem.tone-etl{--ring-color:#f19bb1}
+.todayTrackRingItem.tone-databricks{--ring-color:#ffc16f}
+.todayTrackRingItem.tone-azure{--ring-color:#77aef4}
+@media(max-width:1250px){.todayTrackRings{grid-template-columns:1fr;gap:10px}.todayTrackRingList{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:620px){.todayTrackRingList{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.todayTrackRings{margin-top:2px;padding-top:8px}.todayTrackRingItem{padding:10px}.todayTrackDifficultyStat{padding:7px}.todayTrackDifficultyStat strong{font-size:10px}}

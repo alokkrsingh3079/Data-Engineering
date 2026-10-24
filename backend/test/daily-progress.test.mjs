@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeAllTimeSolved, summarizeDailyAttempts, summarizeQuestionAttempts, summarizeTrackQuestionTotals } from '../src/learning.ts';
+import { summarizeAllTimeSolved, summarizeDailyAttempts, summarizeDifficultyProgress, summarizeQuestionAttempts, summarizeTrackQuestionTotals } from '../src/learning.ts';
 
 test('SQL solved state remains complete after a later incorrect attempt', () => {
   const status = summarizeQuestionAttempts([
@@ -74,5 +74,32 @@ test('track totals pair lifetime solved counts with available question-bank size
     { trackId: 'pyspark-foundations', total: 270, solved: 0 },
     { trackId: 'python-etl', total: 273, solved: 1 },
     { trackId: 'sql-interview-lab', total: 279, solved: 2 }
+  ]);
+});
+
+test('difficulty totals normalize Easy/Medium/Hard and Beginner/Intermediate/Advanced labels', () => {
+  const totals = summarizeDifficultyProgress([
+    { trackId: 'sql-interview-lab', difficulty: 'beginner', total: 12, solved: 4 },
+    { trackId: 'sql-interview-lab', difficulty: 'easy', total: 3, solved: 1 },
+    { trackId: 'sql-interview-lab', difficulty: 'intermediate', total: 10, solved: 2 },
+    { trackId: 'sql-interview-lab', difficulty: 'medium', total: 2, solved: 1 },
+    { trackId: 'python-etl', difficulty: 'advanced', total: 8, solved: 3 },
+    { trackId: 'python-etl', difficulty: 'hard', total: 2, solved: 1 },
+    { trackId: 'python-etl', difficulty: 'unknown', total: 5, solved: 0 }
+  ]);
+
+  assert.deepEqual(totals, [
+    {
+      trackId: 'python-etl',
+      easy: { solved: 0, total: 0 },
+      medium: { solved: 0, total: 0 },
+      hard: { solved: 4, total: 10 }
+    },
+    {
+      trackId: 'sql-interview-lab',
+      easy: { solved: 5, total: 15 },
+      medium: { solved: 3, total: 12 },
+      hard: { solved: 0, total: 0 }
+    }
   ]);
 });

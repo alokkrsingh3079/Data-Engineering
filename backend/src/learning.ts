@@ -260,6 +260,39 @@ export function summarizeTrackQuestionTotals(
     .sort((left, right) => left.trackId.localeCompare(right.trackId));
 }
 
+type Difficulty = "easy" | "medium" | "hard";
+type DifficultyTotal = { trackId: string; difficulty: string; total: number; solved?: number };
+type DifficultyProgress = { trackId: string; easy: { solved: number; total: number }; medium: { solved: number; total: number }; hard: { solved: number; total: number } };
+
+function normalizeDifficulty(value: string): Difficulty | null {
+  const difficulty = value.trim().toLowerCase();
+  if (difficulty === "easy" || difficulty === "beginner") return "easy";
+  if (difficulty === "medium" || difficulty === "intermediate") return "medium";
+  if (difficulty === "hard" || difficulty === "advanced") return "hard";
+  return null;
+}
+
+export function summarizeDifficultyProgress(entries: DifficultyTotal[]): DifficultyProgress[] {
+  const tracks = new Map<string, DifficultyProgress>();
+  for (const entry of entries) {
+    const difficulty = normalizeDifficulty(entry.difficulty);
+    if (!difficulty) continue;
+    let track = tracks.get(entry.trackId);
+    if (!track) {
+      track = {
+        trackId: entry.trackId,
+        easy: { solved: 0, total: 0 },
+        medium: { solved: 0, total: 0 },
+        hard: { solved: 0, total: 0 }
+      };
+      tracks.set(entry.trackId, track);
+    }
+    track[difficulty].total += Math.max(0, entry.total);
+    track[difficulty].solved += Math.max(0, entry.solved || 0);
+  }
+  return [...tracks.values()].sort((left, right) => left.trackId.localeCompare(right.trackId));
+}
+
 export async function dailyProgress(userId: string, days = 30, timeZone = "UTC", isAdmin = false) {
   const since = new Date(Date.now() - (days + 2) * 24 * 60 * 60 * 1000);
   const workspaces = isAdmin
@@ -267,7 +300,7 @@ export async function dailyProgress(userId: string, days = 30, timeZone = "UTC",
     : await pool.query("SELECT id FROM app_databases WHERE owner_user_id=$1", [userId]);
   const databaseIds = workspaces.rows.map((workspace: any) => String(workspace.id));
   const sqlQuestions = databaseIds.length
-    ? await mongoCollection("challenges").find({ database_id: { $in: databaseIds } }, { projection: { id: 1 } }).toArray()
+    ? await mongoCollection("challenges").find({ database_id: { $in: databaseIds } }, { projection: { id: 1, difficulty: 1 } }).toArray()
     : [];
   const sqlQuestionIds = sqlQuestions.map((question: any) => String(question.id || question._id));
   const [sqlAttempts, learningAttempts, sqlSolvedIds, learningCompletions] = await Promise.all([
@@ -283,11 +316,28 @@ export async function dailyProgress(userId: string, days = 30, timeZone = "UTC",
   const moduleByQuestionId = new Map(learningQuestions.map((question: any) => [String(question._id), String(question.module_id || "unknown")]));
   const completedLearningQuestionIds = [...new Set(learningCompletions.map((item: any) => String(item.question_id)))];
   const completedLearningQuestions = completedLearningQuestionIds.length
-    ? await mongoCollection("learning_questions").find({ _id: { $in: completedLearningQuestionIds }, $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] }, { projection: { module_id: 1 } }).toArray()
+    ? await mongoCollection("learning_questions").find({ _id: { $in: completedLearningQuestionIds }, status: "published", $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] }, { projection: { module_id: 1, difficulty: 1 } }).toArray()
     : [];
   const learningQuestionCounts = await mongoCollection("learning_questions").aggregate([
     { $match: { status: "published", $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] } },
-    { $group: { _id: "$module_id", total: { $sum: 1 } } }
+    {
+      $group: {
+        _id: {
+          trackId: "$module_id",
+          difficulty: {
+            $switch: {
+              branches: [
+                { case: { $in: [{ $toLower: { $ifNull: ["$difficulty", ""] } }, ["easy", "beginner"]] }, then: "easy" },
+                { case: { $in: [{ $toLower: { $ifNull: ["$difficulty", ""] } }, ["medium", "intermediate"]] }, then: "medium" },
+                { case: { $in: [{ $toLower: { $ifNull: ["$difficulty", ""] } }, ["hard", "advanced"]] }, then: "hard" }
+              ],
+              default: "other"
+            }
+          }
+        },
+        total: { $sum: 1 }
+      }
+    }
   ]).toArray();
   const allTimeTracks = summarizeAllTimeSolved(
     sqlSolvedIds.map((questionId: unknown) => String(questionId)),
@@ -295,14 +345,40 @@ export async function dailyProgress(userId: string, days = 30, timeZone = "UTC",
   );
   const trackTotals = summarizeTrackQuestionTotals(
     sqlQuestionIds.length,
-    learningQuestionCounts.map((track: any) => ({ trackId: String(track._id), total: Number(track.total) })),
+    learningQuestionCounts.reduce((tracks: { trackId: string; total: number }[], entry: any) => {
+      const trackId = String(entry._id.trackId);
+      const track = tracks.find((item) => item.trackId === trackId);
+      if (track) track.total += Number(entry.total);
+      else tracks.push({ trackId, total: Number(entry.total) });
+      return tracks;
+    }, []),
     allTimeTracks
   );
+  const solvedSqlIds = new Set(sqlSolvedIds.map(String));
+  const difficultyTotals = summarizeDifficultyProgress([
+    ...sqlQuestions.map((question: any) => ({
+      trackId: "sql-interview-lab",
+      difficulty: String(question.difficulty || ""),
+      total: 1,
+      solved: solvedSqlIds.has(String(question.id || question._id)) ? 1 : 0
+    })),
+    ...learningQuestionCounts.map((entry: any) => ({
+      trackId: String(entry._id.trackId),
+      difficulty: String(entry._id.difficulty),
+      total: Number(entry.total)
+    })),
+    ...completedLearningQuestions.map((question: any) => ({
+      trackId: String(question.module_id || "unknown"),
+      difficulty: String(question.difficulty || ""),
+      total: 0,
+      solved: 1
+    }))
+  ]);
   const records = [
     ...sqlAttempts.map((attempt: any) => ({ created_at: attempt.created_at, correct: Boolean(attempt.correct), track_id: "sql-interview-lab", question_id: String(attempt.challenge_id) })),
     ...learningAttempts.map((attempt: any) => ({ created_at: attempt.created_at, correct: Boolean(attempt.correct), track_id: moduleByQuestionId.get(String(attempt.question_id)) || "unknown", question_id: String(attempt.question_id) }))
   ];
-  return { ...summarizeDailyAttempts(records, days, timeZone), allTimeTracks, trackTotals };
+  return { ...summarizeDailyAttempts(records, days, timeZone), allTimeTracks, trackTotals, difficultyTotals };
 }
 
 export async function exportProgress(sessionId: string) {

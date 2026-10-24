@@ -4,7 +4,7 @@ import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Activity, ArrowRight, BarChart3, BookOpen, Bookmark, Check, Circle, Clock3, Code2, Database, Flag, Layers3, Lightbulb, LogOut, RefreshCw, Sparkles, Target } from "lucide-react";
 import CopyButton from "./CopyButton";
-import TodayTrackRings from "./TodayTrackRings";
+import TodayTrackRings, { type OverallDifficultyProgress } from "./TodayTrackRings";
 import "./learning-studio.css";
 import "./learning-engine.css";
 import "./studio-polish.css";
@@ -76,6 +76,7 @@ const API = "";
 
 export default function LearningStudio() {
   const [modules, setModules] = useState<Module[]>([]);
+  const [overallDifficulty, setOverallDifficulty] = useState<OverallDifficultyProgress | null>(null);
   const [dashboardOpen, setDashboardOpen] = useState(location.pathname === "/");
   const [userName, setUserName] = useState("Data Engineer");
   const [selectedModule, setSelectedModule] = useState("");
@@ -497,8 +498,8 @@ export default function LearningStudio() {
         <div className="studioWelcomeCopy"><div className="studioEyebrow"><span className="liveDot" /> YOUR LEARNING STUDIO <span>{modules.length.toString().padStart(2, "0")} TRACKS</span></div><h1>Welcome back, <span>{userName.split(" ")[0]}.</span></h1><p>Your next data engineering skill is one focused session away.</p>
           {recentAttempt?.question && <button className="studioContinue" onClick={() => resumeQuestion(recentAttempt.question!)}><span className="continueIcon"><Activity size={18} /></span><span><small>CONTINUE LEARNING</small><strong>{recentAttempt.question.title}</strong><em>{recentAttempt.correct ? "Last result: passed" : "Last result: ready to retry"}</em></span><ArrowRight size={17} /></button>}
         </div>
-        <div className="studioWelcomeProgress"><div className="progressRing" style={{ "--progress": `${completionPercent}%` } as CSSProperties}><div><strong>{completionPercent}%</strong><span>complete</span></div></div><span>OVERALL PROGRESS</span><small>{completedQuestions} / {totalQuestions} questions solved</small></div>
-        <TodayTrackRings />
+        <div className="studioWelcomeProgress"><div className="progressRing" style={{ "--progress": `${completionPercent}%` } as CSSProperties}><div><strong>{completionPercent}%</strong><span>complete</span></div></div><span>OVERALL PROGRESS</span><small>{completedQuestions} / {totalQuestions} questions solved</small><div className="studioOverallDifficulty" aria-label="Overall progress by difficulty">{(["easy", "medium", "hard"] as const).map((level) => <span className={`difficulty-${level}`} key={level}><b>{level}</b><strong>{overallDifficulty ? overallDifficulty[level].solved : "—"}<i>/</i>{overallDifficulty ? overallDifficulty[level].total : "—"}</strong></span>)}</div></div>
+        <TodayTrackRings setOverallDifficulty={setOverallDifficulty} />
       </section>}
 
       {error && <div className="studioAlert" role="alert">{error}</div>}

@@ -1,4 +1,0 @@
-.todayTrackRingItem{position:relative}
-.todayTrackRingItem::after{position:absolute;z-index:5;bottom:calc(100% + 7px);left:50%;padding:6px 8px;transform:translate(-50%,4px);border:1px solid #31536b;border-radius:4px;background:#071827;color:#e6f3fa;content:attr(data-tooltip);font:10px Arial,sans-serif;white-space:nowrap;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s ease,transform .12s ease}
-.todayTrackRingItem:hover::after,.todayTrackRingItem:focus-visible::after{transform:translate(-50%,0);opacity:1;visibility:visible}
-.todayTrackRingItem:focus-visible{outline:2px solid #60cfe2;outline-offset:2px}
