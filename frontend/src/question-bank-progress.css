@@ -33,15 +33,45 @@
   background-color: #210d12 !important;
 }
 
+.sqlLevelBar button.bankProgress-revision,
+.sparkLevelSelector button.bankProgress-revision,
+.trackLevelTabs button.bankProgress-revision {
+  border-color: #397ee8 !important;
+  background-color: #102446 !important;
+  color: #d9e8ff !important;
+  white-space: nowrap;
+}
+
+.sqlLevelBar button.bankProgress-revision {
+  min-width: 76px;
+}
+
+.sparkLevelSelector button.bankProgress-revision {
+  grid-column: 1 / -1;
+}
+
+.trackLevelTabs button.bankProgress-revision {
+  flex-basis: 76px;
+}
+
+.sqlLevelBar button.bankProgress-revision small,
+.sparkLevelSelector button.bankProgress-revision span,
+.trackLevelTabs button.bankProgress-revision small {
+  color: #9bc2ff !important;
+}
+
 .sqlLevelBar button.bankProgress-complete::after,
 .sqlLevelBar button.bankProgress-in-progress::after,
 .sqlLevelBar button.bankProgress-not-started::after,
+.sqlLevelBar button.bankProgress-revision::after,
 .sparkLevelSelector button.bankProgress-complete::after,
 .sparkLevelSelector button.bankProgress-in-progress::after,
 .sparkLevelSelector button.bankProgress-not-started::after,
+.sparkLevelSelector button.bankProgress-revision::after,
 .trackLevelTabs button.bankProgress-complete::after,
 .trackLevelTabs button.bankProgress-in-progress::after,
-.trackLevelTabs button.bankProgress-not-started::after {
+.trackLevelTabs button.bankProgress-not-started::after,
+.trackLevelTabs button.bankProgress-revision::after {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -54,6 +84,12 @@
     #a82c38 var(--bank-attempted-width, 0%) 100%
   );
   content: "";
+}
+
+.sqlLevelBar button.bankProgress-revision::after,
+.sparkLevelSelector button.bankProgress-revision::after,
+.trackLevelTabs button.bankProgress-revision::after {
+  background: #397ee8;
 }
 
 .catalogPanel .catalogItem.bankProgress-complete,

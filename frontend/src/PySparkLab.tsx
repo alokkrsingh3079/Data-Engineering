@@ -151,6 +151,7 @@ export default function PySparkLab() {
     return Number.isFinite(saved) && saved >= 220 && saved <= 560 ? saved : 260;
   });
   const [revisionOnly, setRevisionOnly] = useState(() => new URLSearchParams(location.search).get("revision") === "1");
+  const [revisionQuestionIds, setRevisionQuestionIds] = useState<Set<string>>(() => new Set());
 
   const generatedDatasets = useMemo(() => {
     const datasets = new Map<string, { key: string; id: string; name: string; count: number }>();
@@ -169,7 +170,7 @@ export default function PySparkLab() {
       name: (nameCounts.get(dataset.name) || 0) > 1 && dataset.id !== "legacy" ? `${dataset.name} · ${dataset.id.slice(0, 8)}` : dataset.name
     })).sort((left, right) => left.name.localeCompare(right.name));
   }, [questions]);
-  const visibleQuestions = useMemo(() => questions.filter((item) => (filter === "all" || (filter.startsWith("dataset:") ? isGeneratedQuestion(item) && datasetFilterKey(item) === filter : item.learning_level === filter)) && (!revisionOnly || item.revisionMarked)), [questions, filter, revisionOnly]);
+  const visibleQuestions = useMemo(() => questions.filter((item) => (filter === "all" || filter === "revision" || (filter.startsWith("dataset:") ? isGeneratedQuestion(item) && datasetFilterKey(item) === filter : item.learning_level === filter)) && (!revisionOnly || revisionQuestionIds.has(item.id))), [questions, filter, revisionOnly, revisionQuestionIds]);
   const levelCounts = useMemo(() => Object.fromEntries([
     ...levels.map((level) => [level, questions.filter((item) => item.learning_level === level).length]),
     ...generatedDatasets.map((dataset) => [dataset.key, dataset.count])
@@ -179,6 +180,11 @@ export default function PySparkLab() {
     items.length,
     items.filter((item) => item.attempted).length
   );
+  const revisionCount = revisionQuestionIds.size;
+  const selectBankFilter = (value: string) => {
+    setFilter(value === "revision" ? "all" : value);
+    setRevisionOnly(value === "revision");
+  };
 
   useEffect(() => {
     if (!busy) { setElapsedSeconds(0); return; }
@@ -249,24 +255,40 @@ export default function PySparkLab() {
 
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
     Promise.all([
       (async () => {
         const query = "moduleId=pyspark-foundations&type=coding&pageSize=50";
-        const firstResponse = await fetch(`${API}/api/learning/questions?${query}&page=1`, { credentials: "include" });
+        const firstResponse = await fetch(`${API}/api/learning/questions?${query}&page=1`, { credentials: "include", signal: controller.signal });
         if (firstResponse.status === 401) { location.href = "/login"; return null; }
         if (!firstResponse.ok) throw new Error("PySpark questions could not be loaded.");
         const firstPage = await readApiJson<any>(firstResponse);
         const rest = await Promise.all(Array.from({ length: Math.max(0, firstPage.totalPages - 1) }, async (_, index) => {
-          const response = await fetch(`${API}/api/learning/questions?${query}&page=${index + 2}`, { credentials: "include" });
+          const response = await fetch(`${API}/api/learning/questions?${query}&page=${index + 2}`, { credentials: "include", signal: controller.signal });
           if (!response.ok) throw new Error("Some PySpark questions could not be loaded.");
             return readApiJson<any>(response);
         }));
         return { ...firstPage, items: [firstPage, ...rest].flatMap((page) => page.items || []) };
       })(),
-    ]).then(([bank]) => {
+      (async () => {
+        const query = "moduleId=pyspark-foundations&type=coding&state=revision&pageSize=50";
+        const response = await fetch(`${API}/api/learning/questions?${query}&page=1`, { credentials: "include", signal: controller.signal });
+        if (!response.ok) throw new Error("PySpark revision questions could not be loaded.");
+        const firstPage = await readApiJson<any>(response);
+        const rest = await Promise.all(Array.from({ length: Math.max(0, firstPage.totalPages - 1) }, async (_, index) => {
+          const pageResponse = await fetch(`${API}/api/learning/questions?${query}&page=${index + 2}`, { credentials: "include", signal: controller.signal });
+          if (!pageResponse.ok) throw new Error("Some PySpark revision questions could not be loaded.");
+          return readApiJson<any>(pageResponse);
+        }));
+        return [firstPage, ...rest].flatMap((page) => page.items || []) as Question[];
+      })(),
+    ]).then(([bank, revisionItems]) => {
       if (!mounted) return;
       const items = (bank?.items || []).filter((item: Question & { language?: string }) => item.language === "pyspark")
       .sort(questionOrder);
+      const markedIds = new Set<string>((revisionItems as Question[]).map((item) => item.id));
+      setRevisionQuestionIds(markedIds);
+      for (const item of items) item.revisionMarked = markedIds.has(item.id);
       setQuestions(items);
       const params = new URLSearchParams(location.search);
       const requestedQuestion = params.get("questionId");
@@ -277,7 +299,7 @@ export default function PySparkLab() {
       const firstLevelQuestion = requested || items.find((item: Question) => item.learning_level === "A") || items[0];
       if (firstLevelQuestion) void chooseQuestion(firstLevelQuestion);
     }).catch((cause) => { if (mounted) setError(cause instanceof Error ? cause.message : "PySpark Lab is unavailable."); });
-    return () => { mounted = false; };
+    return () => { mounted = false; controller.abort(); };
   }, []);
 
   async function execute(submit: boolean) {
@@ -361,6 +383,11 @@ export default function PySparkLab() {
         if (jobResult.status === "passed") {
           setQuestion((current) => current ? { ...current, completed: true, revisionMarked: false } : current);
           setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, completed: true, revisionMarked: false } : item));
+          setRevisionQuestionIds((current) => {
+            const next = new Set(current);
+            next.delete(question.id);
+            return next;
+          });
         }
         await Promise.all([loadHistory(question.id), fetch(`${API}/api/learning/questions/${question.id}/review`, { credentials: "include" }).then(async (reviewResponse) => {
           if (reviewResponse.ok) setReview(await readApiJson(reviewResponse));
@@ -412,6 +439,12 @@ export default function PySparkLab() {
     if (!response.ok) { setError(body?.error || "Revision mark could not be saved."); return; }
     setQuestion({ ...question, revisionMarked: marked });
     setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, revisionMarked: marked } : item));
+    setRevisionQuestionIds((current) => {
+      const next = new Set(current);
+      if (marked) next.add(question.id);
+      else next.delete(question.id);
+      return next;
+    });
   }
 
   async function askTutor(action: string, errorText?: string) {
@@ -459,8 +492,9 @@ export default function PySparkLab() {
       <aside className="sparkQuestionRail" aria-label="PySpark question bank">
         <div className="sparkRailHead"><strong>{revisionOnly ? "REVISION ONLY" : "QUESTION BANK"}</strong><span>{visibleQuestions.length}</span></div>
         <label className="questionRailWidthControl">Bank width <output>{railWidth}px</output><input type="range" min="220" max="560" step="10" value={railWidth} aria-label="Question bank width" onChange={(event) => setRailWidth(Number(event.target.value))} /></label>
-        <button className={`sparkRevisionToggle ${revisionOnly ? "active" : ""}`} onClick={() => { setRevisionOnly(!revisionOnly); if (!revisionOnly) setFilter("all"); }}><Flag size={13} />{revisionOnly ? "Show all questions" : "Revision only"}</button>
-        <div className="sparkLevelSelector" role="tablist" aria-label="PySpark question bank">{[...levels, ...generatedDatasets.map((dataset) => dataset.key), "all"].map((level) => {
+        <button className={`sparkRevisionToggle ${revisionOnly ? "active" : ""}`} onClick={() => selectBankFilter(revisionOnly ? "all" : "revision")}><Flag size={13} />{revisionOnly ? "Show all questions" : "Revision only"}</button>
+        <div className="sparkLevelSelector" role="tablist" aria-label="PySpark question bank">{["all", "revision", ...levels, ...generatedDatasets.map((dataset) => dataset.key)].map((level) => {
+          if (level === "revision") return <button key={level} className={`bankProgress-revision ${revisionOnly ? "active" : ""}`} role="tab" aria-label={`Revision questions, ${revisionCount} marked`} title="Show questions marked for revision" aria-selected={revisionOnly} onClick={() => selectBankFilter(level)}><strong>Revision</strong><span>{revisionCount}</span></button>;
           const dataset = generatedDatasets.find((entry) => entry.key === level);
           const label = level === "all" ? "All" : dataset ? dataset.name : level;
           const count = level === "all" ? questions.length : levelCounts[level] || 0;
@@ -468,11 +502,11 @@ export default function PySparkLab() {
           const completed = bankQuestions.filter((item) => item.completed).length;
           const attempted = bankQuestions.filter((item) => item.attempted).length;
           const progress = bankProgress(bankQuestions);
-          return <button key={level} style={questionBankProgressStyle(completed,bankQuestions.length,attempted)} role="tab" aria-label={`${dataset ? `${dataset.name}, ${dataset.count} questions` : level === "all" ? "All questions" : `Level ${level}, ${levelBand(level)}`}, ${questionBankProgressLabel(progress)}`} title={`${dataset ? dataset.name : level === "all" ? "All questions" : `Level ${level} · ${levelBand(level)}`} · ${questionBankProgressLabel(progress)}`} aria-selected={filter === level} className={`${questionBankProgressClass(progress)} ${filter === level ? "active " : ""}${dataset ? "level-dataset" : `level-${level.toLowerCase()}`}`} onClick={() => setFilter(level)}><strong>{label}</strong><span>{count}</span></button>;
+          return <button key={level} style={questionBankProgressStyle(completed,bankQuestions.length,attempted)} role="tab" aria-label={`${dataset ? `${dataset.name}, ${dataset.count} questions` : level === "all" ? "All questions" : `Level ${level}, ${levelBand(level)}`}, ${questionBankProgressLabel(progress)}`} title={`${dataset ? dataset.name : level === "all" ? "All questions" : `Level ${level} · ${levelBand(level)}`} · ${questionBankProgressLabel(progress)}`} aria-selected={!revisionOnly && filter === level} className={`${questionBankProgressClass(progress)} ${!revisionOnly && filter === level ? "active " : ""}${dataset ? "level-dataset" : `level-${level.toLowerCase()}`}`} onClick={() => selectBankFilter(level)}><strong>{label}</strong><span>{count}</span></button>;
         })}</div>
         {(() => {
           const dataset = generatedDatasets.find((entry) => entry.key === filter);
-          return <div className={`sparkLevelIntro ${dataset ? "level-dataset" : `level-${filter.toLowerCase()}`}`}><strong>{filter === "all" ? "FULL QUESTION BANK" : dataset ? dataset.name : `LEVEL ${filter} · ${levelBand(filter)}`}</strong><p>{levelDescription(filter)}</p></div>;
+          return <div className={`sparkLevelIntro ${dataset ? "level-dataset" : `level-${filter.toLowerCase()}`}`}><strong>{revisionOnly ? "REVISION QUESTIONS" : filter === "all" ? "FULL QUESTION BANK" : dataset ? dataset.name : `LEVEL ${filter} · ${levelBand(filter)}`}</strong><p>{revisionOnly ? "Questions you marked for revision." : levelDescription(filter)}</p></div>;
         })()}
         {visibleQuestions.map((item, index) => <button key={item.id} className={`sparkQuestionItem ${question?.id === item.id ? "selected" : ""}`} onClick={() => void chooseQuestion(item)}><span className="sparkQuestionTitle"><em>{String(index + 1).padStart(2, "0")}</em>{item.title}</span><span className="sparkQuestionMeta">{isGeneratedQuestion(item) ? `${item.dataset_name || "Dataset"} · ${item.topic}` : `${item.topic} · ${item.learning_level ? `Level ${item.learning_level}` : item.difficulty}`}{item.completed && <Check size={13} />}{item.revisionMarked && <Flag size={12} aria-label="Marked for revision" />}{item.bookmarked && <Bookmark size={12} aria-label="Bookmarked" />}</span></button>)}
         {!visibleQuestions.length && <p className="sparkRailEmpty">{revisionOnly ? "No questions are marked for revision." : filter.startsWith("dataset:") ? "This dataset has no questions yet." : "No Spark exercises match this filter."}</p>}
