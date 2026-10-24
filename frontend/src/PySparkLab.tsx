@@ -440,7 +440,7 @@ export default function PySparkLab() {
   return <main className="sparkLabPage">
     <header className="sparkLabHeader">
       <a className="sparkLabBrand" href="/"><span><Layers3 size={17} /></span><strong>Data Engineering Studio</strong></a>
-      <nav aria-label="Main navigation"><a href="/">Learning path</a><a href="/sql"><Database size={15} /> SQL Lab</a><a className="active" href="/pyspark"><Code2 size={15} /> PySpark Lab</a><a href="/ask-ai"><Sparkles size={15} /> Ask AI</a><a href="/interview">Interview</a></nav>
+      <nav aria-label="Main navigation"><a href="/">Learning path</a><a href="/sql"><Database size={15} /> SQL Lab</a><a className="active" href="/pyspark"><Code2 size={15} /> PySpark Lab</a><a href="/ask-ai"><Sparkles size={15} /> Ask AI</a><a href="/interview?track=pyspark-foundations">Timed interview</a></nav>
       <a className="sparkLabExit" href="/learn/pyspark-foundations">Learning module <ExternalLink size={14} /></a>
     </header>
     <section className="sparkLabTitle"><div><p>REAL SPARK EXECUTION · LOCAL MODE</p><h1>PySpark Lab</h1><span>Interview exercises against a pinned Spark runtime.</span></div><div className={`sparkRunnerBadge ${runner.available ? "ready" : "offline"}`} title={runner.diagnostic}><span />{runner.available ? "Spark runner ready" : runner.configured ? `Runner health check failed${runner.diagnostic ? `: ${runner.diagnostic}` : ""}` : "Runner not configured"}</div></section>

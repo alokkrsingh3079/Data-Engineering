@@ -5,7 +5,7 @@ import './studio-theme.css';
 import './studio-layout.css';
 
 const App = lazy(() => import('./App'));
-const DataEngineeringInterview = lazy(() => import('./DataEngineeringInterview'));
+const TimedInterview = lazy(() => import('./TimedInterview'));
 const LearningStudio = lazy(() => import('./LearningStudio'));
 const LearningTrackLab = lazy(() => import('./LearningTrackLab'));
 const AskAI = lazy(() => import('./AskAI'));
@@ -13,7 +13,6 @@ const PySparkLab = lazy(() => import('./PySparkLab'));
 const AdminApp = lazy(() => import('./ProductionApp').then((module) => ({ default: module.AdminApp })));
 const Analytics = lazy(() => import('./ProductionApp').then((module) => ({ default: module.Analytics })));
 const Login = lazy(() => import('./ProductionApp').then((module) => ({ default: module.Login })));
-const Interview = lazy(() => import('./ProductionApp').then((module) => ({ default: module.Interview })));
 const NotesStudio = lazy(() => import('./NotesStudio'));
 const QuestionGeneration = lazy(() => import('./QuestionGeneration'));
 
@@ -25,8 +24,7 @@ const Page = path === '/ask-ai' ? AskAI
 	: path === '/admin' ? AdminApp
 	: path === '/login' ? Login
 		: path === '/analytics' ? Analytics
-			: path === '/interview' ? Interview
-				: path === '/ai-interview' ? DataEngineeringInterview
+			: path === '/interview' || path === '/ai-interview' ? TimedInterview
 					: path === '/sql' ? App
 						: path === '/pyspark' || path === '/learn/pyspark-foundations' ? PySparkLab
 							: isFocusedLearningTrack ? LearningTrackLab

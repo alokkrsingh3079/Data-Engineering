@@ -415,7 +415,7 @@ export function Interview() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        sessionId,
+        interviewSessionId: sessionId,
         answers: questions.map((q) => ({
           questionId: q.id,
           sql: answers[q.id] || "",

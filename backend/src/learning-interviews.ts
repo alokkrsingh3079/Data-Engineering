@@ -13,7 +13,7 @@ export async function startLearningInterview(input: {
   const match: Record<string, any> = {
     module_id: input.moduleId,
     status: "published",
-    type: { $in: ["mcq", "scenario"] },
+    type: { $in: ["mcq", "scenario", "coding"] },
     $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: input.userId }]
   };
   if (input.difficulty !== "mixed") match.difficulty = input.difficulty;
@@ -33,6 +33,7 @@ export async function startLearningInterview(input: {
     module_id: input.moduleId,
     difficulty: input.difficulty,
     duration_seconds: input.durationSeconds,
+    question_duration_seconds: Math.max(30, Math.floor(input.durationSeconds / input.count)),
     questions: questions.map((question) => {
       const { _id, ...visible } = question;
       return { ...visible, id: String(_id) };
@@ -40,6 +41,7 @@ export async function startLearningInterview(input: {
     question_ids: questions.map((question) => String(question._id)),
     responses: [],
     status: "in_progress",
+    question_started_at: startedAt,
     started_at: startedAt,
     deadline_at: new Date(startedAt.getTime() + input.durationSeconds * 1000),
     created_at: startedAt
@@ -73,6 +75,9 @@ export async function answerLearningInterview(input: {
   if (new Date(session.deadline_at) <= new Date()) return { status: "expired" as const };
   const question = (session.questions || []).find((item: any) => String(item.id) === input.questionId);
   if (!question) return { status: "question_not_in_session" as const };
+  const questionStartedAt = new Date(session.question_started_at || session.started_at).getTime();
+  const questionDurationSeconds = Number(session.question_duration_seconds || Math.max(30, Math.floor(Number(session.duration_seconds) / Math.max(session.questions?.length || 1, 1))));
+  if (Date.now() - questionStartedAt >= questionDurationSeconds * 1000) return { status: "question_expired" as const };
 
   const prior = (session.responses || []).find((item: any) => item.question_id === input.questionId);
   if (prior?.feedback) return { status: "already_answered" as const, response: prior };
@@ -88,8 +93,8 @@ export async function answerLearningInterview(input: {
   if (prior) filter["responses.question_id"] = input.questionId;
   else filter.responses = { $not: { $elemMatch: { question_id: input.questionId } } };
   const update: Document = prior
-    ? { $set: { "responses.$.answer": input.answer, "responses.$.feedback_status": "pending", "responses.$.answered_at": savedAnswer.answered_at } }
-    : { $push: { responses: savedAnswer } };
+    ? { $set: { "responses.$.answer": input.answer, "responses.$.feedback_status": "pending", "responses.$.answered_at": savedAnswer.answered_at, question_started_at: savedAnswer.answered_at } }
+    : { $push: { responses: savedAnswer }, $set: { question_started_at: savedAnswer.answered_at } };
   const stored = await sessions.updateOne(filter, update);
   if (!stored.matchedCount) return { status: "already_answered" as const };
 
@@ -97,19 +102,58 @@ export async function answerLearningInterview(input: {
     const feedback = await (input.evaluate || evaluateLearningInterviewAnswer)({
       track: String(session.module_id),
       topic: String(question.topic || "Data engineering"),
-      question: String(question.prompt || ""),
+      question: String(question.prompt || question.task || question.title || ""),
       answer: input.answer
     });
     const total = feedback.correctness + feedback.completeness + feedback.reasoning + feedback.tradeoffs;
-    const result = { ...feedback, score: Math.round(total * 5), evaluated_at: new Date() };
+    const evaluatedAt = new Date();
+    const result = { ...feedback, score: Math.round(total * 5), evaluated_at: evaluatedAt };
     await sessions.updateOne(
       { _id: input.sessionId, user_id: input.userId, "responses.id": responseId },
-      { $set: { "responses.$.feedback": result, "responses.$.feedback_status": "complete" } }
+      { $set: { "responses.$.feedback": result, "responses.$.feedback_status": "complete", question_started_at: evaluatedAt } }
     );
     return { status: "ok" as const, response: { ...savedAnswer, feedback: result, feedback_status: "complete" } };
   } catch {
+    await sessions.updateOne(
+      { _id: input.sessionId, user_id: input.userId, "responses.id": responseId },
+      { $set: { question_started_at: new Date() } }
+    );
     return { status: "feedback_unavailable" as const, response: savedAnswer };
   }
+}
+
+export async function skipLearningInterviewQuestion(input: {
+  sessionId: string;
+  userId: string;
+  questionId: string;
+}) {
+  const session = await getLearningInterview(input.sessionId, input.userId);
+  if (!session) return { status: "not_found" as const };
+  if (session.status !== "in_progress") return { status: "closed" as const };
+  if (new Date(session.deadline_at) <= new Date()) return { status: "expired" as const };
+  if (!(session.questions || []).some((item: any) => String(item.id) === input.questionId)) {
+    return { status: "question_not_in_session" as const };
+  }
+  const now = new Date();
+  const response = {
+    id: crypto.randomUUID(),
+    question_id: input.questionId,
+    answer: "",
+    skipped: true,
+    feedback_status: "skipped",
+    answered_at: now
+  };
+  const update: Document = { $push: { responses: response }, $set: { question_started_at: now } };
+  const stored = await mongoCollection("interview_sessions").updateOne(
+    {
+      _id: input.sessionId,
+      user_id: input.userId,
+      status: "in_progress",
+      responses: { $not: { $elemMatch: { question_id: input.questionId } } }
+    },
+    update
+  );
+  return stored.matchedCount ? { status: "ok" as const, response } : { status: "already_answered" as const };
 }
 
 export async function finishLearningInterview(sessionId: string, userId: string) {
@@ -128,8 +172,8 @@ export async function finishLearningInterview(sessionId: string, userId: string)
     completed_at: new Date(),
     score,
     evaluated_count: evaluated.length,
-    unanswered_count: Math.max((session.questions || []).length - responses.length, 0),
-    feedback_pending_count: responses.filter((response: any) => !response.feedback).length,
+    unanswered_count: Math.max((session.questions || []).length - responses.filter((response: any) => !response.skipped).length, 0),
+    feedback_pending_count: responses.filter((response: any) => !response.feedback && !response.skipped).length,
     revision_recommendations: gaps
   };
   const updated = await mongoCollection("interview_sessions").updateOne(
