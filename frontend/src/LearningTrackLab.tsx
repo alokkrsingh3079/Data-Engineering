@@ -153,26 +153,12 @@ export default function LearningTrackLab() {
         }));
         return { ...firstPage, items: [firstPage, ...rest].flatMap((page) => page.items || []) };
       })),
-      Promise.all(track.moduleIds.map(async (id) => {
-        const query = `moduleId=${encodeURIComponent(id)}&state=revision&pageSize=50`;
-        const response = await fetch(`${API}/api/learning/questions?${query}&page=1`, { credentials: "include", signal: controller.signal });
-        if (!response.ok) throw Error("Revision questions could not be loaded.");
-        const firstPage = await response.json();
-        const rest = await Promise.all(Array.from({ length: Math.max(0, firstPage.totalPages - 1) }, async (_, index) => {
-          const pageResponse = await fetch(`${API}/api/learning/questions?${query}&page=${index + 2}`, { credentials: "include", signal: controller.signal });
-          if (!pageResponse.ok) throw Error("Some revision questions could not be loaded.");
-          return pageResponse.json();
-        }));
-        return [firstPage, ...rest].flatMap((page) => page.items || []);
-      })),
-    ]).then(([studio, banks, revisionBanks]) => {
+    ]).then(([studio, banks]) => {
       if (controller.signal.aborted) return;
       setModule(studio?.modules?.find((item: any) => item.id === moduleId) || null);
       const items = banks.flatMap((bank: any) => bank?.items || []);
-      const revisionItems = revisionBanks.flat();
-      const markedIds = new Set<string>(revisionItems.map((item: Question) => item.id));
+      const markedIds = new Set<string>(items.filter((item: Question) => item.revisionMarked).map((item: Question) => item.id));
       setRevisionQuestionIds(markedIds);
-      for (const item of items) item.revisionMarked = markedIds.has(item.id);
       setQuestions(items);
       items.sort((left: Question, right: Question) => {
         if (isGeneratedQuestion(left) && isGeneratedQuestion(right)) {
