@@ -256,39 +256,24 @@ export default function PySparkLab() {
   useEffect(() => {
     let mounted = true;
     const controller = new AbortController();
-    Promise.all([
-      (async () => {
-        const query = "moduleId=pyspark-foundations&type=coding&pageSize=50";
-        const firstResponse = await fetch(`${API}/api/learning/questions?${query}&page=1`, { credentials: "include", signal: controller.signal });
-        if (firstResponse.status === 401) { location.href = "/login"; return null; }
-        if (!firstResponse.ok) throw new Error("PySpark questions could not be loaded.");
-        const firstPage = await readApiJson<any>(firstResponse);
-        const rest = await Promise.all(Array.from({ length: Math.max(0, firstPage.totalPages - 1) }, async (_, index) => {
-          const response = await fetch(`${API}/api/learning/questions?${query}&page=${index + 2}`, { credentials: "include", signal: controller.signal });
-          if (!response.ok) throw new Error("Some PySpark questions could not be loaded.");
-            return readApiJson<any>(response);
-        }));
-        return { ...firstPage, items: [firstPage, ...rest].flatMap((page) => page.items || []) };
-      })(),
-      (async () => {
-        const query = "moduleId=pyspark-foundations&type=coding&state=revision&pageSize=50";
-        const response = await fetch(`${API}/api/learning/questions?${query}&page=1`, { credentials: "include", signal: controller.signal });
-        if (!response.ok) throw new Error("PySpark revision questions could not be loaded.");
-        const firstPage = await readApiJson<any>(response);
-        const rest = await Promise.all(Array.from({ length: Math.max(0, firstPage.totalPages - 1) }, async (_, index) => {
-          const pageResponse = await fetch(`${API}/api/learning/questions?${query}&page=${index + 2}`, { credentials: "include", signal: controller.signal });
-          if (!pageResponse.ok) throw new Error("Some PySpark revision questions could not be loaded.");
-          return readApiJson<any>(pageResponse);
-        }));
-        return [firstPage, ...rest].flatMap((page) => page.items || []) as Question[];
-      })(),
-    ]).then(([bank, revisionItems]) => {
+    (async () => {
+      const query = "moduleId=pyspark-foundations&type=coding&pageSize=50";
+      const firstResponse = await fetch(`${API}/api/learning/questions?${query}&page=1`, { credentials: "include", signal: controller.signal });
+      if (firstResponse.status === 401) { location.href = "/login"; return null; }
+      if (!firstResponse.ok) throw new Error("PySpark questions could not be loaded.");
+      const firstPage = await readApiJson<any>(firstResponse);
+      const rest = await Promise.all(Array.from({ length: Math.max(0, firstPage.totalPages - 1) }, async (_, index) => {
+        const response = await fetch(`${API}/api/learning/questions?${query}&page=${index + 2}`, { credentials: "include", signal: controller.signal });
+        if (!response.ok) throw new Error("Some PySpark questions could not be loaded.");
+        return readApiJson<any>(response);
+      }));
+      return { ...firstPage, items: [firstPage, ...rest].flatMap((page) => page.items || []) };
+    })().then((bank) => {
       if (!mounted) return;
       const items = (bank?.items || []).filter((item: Question & { language?: string }) => item.language === "pyspark")
       .sort(questionOrder);
-      const markedIds = new Set<string>((revisionItems as Question[]).map((item) => item.id));
+      const markedIds = new Set<string>(items.filter((item: Question) => item.revisionMarked).map((item: Question) => item.id));
       setRevisionQuestionIds(markedIds);
-      for (const item of items) item.revisionMarked = markedIds.has(item.id);
       setQuestions(items);
       const params = new URLSearchParams(location.search);
       const requestedQuestion = params.get("questionId");
