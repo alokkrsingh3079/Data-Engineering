@@ -68,8 +68,19 @@ export async function getQuestion(questionId: string): Promise<any> {
   return mongoCollection("challenges").findOne({ _id: questionId });
 }
 
+export async function getQuestionSolution(questionId: string): Promise<string | null> {
+  const question = await mongoCollection("challenges").findOne(
+    { _id: questionId },
+    { projection: { reference_sql: 1 }, maxTimeMS: 5000 }
+  );
+  return typeof question?.reference_sql === "string" ? question.reference_sql : null;
+}
+
 export async function questionBelongsToUser(questionId: string, userId: string): Promise<boolean> {
-  const question = await getQuestion(questionId);
+  const question = await mongoCollection("challenges").findOne(
+    { _id: questionId },
+    { projection: { database_id: 1 }, maxTimeMS: 5000 }
+  );
   if (!question) return false;
   const workspace = await pool.query(
     "SELECT 1 FROM app_databases WHERE id=$1 AND owner_user_id=$2",
