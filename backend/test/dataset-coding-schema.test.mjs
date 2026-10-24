@@ -10,6 +10,8 @@ test('dataset coding output schema matches the PySpark execution contract', () =
   );
   assert.equal(datasetCodingQuestionSchema.properties.test_cases.minItems, 2);
   assert.equal(datasetCodingQuestionSchema.properties.test_cases.maxItems, 2);
+  assert.equal(datasetCodingQuestionSchema.properties.test_cases.items.properties.input_json.minLength, 2);
+  assert.equal(datasetCodingQuestionSchema.properties.test_cases.items.properties.expected_json.minLength, 2);
 });
 
 test('parseJsonLike repairs common malformed JSON from model output', () => {

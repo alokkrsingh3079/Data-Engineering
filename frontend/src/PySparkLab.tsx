@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -8,6 +8,7 @@ import "./pyspark-lab.css";
 import "./pyspark-theme.css";
 import "./pyspark-levels.css";
 import "./pyspark-level-expansion.css";
+import "./question-bank-resize.css";
 import "./solution-copy.css";
 import "./revision-bookmark.css";
 
@@ -30,6 +31,9 @@ type Question = {
   bookmarked: boolean;
   completed: boolean;
   revisionMarked: boolean;
+  source?: string;
+  created_at?: string | Date;
+  generation_index?: number;
 };
 
 type RunnerState = { configured: boolean; available: boolean; diagnostic?: string };
@@ -79,7 +83,21 @@ async function readApiJson<T>(response: Response, path = "API request", requestI
 const TABS = ["Test Cases", "Expected Output", "Hints", "Explanation", "Solution"] as const;
 type Tab = typeof TABS[number];
 const levels = Array.from({ length: 18 }, (_, index) => String.fromCharCode(65 + index));
+const bankFilters = [...levels, "generated", "all"];
+function isGeneratedQuestion(question: Question) {
+  return question.source === "dataset-generation";
+}
+function questionOrder(left: Question, right: Question) {
+  if (isGeneratedQuestion(left) && isGeneratedQuestion(right)) {
+    const createdDifference = Date.parse(String(left.created_at || "")) - Date.parse(String(right.created_at || ""));
+    if (Number.isFinite(createdDifference) && createdDifference !== 0) return createdDifference;
+    const indexDifference = (left.generation_index ?? Number.MAX_SAFE_INTEGER) - (right.generation_index ?? Number.MAX_SAFE_INTEGER);
+    if (indexDifference) return indexDifference;
+  }
+  return (left.learning_level || "Z").localeCompare(right.learning_level || "Z") || left.id.localeCompare(right.id);
+}
 function levelBand(level: string) {
+  if (level === "generated") return "DATASET-GENERATED";
   if (level <= "D") return "VERY EASY";
   if (level <= "H") return "EASY";
   if (level <= "K") return "MEDIUM";
@@ -87,7 +105,8 @@ function levelBand(level: string) {
   return "VERY HARD";
 }
 function levelDescription(level: string) {
-  if (level === "all") return "Browse all 270 coding exercises, grouped from foundational through very hard.";
+  if (level === "all") return "Browse the full PySpark question bank, including dataset-generated exercises.";
+  if (level === "generated") return "Dataset-grounded PySpark exercises, listed in the order they were generated.";
   const band = levelBand(level);
   return `${band}: Level ${level} practice with a complete input contract, schema, sample output, hints, and reference solution.`;
 }
@@ -121,10 +140,17 @@ export default function PySparkLab() {
   const [tutorBusy, setTutorBusy] = useState(false);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("A");
+  const [railWidth, setRailWidth] = useState(() => {
+    const saved = Number(localStorage.getItem("pyspark-question-rail-width"));
+    return Number.isFinite(saved) && saved >= 220 && saved <= 560 ? saved : 260;
+  });
   const [revisionOnly, setRevisionOnly] = useState(() => new URLSearchParams(location.search).get("revision") === "1");
 
-  const visibleQuestions = useMemo(() => questions.filter((item) => (filter === "all" || item.learning_level === filter) && (!revisionOnly || item.revisionMarked)), [questions, filter, revisionOnly]);
-  const levelCounts = useMemo(() => Object.fromEntries(levels.map((level) => [level, questions.filter((item) => item.learning_level === level).length])), [questions]);
+  const visibleQuestions = useMemo(() => questions.filter((item) => (filter === "all" || (filter === "generated" ? isGeneratedQuestion(item) : item.learning_level === filter)) && (!revisionOnly || item.revisionMarked)), [questions, filter, revisionOnly]);
+  const levelCounts = useMemo(() => Object.fromEntries([
+    ...levels.map((level) => [level, questions.filter((item) => item.learning_level === level).length]),
+    ["generated", questions.filter(isGeneratedQuestion).length]
+  ]), [questions]);
 
   useEffect(() => {
     if (!busy) { setElapsedSeconds(0); return; }
@@ -190,6 +216,10 @@ export default function PySparkLab() {
   }, []);
 
   useEffect(() => {
+    localStorage.setItem("pyspark-question-rail-width", String(railWidth));
+  }, [railWidth]);
+
+  useEffect(() => {
     let mounted = true;
     Promise.all([
       (async () => {
@@ -208,12 +238,15 @@ export default function PySparkLab() {
     ]).then(([bank]) => {
       if (!mounted) return;
       const items = (bank?.items || []).filter((item: Question & { language?: string }) => item.language === "pyspark")
-        .sort((left: Question, right: Question) => (left.learning_level || "Z").localeCompare(right.learning_level || "Z") || left.id.localeCompare(right.id));
+      .sort(questionOrder);
       setQuestions(items);
       const params = new URLSearchParams(location.search);
       const requestedQuestion = params.get("questionId");
       if (params.get("revision") === "1") { setRevisionOnly(true); setFilter("all"); }
-      const firstLevelQuestion = items.find((item: Question) => item.id === requestedQuestion) || items.find((item: Question) => item.learning_level === "A") || items[0];
+      const requested = items.find((item: Question) => item.id === requestedQuestion);
+      if (requested && isGeneratedQuestion(requested)) setFilter("generated");
+      else if (requested?.learning_level) setFilter(requested.learning_level);
+      const firstLevelQuestion = requested || items.find((item: Question) => item.learning_level === "A") || items[0];
       if (firstLevelQuestion) void chooseQuestion(firstLevelQuestion);
     }).catch((cause) => { if (mounted) setError(cause instanceof Error ? cause.message : "PySpark Lab is unavailable."); });
     return () => { mounted = false; };
@@ -392,18 +425,19 @@ export default function PySparkLab() {
     </header>
     <section className="sparkLabTitle"><div><p>REAL SPARK EXECUTION · LOCAL MODE</p><h1>PySpark Lab</h1><span>Interview exercises against a pinned Spark runtime.</span></div><div className={`sparkRunnerBadge ${runner.available ? "ready" : "offline"}`} title={runner.diagnostic}><span />{runner.available ? "Spark runner ready" : runner.configured ? `Runner health check failed${runner.diagnostic ? `: ${runner.diagnostic}` : ""}` : "Runner not configured"}</div></section>
     {error && <div className="sparkLabError" role="alert">{error}</div>}
-    <div className="sparkLabLayout">
+    <div className="sparkLabLayout" style={{ "--question-rail-width": `${railWidth}px` } as CSSProperties}>
       <aside className="sparkQuestionRail" aria-label="PySpark question bank">
         <div className="sparkRailHead"><strong>{revisionOnly ? "REVISION ONLY" : "QUESTION BANK"}</strong><span>{visibleQuestions.length}</span></div>
+        <label className="questionRailWidthControl">Bank width <output>{railWidth}px</output><input type="range" min="220" max="560" step="10" value={railWidth} aria-label="Question bank width" onChange={(event) => setRailWidth(Number(event.target.value))} /></label>
         <button className={`sparkRevisionToggle ${revisionOnly ? "active" : ""}`} onClick={() => { setRevisionOnly(!revisionOnly); if (!revisionOnly) setFilter("all"); }}><Flag size={13} />{revisionOnly ? "Show all questions" : "Revision only"}</button>
-        <div className="sparkLevelSelector" role="tablist" aria-label="PySpark learning levels">{[...levels, "all"].map((level) => <button key={level} role="tab" aria-label={level === "all" ? "All levels" : `Level ${level}, ${levelBand(level)}`} title={level === "all" ? "All levels" : `Level ${level} · ${levelBand(level)}`} aria-selected={filter === level} className={`${filter === level ? "active" : ""} level-${level.toLowerCase()}`} onClick={() => setFilter(level)}><strong>{level === "all" ? "All" : level}</strong><span>{level === "all" ? questions.length : levelCounts[level]}</span></button>)}</div>
-        <div className={`sparkLevelIntro level-${filter.toLowerCase()}`}><strong>{filter === "all" ? "FULL QUESTION BANK" : `LEVEL ${filter} · ${levelBand(filter)}`}</strong><p>{levelDescription(filter)}</p></div>
+        <div className="sparkLevelSelector" role="tablist" aria-label="PySpark question bank">{bankFilters.map((level) => <button key={level} role="tab" aria-label={level === "all" ? "All questions" : level === "generated" ? "Dataset-generated questions" : `Level ${level}, ${levelBand(level)}`} title={level === "all" ? "All questions" : level === "generated" ? "Dataset-generated questions" : `Level ${level} · ${levelBand(level)}`} aria-selected={filter === level} className={`${filter === level ? "active" : ""} level-${level.toLowerCase()}`} onClick={() => setFilter(level)}><strong>{level === "all" ? "All" : level === "generated" ? "Generated" : level}</strong><span>{level === "all" ? questions.length : levelCounts[level]}</span></button>)}</div>
+        <div className={`sparkLevelIntro level-${filter.toLowerCase()}`}><strong>{filter === "all" ? "FULL QUESTION BANK" : filter === "generated" ? "GENERATED QUESTIONS" : `LEVEL ${filter} · ${levelBand(filter)}`}</strong><p>{levelDescription(filter)}</p></div>
         {visibleQuestions.map((item, index) => <button key={item.id} className={`sparkQuestionItem ${question?.id === item.id ? "selected" : ""}`} onClick={() => void chooseQuestion(item)}><span className="sparkQuestionTitle"><em>{String(index + 1).padStart(2, "0")}</em>{item.title}</span><span className="sparkQuestionMeta">{item.topic} · {item.learning_level ? `Level ${item.learning_level}` : item.difficulty}{item.completed && <Check size={13} />}{item.revisionMarked && <Flag size={12} aria-label="Marked for revision" />}{item.bookmarked && <Bookmark size={12} aria-label="Bookmarked" />}</span></button>)}
         {!visibleQuestions.length && <p className="sparkRailEmpty">{revisionOnly ? "No questions are marked for revision." : "No Spark exercises match this filter."}</p>}
       </aside>
 
       {question && <section className="sparkWorkspace">
-        <div className="sparkChallengeHead"><div><div className="sparkQuestionMetaLine"><span className={`levelPill level-${question.learning_level || "A"}`}>{question.level_title || `Level ${question.learning_level || "A"}`}</span>{question.topic}{question.subtopic ? ` / ${question.subtopic}` : ""}<span>{question.difficulty_label || question.difficulty}</span></div><h2>{question.title}</h2></div><div className="sparkQuestionActions"><button className={`revision-action ${question.revisionMarked ? "active" : ""}`} aria-pressed={question.revisionMarked} onClick={() => void toggleRevisionMark()} aria-label={question.revisionMarked ? "Remove revision mark" : "Mark for revision"} title={question.revisionMarked ? "Remove revision mark" : "Mark for revision"}><Flag size={16} /></button><button className={`bookmark-action ${question.bookmarked ? "active" : ""}`} aria-pressed={question.bookmarked} onClick={() => void toggleBookmark()} aria-label={question.bookmarked ? "Remove bookmark" : "Bookmark question"} title={question.bookmarked ? "Remove bookmark" : "Bookmark question"}><Bookmark size={16} /></button></div></div>
+        <div className="sparkChallengeHead"><div><div className="sparkQuestionMetaLine"><span className={`levelPill ${isGeneratedQuestion(question) ? "level-generated" : `level-${question.learning_level || "A"}`}`}>{question.level_title || (isGeneratedQuestion(question) ? "Generated" : `Level ${question.learning_level || "A"}`)}</span>{question.topic}{question.subtopic ? ` / ${question.subtopic}` : ""}<span>{question.difficulty_label || question.difficulty}</span></div><h2>{question.title}</h2></div><div className="sparkQuestionActions"><button className={`revision-action ${question.revisionMarked ? "active" : ""}`} aria-pressed={question.revisionMarked} onClick={() => void toggleRevisionMark()} aria-label={question.revisionMarked ? "Remove revision mark" : "Mark for revision"} title={question.revisionMarked ? "Remove revision mark" : "Mark for revision"}><Flag size={16} /></button><button className={`bookmark-action ${question.bookmarked ? "active" : ""}`} aria-pressed={question.bookmarked} onClick={() => void toggleBookmark()} aria-label={question.bookmarked ? "Remove bookmark" : "Bookmark question"} title={question.bookmarked ? "Remove bookmark" : "Bookmark question"}><Bookmark size={16} /></button></div></div>
         <p className="sparkPrompt">{question.prompt}</p>
         <div className="sparkDatasetStrip"><strong>Input</strong><span>{question.input_description}</span><strong>Required output</strong><span>{question.output_description}</span></div>
 

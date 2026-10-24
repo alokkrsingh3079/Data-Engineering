@@ -37,6 +37,18 @@
 .qgBack:hover{color:#e4f1fa}
 .qgAlert,.qgNotice{margin:0 0 14px;padding:11px 13px;border:1px solid #8a3e4d;border-radius:5px;background:#351e2a;color:#ffd2d5;font-size:12px}
 .qgNotice{border-color:#286e61;background:#123129;color:#b8f4d8}
+.qgProgress{margin:16px 0;padding:13px;border:1px solid #28516a;border-radius:6px;background:#091a2b}
+.qgProgressHeader{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;color:#dff5ff;font-size:12px}
+.qgProgressHeader span{color:#8fc8d8;font-variant-numeric:tabular-nums}
+.qgProgressTrack{height:6px;margin:10px 0 12px;overflow:hidden;border-radius:5px;background:#1b3549}
+.qgProgressTrack span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#32b8d0,#68e0b1);transition:width .25s ease}
+.qgProgressCurrent{display:flex;align-items:center;gap:6px;color:#b7d7e5;font-size:11px}
+.qgProgressCurrent strong{color:#f0faff}
+.qgProgressTitles{margin-top:11px;color:#bcd2df;font-size:11px}
+.qgProgressTitles ol{display:grid;gap:5px;margin:6px 0 0;padding-left:22px}
+.qgProgressTitles li{padding-left:2px;line-height:1.45;overflow-wrap:anywhere}
+.qgProgressTitles a{color:#7edcf0;text-decoration:none}
+.qgProgressTitles a:hover{text-decoration:underline}
 .qgSpin{animation:qgSpin 1s linear infinite}
 @keyframes qgSpin{to{transform:rotate(360deg)}}
 @media(max-width:950px){.qgGrid{grid-template-columns:1fr}}

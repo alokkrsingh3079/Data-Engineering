@@ -104,7 +104,14 @@ Prerequisites: Node.js 20+, npm, a Cloudflare account, and a deployed HTTPS API 
 
 ## Local development
 
-Start local MongoDB/PostgreSQL and the real Spark worker with `docker compose up -d mongodb postgres spark_runner`, then run the Express API and Vite frontend using the commands in the root [README](README.md). The backend should use `SPARK_RUNNER_URL=http://127.0.0.1:4021`, `SPARK_RUNNER_TOKEN=local-development-only-token`, and `NODE_ENV=development`. The local MongoDB port and Spark runner port bind to loopback only. Run `SPARK_RUNNER_URL=http://127.0.0.1:4021 SPARK_RUNNER_TOKEN=local-development-only-token python3 worker/spark/smoke_test.py` for real aggregation, join, window, null, syntax-error, and timeout checks. To exercise the Worker locally after building the frontend, set `API_ORIGIN` in Wrangler's local environment or use a local `.dev.vars` file (which must not be committed), then run:
+Start local MongoDB/PostgreSQL and the real Spark worker with `docker compose up -d mongodb postgres spark_runner`, then run the Express API and Vite frontend using the commands in the root [README](README.md). The backend should use `SPARK_RUNNER_URL=http://127.0.0.1:4021`, `SPARK_RUNNER_TOKEN=local-development-only-token`, and `NODE_ENV=development`. The local MongoDB port and Spark runner port bind to loopback only. After changing Spark runner code, rebuild and recreate the runner so jobs use the updated image:
+
+```bash
+docker compose build spark_runner
+docker compose up -d --force-recreate spark_runner
+```
+
+Run `SPARK_RUNNER_URL=http://127.0.0.1:4021 SPARK_RUNNER_TOKEN=local-development-only-token python3 worker/spark/smoke_test.py` for real aggregation, join, window, null, all-null schema inference, syntax-error, and timeout checks. To exercise the Worker locally after building the frontend, set `API_ORIGIN` in Wrangler's local environment or use a local `.dev.vars` file (which must not be committed), then run:
 
 ```bash
 npm run build

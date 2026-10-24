@@ -4,6 +4,27 @@ import json
 import sys
 
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+
+
+def create_input_dataframe(spark, rows):
+    if not isinstance(rows, list) or not rows or not all(isinstance(row, dict) for row in rows):
+        return spark.createDataFrame(rows)
+
+    columns = set().union(*(row.keys() for row in rows))
+    all_null_columns = [column for column in columns if all(row.get(column) is None for row in rows)]
+    if not all_null_columns:
+        return spark.createDataFrame(rows)
+
+    marker = "__spark_null_schema_inference__"
+    prepared = [
+        {**row, **{column: marker for column in all_null_columns}}
+        for row in rows
+    ]
+    dataframe = spark.createDataFrame(prepared)
+    for column in all_null_columns:
+        dataframe = dataframe.withColumn(column, F.lit(None).cast("string"))
+    return dataframe
 
 
 def main():
@@ -37,9 +58,9 @@ def main():
                     if isinstance(raw_input, dict) and set(raw_input.keys()) == {"input"}:
                         raw_input = raw_input["input"]
                     if isinstance(raw_input, list):
-                        arguments = [case_spark.createDataFrame(raw_input)]
+                        arguments = [create_input_dataframe(case_spark, raw_input)]
                     elif isinstance(raw_input, dict):
-                        arguments = [case_spark.createDataFrame(rows) for rows in raw_input.values()]
+                        arguments = [create_input_dataframe(case_spark, rows) for rows in raw_input.values()]
                     else:
                         raise ValueError("The exercise input must be a list or a dataset object.")
                     result = function(*arguments)

@@ -1,0 +1,119 @@
+.sparkLabLayout,
+.trackLayout {
+  grid-template-columns: minmax(220px, var(--question-rail-width, 260px)) minmax(0, 1fr);
+}
+
+.questionRailWidthControl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px 10px;
+  align-items: center;
+  margin: 10px 10px 12px 0;
+  color: #758177;
+  font: 10px Arial, sans-serif;
+}
+
+.trackQuestionRail .questionRailWidthControl {
+  margin-right: 0;
+  color: #86a1b5;
+}
+
+.questionRailWidthControl output {
+  color: #4d7457;
+  font-variant-numeric: tabular-nums;
+}
+
+.trackQuestionRail .questionRailWidthControl output {
+  color: #61cde5;
+}
+
+.questionRailWidthControl input {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+  accent-color: #42845b;
+  cursor: ew-resize;
+}
+
+.trackQuestionRail .questionRailWidthControl input {
+  accent-color: #35bfdc;
+}
+
+.sparkLevelSelector {
+  grid-template-columns: repeat(auto-fit, minmax(46px, 1fr));
+}
+
+.sparkLevelSelector button.level-generated {
+  grid-column: span 2;
+}
+
+.sparkLevelSelector button.level-all {
+  grid-column: span 2;
+}
+
+.sparkLevelSelector button.level-generated.active,
+.sparkLevelSelector button.level-generated.active span,
+.trackLevelTabs button.level-generated.selected {
+  border-color: #d1a158;
+  background-color: #382e1c;
+  color: #f3d28e;
+}
+
+.trackLevelTabs {
+  flex-wrap: wrap;
+}
+
+.pythonBankLevels {
+  margin: 10px 0 12px;
+  padding: 9px;
+  border: 1px solid #193f5a;
+  border-radius: 5px;
+  background: #091a2d;
+}
+
+.pythonBankLevels .trackLevelIntro {
+  margin-bottom: 8px;
+}
+
+.pythonBankLevels .trackLevelTabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+  gap: 4px;
+}
+
+.pythonBankLevels .trackLevelTabs button {
+  justify-content: space-between;
+  min-width: 0;
+  padding: 6px;
+}
+
+.pythonBankLevels .trackLevelTabs button.level-generated,
+.pythonBankLevels .trackLevelTabs button.level-all {
+  grid-column: span 2;
+}
+
+.pythonBankLevels .trackLevelTabs button.level-generated.selected {
+  border-color: #d1a158;
+  background: #382e1c;
+  color: #f3d28e;
+}
+
+.trackLayout .trackLevelBadge.level-generated {
+  border-color: #d1a158;
+  background: #382e1c;
+  color: #f3d28e;
+}
+
+@media (max-width: 950px) {
+  .sparkLabLayout,
+  .trackLayout {
+    grid-template-columns: minmax(0, var(--question-rail-width, 260px)) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .sparkLabLayout,
+  .trackLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

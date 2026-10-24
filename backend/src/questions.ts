@@ -97,7 +97,7 @@ export async function getQuestionSets(databaseId: string, acceptedOnly = true) {
 export async function getQuestionSetQuestions(questionSetId: string) {
   return mongoCollection("challenges")
     .find({ question_set_id: questionSetId }, { projection: { reference_sql: 0 } })
-    .sort({ created_at: 1 })
+    .sort({ position: 1, created_at: 1, _id: 1 })
     .toArray();
 }
 
@@ -117,7 +117,15 @@ export async function questionExists(databaseId: string, title: string, referenc
 }
 
 export async function createQuestion(question: Record<string, unknown>): Promise<void> {
-  await mongoCollection("challenges").insertOne({ _id: String(question.id), ...question });
+  const collection = mongoCollection("challenges");
+  const position = question.question_set_id
+    ? await collection.countDocuments({ question_set_id: question.question_set_id }) + 1
+    : question.position;
+  await collection.insertOne({
+    _id: String(question.id),
+    ...question,
+    ...(position === undefined ? {} : { position })
+  });
 }
 
 export async function listAdminQuestions(databaseId: string, reviewStatus: string) {

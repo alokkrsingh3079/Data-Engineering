@@ -79,6 +79,11 @@ def main():
         "from pyspark.sql import functions as F\ndef fill_missing_scores(scores): return scores.withColumn('score', F.coalesce(F.col('score'), F.lit(0))).orderBy('student_id')",
         {"name": "nulls", "input": [{"student_id": 1, "score": 88}, {"student_id": 2, "score": None}], "expected": [{"student_id": 1, "score": 88}, {"student_id": 2, "score": 0}], "ordered": True},
     )
+    assert_pass(
+        "pyspark-event-counts",
+        "def count_by_event_type(events): return events.select('event_type', 'all_null').orderBy('event_type')",
+        {"name": "all-null column", "input": [{"event_type": "purchase", "all_null": None}, {"event_type": "view", "all_null": None}], "expected": [{"event_type": "purchase", "all_null": None}, {"event_type": "view", "all_null": None}], "ordered": True},
+    )
 
     syntax = execute("pyspark-event-counts", "def count_by_event_type(:", [{"name": "syntax", "input": [{"event_type": "x"}], "expected": []}])
     assert syntax["status"] == "error" and syntax["message"], syntax
@@ -112,7 +117,7 @@ def main():
         cancelled = json.load(response)
     assert cancelled["status"] == "cancelled", cancelled
 
-    print("Spark smoke tests passed: aggregation, join, window, nulls, incorrect answer, hidden-output secrecy, syntax error, timeout, cancellation, network isolation")
+    print("Spark smoke tests passed: aggregation, join, window, nulls, all-null schema inference, incorrect answer, hidden-output secrecy, syntax error, timeout, cancellation, network isolation")
 
 
 if __name__ == "__main__":

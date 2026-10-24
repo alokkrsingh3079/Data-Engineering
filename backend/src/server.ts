@@ -65,56 +65,99 @@ app.get('/api/question-datasets/:datasetId',async(req,res)=>{try{const dataset=a
 app.put('/api/question-datasets/:datasetId',async(req,res)=>{const input=z.object({name:z.string().trim().min(1).max(100),description:z.string().max(1000)}).safeParse(req.body);if(!input.success)return res.status(400).json({error:'Invalid dataset details'});try{const dataset=await updateQuestionDataset(String((req as any).user.id),req.params.datasetId,input.data.name,input.data.description);if(!dataset)return res.status(404).json({error:'Dataset not found'});res.json(dataset)}catch{res.status(503).json({error:'Dataset details could not be saved'})}});
 app.delete('/api/question-datasets/:datasetId',async(req,res)=>{try{if(!await deleteQuestionDataset(String((req as any).user.id),req.params.datasetId))return res.status(404).json({error:'Dataset not found'});res.json({ok:true})}catch(error){res.status(400).json({error:(error as Error).message})}});
 const datasetGeneration=z.object({language:z.enum(['python','pyspark']),count:z.number().int().min(1).max(10),difficulty:z.enum(['beginner','intermediate','advanced','mixed']).default('mixed'),topic:z.string().trim().min(1).max(100),tableName:z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/).optional()});
+async function runDatasetQuestionGeneration(jobId:string,userId:string,dataset:any,codingTable:any,input:z.infer<typeof datasetGeneration>){
+ const jobs=mongoCollection('question_generation_jobs');
+ const accepted:Record<string,any>[]=[];const rejected:string[]=[];const attemptedTitles=new Set<string>();
+ const allGeneratedTitles:string[]=[];let generatedCount=0;
+ const updateProgress=async(fields:Record<string,unknown>)=>jobs.updateOne({_id:jobId,user_id:userId},{$set:{...fields,updated_at:new Date()}});
+ try{
+  let generationAttempts=0;
+  while(accepted.length<input.count&&generationAttempts<5){
+   await updateProgress({stage:'generating',currentTitle:null});
+   const batch=await generateDatasetCodingQuestions({schema:JSON.stringify({table:codingTable.name,columns:codingTable.columns}),sample:JSON.stringify(codingTable.preview),language:input.language,count:input.count-accepted.length,difficulty:input.difficulty,topic:input.topic,avoidTitles:[...attemptedTitles].slice(-30)});
+   generationAttempts++;
+   generatedCount+=batch.questions.length;
+   const generatedTitles=batch.questions.map((raw)=>String(raw.title||'Generated question').trim());
+   allGeneratedTitles.push(...generatedTitles);
+   await updateProgress({generated:generatedCount,generatedTitles:allGeneratedTitles,stage:'validating'});
+   for(const raw of batch.questions){
+    if(accepted.length>=input.count)break;
+    const id=crypto.randomUUID();
+    const title=String(raw.title||'Generated question').trim();
+    const titleKey=title.toLocaleLowerCase();
+    await updateProgress({currentTitle:title});
+    if(attemptedTitles.has(titleKey)){
+     rejected.push(`${title}: duplicate generated title; requested a replacement`);
+     await updateProgress({failed:rejected.length,rejected});
+     continue;
+    }
+    attemptedTitles.add(titleKey);
+    try{
+     const testCases=Array.isArray(raw.test_cases)?raw.test_cases.map((test,index)=>{
+      if(typeof test.input_json!=='string'||typeof test.expected_json!=='string')throw new Error('AI test data is malformed');
+      if(!test.input_json.trim()||!test.expected_json.trim())throw new Error(`Test case ${index+1} has an empty input or expected JSON value`);
+      const testInput:unknown=parseJsonLike(test.input_json);const expected:unknown=parseJsonLike(test.expected_json);const normalizedInput=normalizeRunnerInput(testInput);
+      if(!normalizedInput||typeof normalizedInput!=='object')throw new Error('Test input must be a JSON object or a single list payload');
+      return{name:String(test.name||`Case ${index+1}`).slice(0,120),input:normalizedInput,expected};
+     }):[];
+     const functionName=String(raw.function_name||'');
+     if(!/^[a-zA-Z_][a-zA-Z0-9_]{0,100}$/.test(functionName))throw new Error('Generated question function_name must be a valid Python identifier');
+     const starterCode=String(raw.starter_code||''),referenceSolution=String(raw.reference_solution||''),functionMatcher=/^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*:/m;
+     const starterMatch=starterCode.match(functionMatcher),referenceMatch=referenceSolution.match(functionMatcher);
+     if(!starterMatch||!referenceMatch)throw new Error('Generated solution must include a valid Python function definition');
+     if(starterMatch[1]!==functionName||referenceMatch[1]!==functionName)throw new Error('Generated function name must match the starter and reference definition');
+     const signatureArgs=starterMatch[2].split(',').map((part)=>part.trim()).filter(Boolean),refArgs=referenceMatch[2].split(',').map((part)=>part.trim()).filter(Boolean);
+     if(signatureArgs.length!==1||refArgs.length!==1||/\*|\*\*|=/.test(starterMatch[2])||/\*|\*\*|=/.test(referenceMatch[2]))throw new Error('Generated coding function must define exactly one parameter and no default arguments');
+     if(testCases.length!==2)throw new Error(`Generated question must include exactly two valid test cases; received ${testCases.length}`);
+     const question={id,module_id:input.language==='python'?'python-etl':'pyspark-foundations',dataset_id:dataset.id,owner_user_id:userId,language:input.language,type:'coding',title,prompt:String(raw.prompt||''),topic:String(raw.topic||input.topic),subtopic:input.topic,difficulty:input.difficulty==='mixed'?String(raw.difficulty):input.difficulty,tags:[input.language,input.topic,'dataset-generated'],function_name:functionName,starter_code:starterCode,reference_solution:referenceSolution,explanation:String(raw.explanation||''),hints:Array.isArray(raw.hints)?raw.hints.filter((hint):hint is string=>typeof hint==='string').slice(0,5):[],test_cases:testCases,public_examples:testCases.slice(0,1).map(({name,...item})=>item),input_description:'Use the uploaded dataset sample supplied to the isolated function runner.',output_description:'Return the requested transformation result.',status:'published',source:'dataset-generation',generation_index:accepted.length+1,created_at:new Date()};
+     const validation=validateLearningQuestion(question);if(validation.length)throw new Error(validation.join('; '));
+     const duplicate=await mongoCollection('learning_questions').findOne({owner_user_id:userId,dataset_id:dataset.id,title:question.title,language:input.language},{projection:{_id:1}});
+     if(duplicate)throw new Error('A question with this title already exists for the dataset');
+     const checked=await executeOnRunner({language:input.language,taskId:id,functionName,code:question.reference_solution,testCases});
+     if(checked.status==='unavailable')throw new Error('The selected isolated runner is unavailable');
+     if(checked.status!=='passed'||!checked.correct){
+      const failedTests='tests'in checked?(checked.tests||[]).filter(test=>!test.passed).map(test=>test.name):[];
+      throw new Error(checked.message||(failedTests.length?`Reference solution failed validation for: ${failedTests.join(', ')}`:'Reference solution did not pass dataset validation'));
+     }
+     accepted.push(question);
+     await updateProgress({validated:accepted.length,validatedTitles:accepted.map((item)=>item.title),failed:rejected.length,rejected});
+    }catch(error){rejected.push(`${title}: ${(error as Error).message}`);await updateProgress({failed:rejected.length,rejected})}
+   }
+  }
+  if(accepted.length!==input.count){
+   await updateProgress({status:'failed',stage:'failed',currentTitle:null,failed:rejected.length,rejected,error:`Could validate only ${accepted.length} of ${input.count} requested questions after 5 generation attempts. No questions were saved; retry to generate a complete set.`});
+   return;
+  }
+  await mongoCollection('learning_questions').insertMany(accepted.map(question=>({_id:question.id,...question})),{ordered:true});
+  await updateProgress({status:'completed',stage:'completed',currentTitle:null,validated:accepted.length,validatedTitles:accepted.map((item)=>item.title),failed:rejected.length,rejected,questionIds:accepted.map((item)=>item.id),error:null});
+ }catch(error){
+  try{await updateProgress({status:'failed',stage:'failed',currentTitle:null,failed:rejected.length,rejected,error:error instanceof Error?error.message:'Question generation failed'})}
+  catch(progressError){console.error(JSON.stringify({event:'question_generation_progress_update_failed',jobId,error:progressError instanceof Error?progressError.message:'Unknown progress update error'}))}
+ }
+}
 app.post('/api/question-datasets/:datasetId/generate',async(req,res)=>{
  const input=datasetGeneration.safeParse(req.body);if(!input.success)return res.status(400).json({error:'Choose a supported lab, 1–10 questions, a difficulty, and a topic'});
  const userId=String((req as any).user.id);
  try{
   const dataset=await getQuestionDataset(userId,req.params.datasetId);if(!dataset)return res.status(404).json({error:'Dataset not found'});
- const runners=await learningRunnerStatus();const runner=input.data.language==='python'?runners.python:runners.pyspark;
- if(!runner.available)return res.status(503).json({error:`The isolated ${input.data.language} runner is not configured or available`});
-  const tableName=input.data.tableName||dataset.table_name;
-  const codingTable=dataset.tables.find((table:any)=>table.name===tableName);
+  const runners=await learningRunnerStatus(),runner=input.data.language==='python'?runners.python:runners.pyspark;
+  if(!runner.available)return res.status(503).json({error:`The isolated ${input.data.language} runner is not configured or available`});
+  const tableName=input.data.tableName||dataset.table_name,codingTable=dataset.tables.find((table:any)=>table.name===tableName);
   if(!codingTable)return res.status(400).json({error:'Select a table from this uploaded database'});
   if(!codingTable.row_count||!codingTable.preview.length)return res.status(400).json({error:`The ${tableName} table has no sample rows for coding-question generation`});
-  const generated=await generateDatasetCodingQuestions({schema:JSON.stringify({table:codingTable.name,columns:codingTable.columns}),sample:JSON.stringify(codingTable.preview),language:input.data.language,count:input.data.count,difficulty:input.data.difficulty,topic:input.data.topic});
-  const accepted:string[]=[];const rejected:string[]=[];
-  for(const raw of generated.questions){
-   const id=crypto.randomUUID();
-   try{
-    const testCases=Array.isArray(raw.test_cases)?raw.test_cases.map((test,index)=>{
-     if(typeof test.input_json!=='string'||typeof test.expected_json!=='string')throw new Error('AI test data is malformed');
-     const testInput:unknown=parseJsonLike(test.input_json);const expected:unknown=parseJsonLike(test.expected_json);
-     const normalizedInput = normalizeRunnerInput(testInput);
-     if(!normalizedInput||typeof normalizedInput!=='object')throw new Error('Test input must be a JSON object or a single list payload');
-     return{name:String(test.name||`Case ${index+1}`).slice(0,120),input:normalizedInput,expected};
-    }):[];
-    const functionName=String(raw.function_name||'');
-    if(!/^[a-zA-Z_][a-zA-Z0-9_]{0,100}$/.test(functionName))throw new Error('Generated question function_name must be a valid Python identifier');
-    const starterCode=String(raw.starter_code||'');
-    const referenceSolution=String(raw.reference_solution||'');
-    const functionMatcher=/^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*:/m;
-    const starterMatch=starterCode.match(functionMatcher);
-    const referenceMatch=referenceSolution.match(functionMatcher);
-    if(!starterMatch||!referenceMatch)throw new Error('Generated solution must include a valid Python function definition');
-    if(starterMatch[1]!==functionName||referenceMatch[1]!==functionName)throw new Error('Generated function name must match the starter and reference definition');
-    const signatureArgs = starterMatch[2].split(',').map((part)=>part.trim()).filter(Boolean);
-    const refArgs = referenceMatch[2].split(',').map((part)=>part.trim()).filter(Boolean);
-    if(signatureArgs.length !== 1 || refArgs.length !== 1 || /\*|\*\*|=/.test(starterMatch[2]) || /\*|\*\*|=/.test(referenceMatch[2])) {
-      throw new Error('Generated PySpark function must define exactly one parameter and no default arguments');
-    }
-    if(testCases.length!==2)throw new Error(`Generated question must include exactly two valid test cases; received ${testCases.length}`);
-    const question={id,module_id:input.data.language==='python'?'python-etl':'pyspark-foundations',dataset_id:dataset.id,owner_user_id:userId,language:input.data.language,type:'coding',title:String(raw.title||''),prompt:String(raw.prompt||''),topic:String(raw.topic||input.data.topic),subtopic:input.data.topic,difficulty:input.data.difficulty==='mixed'?String(raw.difficulty):input.data.difficulty,tags:[input.data.language,input.data.topic,'dataset-generated'],function_name:functionName,starter_code:starterCode,reference_solution:referenceSolution,explanation:String(raw.explanation||''),hints:Array.isArray(raw.hints)?raw.hints.filter((hint):hint is string=>typeof hint==='string').slice(0,5):[],test_cases:testCases,public_examples:testCases.slice(0,1).map(({name,...item})=>item),input_description:'Use the uploaded dataset sample supplied to the isolated function runner.',output_description:'Return the requested transformation result.',status:'published',source:'dataset-generation',created_at:new Date()};
-    const validation=validateLearningQuestion(question);if(validation.length)throw new Error(validation.join('; '));
-    const duplicate=await mongoCollection('learning_questions').findOne({owner_user_id:userId,dataset_id:dataset.id,title:question.title,language:input.data.language},{projection:{_id:1}});if(duplicate)throw new Error('A question with this title already exists for the dataset');
-    const checked=await executeOnRunner({language:input.data.language,taskId:id,functionName,code:question.reference_solution,testCases});
-    if(checked.status==='unavailable')throw new Error('The selected isolated runner is unavailable');
-    if(checked.status!=='passed'||!checked.correct)throw new Error(checked.message||'Reference solution did not pass dataset validation');
-    await mongoCollection('learning_questions').insertOne({_id:id,...question});
-    accepted.push(id);
-   }catch(error){rejected.push(`${String(raw.title||'Generated question')}: ${(error as Error).message}`)}
-  }
-  res.status(201).json({ok:true,requested:input.data.count,validated:accepted.length,failed:rejected.length,questionIds:accepted,rejected});
- }catch(error){res.status(503).json({error:(error as Error).message||'Question generation failed'})}
+  const jobId=crypto.randomUUID(),now=new Date();
+  await mongoCollection('question_generation_jobs').insertOne({_id:jobId,user_id:userId,dataset_id:dataset.id,language:input.data.language,requested:input.data.count,generated:0,validated:0,failed:0,generatedTitles:[],validatedTitles:[],rejected:[],questionIds:[],stage:'queued',status:'running',currentTitle:null,error:null,created_at:now,updated_at:now});
+  void runDatasetQuestionGeneration(jobId,userId,dataset,codingTable,input.data);
+  res.status(202).json({jobId,status:'running',requested:input.data.count});
+ }catch(error){res.status(503).json({error:error instanceof Error?error.message:'Question generation could not be started'})}
+});
+app.get('/api/question-generation/jobs/:jobId',async(req,res)=>{
+ const jobId=z.string().uuid().safeParse(req.params.jobId);if(!jobId.success)return res.status(400).json({error:'Invalid generation job'});
+ try{
+  const job=await mongoCollection('question_generation_jobs').findOne({_id:jobId.data,user_id:String((req as any).user.id)},{projection:{_id:1,status:1,language:1,requested:1,generated:1,validated:1,failed:1,generatedTitles:1,validatedTitles:1,rejected:1,questionIds:1,stage:1,currentTitle:1,error:1,created_at:1,updated_at:1}});
+  if(!job)return res.status(404).json({error:'Question generation job not found'});
+  res.json({jobId:job._id,...job});
+ }catch{res.status(503).json({error:'Question generation progress is unavailable'})}
 });
 app.get('/api/learning/studio',async(req,res)=>{try{res.json({modules:await getLearningStudio(String((req as any).user.id))})}catch{res.status(503).json({error:'Learning content unavailable'})}});
 const noteInput=z.object({title:z.string().trim().min(1).max(160),subject:z.string().trim().min(1).max(80),chapter:z.string().trim().max(120).default(''),difficulty:z.enum(['beginner','intermediate','advanced']).default('intermediate'),content:z.string().max(100000).default('')});
@@ -322,4 +365,4 @@ app.put('/api/admin/feature-flags/:key',requireRole('admin'),async(req,res)=>{co
 app.get('/api/analytics/overview',async(req,res)=>{res.json(await analyticsOverview(String((req as any).user.id)))});
 app.get('/api/export/progress',async(req,res)=>{const rows=await exportProgress(String((req as any).user.id));res.setHeader('Content-Type','text/csv');res.setHeader('Content-Disposition','attachment; filename="sql-practice-progress.csv"');const esc=(v:any)=>`"${String(v??'').replace(/"/g,'""')}"`;res.send(['created_at,title,topic,difficulty,correct,execution_ms,sql,error',...rows.map(x=>[x.created_at,x.title,x.topic,x.difficulty,x.correct,x.execution_ms,x.sql,x.error].map(esc).join(','))].join('\n'));});
 
-initDb().then(validateAuthConfig).then(seedCurriculum).then(seedLearningQuestions).then(migrateLegacyAuthData).then(seedAdmin).then(ensureDemoDatabase).then(seedStarterQuestions).then(()=>migrateLegacyQuestions()).then(assignLegacyWorkspacesToAdmin).then(migrateLegacyLearningData).then(migrateLegacyWorkspaces).then(migrateLegacyRecords).then(async()=>{const demo=(await pool.query('SELECT * FROM app_databases WHERE slug=$1',['demo-ecommerce'])).rows[0];if(demo&&!await getInitialSnapshot(String(demo.id)))await snapshotDatabase(String(demo.id),'Initial baseline');app.listen(port,()=>console.log(`SQL Practice backend on http://localhost:${port}`))}).catch(e=>{console.error(e);process.exit(1)});
+initDb().then(validateAuthConfig).then(seedCurriculum).then(seedLearningQuestions).then(migrateLegacyAuthData).then(seedAdmin).then(ensureDemoDatabase).then(seedStarterQuestions).then(()=>migrateLegacyQuestions()).then(assignLegacyWorkspacesToAdmin).then(migrateLegacyLearningData).then(migrateLegacyWorkspaces).then(migrateLegacyRecords).then(async()=>{await mongoCollection('question_generation_jobs').updateMany({status:'running'},{$set:{status:'failed',stage:'failed',currentTitle:null,error:'Generation was interrupted by a server restart. Retry to generate a complete set.',updated_at:new Date()}});const demo=(await pool.query('SELECT * FROM app_databases WHERE slug=$1',['demo-ecommerce'])).rows[0];if(demo&&!await getInitialSnapshot(String(demo.id)))await snapshotDatabase(String(demo.id),'Initial baseline');app.listen(port,()=>console.log(`SQL Practice backend on http://localhost:${port}`))}).catch(e=>{console.error(e);process.exit(1)});
