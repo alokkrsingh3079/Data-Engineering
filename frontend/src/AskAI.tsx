@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ChangeEvent } from "react";
-import { Activity, ArrowUp, BarChart3, BookOpen, Code2, Database, ImagePlus, Layers3, LogOut, MessageSquare, Plus, Sparkles, Target, Trash2, X } from "lucide-react";
-import "./studio-sidebar.css";
+import { ArrowUp, ImagePlus, MessageSquare, Plus, Sparkles, Trash2, X } from "lucide-react";
+import StudioNavigation from "./StudioNavigation";
 import "./ask-ai.css";
 
 type Attachment = { id: string; name: string; mimeType: string; url: string };
@@ -172,34 +172,8 @@ export default function AskAI() {
     }
   }
 
-  async function signOut() {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-    location.href = "/login";
-  }
-
   return <div className="studioShell askAiShell">
-    <aside className="studioSidebar">
-      <a className="studioBrand" href="/" aria-label="Data Engineering Studio home">
-        <span className="studioBrandMark"><Layers3 size={18} /></span>
-        <span><strong>Data Engineering</strong><small>PRACTICE PLATFORM</small></span>
-      </a>
-      <nav className="studioActions" aria-label="Main navigation">
-        <a href="/"><BarChart3 size={15} /> Dashboard</a>
-        <a href="/sql"><Database size={15} /> SQL lab</a>
-        <a href="/learn/python-etl"><Code2 size={15} /> Python lab</a>
-        <a href="/pyspark"><Layers3 size={15} /> PySpark lab</a>
-        <a href="/learn/azure-data-factory"><Activity size={15} /> Azure &amp; Databricks</a>
-        <a href="/learn/etl-data-quality"><Target size={15} /> ETL testing</a>
-        <a href="/interview"><BookOpen size={15} /> Interview</a>
-        <a className="studioNavActive" href="/ask-ai"><Sparkles size={15} /> Ask AI</a>
-        <a href="/analytics"><BarChart3 size={15} /> Progress &amp; Analytics</a>
-      </nav>
-      <button className="studioSidebarAccount" onClick={() => void signOut()} title="Sign out">
-        <span>{userName.slice(0, 1).toUpperCase()}</span>
-        <span><strong>{userName}</strong><small>LEARNER ACCOUNT</small></span>
-        <LogOut size={15} />
-      </button>
-    </aside>
+    <StudioNavigation activePath="/ask-ai" />
 
     <main className="studioPage askAiPage">
       <header className="askAiHeader">

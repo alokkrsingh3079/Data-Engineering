@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
+  Activity,
   BarChart3,
   Shield,
   Users,
@@ -15,8 +16,11 @@ import {
   Database,
   Layers3,
   Sparkles,
+  Target,
 } from "lucide-react";
 import "./admin-console.css";
+import "./analytics-report.css";
+import StudioNavigation from "./StudioNavigation";
 import DailyProgressCalendar from "./DailyProgressCalendar";
 const API = "";
 export function Login() {
@@ -327,22 +331,48 @@ export function AdminApp() {
   );
 }
 export function Analytics() {
-  const [x, setX] = useState<any>({ topics: [] });
+  const [x, setX] = useState<{ topics: { topic: string; attempts: number; correct: number; avg_ms: number }[] }>({ topics: [] });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function loadAnalytics() {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch(API + "/api/analytics/overview", { credentials: "include" });
+      if (response.status === 401) {
+        location.href = "/login";
+        return;
+      }
+      if (!response.ok) throw new Error("Analytics are temporarily unavailable.");
+      setX(await response.json());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load analytics.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    fetch(API + "/api/analytics/overview", { credentials: "include" })
-      .then((r) => {
-        if (r.status === 401) {
-          location.href = "/login";
-          return null;
-        }
-        return r.json();
-      })
-      .then((data) => {
-        if (data) setX(data);
-      });
+    void loadAnalytics();
   }, []);
+
+  const attempts = x.topics.reduce((total, topic) => total + topic.attempts, 0);
+  const correct = x.topics.reduce((total, topic) => total + topic.correct, 0);
+  const incorrect = Math.max(0, attempts - correct);
+  const accuracy = attempts ? Math.round(correct / attempts * 100) : 0;
+  const practicedTopics = x.topics.filter((topic) => topic.attempts > 0).length;
+  const rankedTopics = x.topics.filter((topic) => topic.attempts >= 3)
+    .map((topic) => ({ ...topic, accuracy: Math.round(topic.correct / topic.attempts * 100) }));
+  const focusTopic = [...rankedTopics].sort((left, right) => left.accuracy - right.accuracy || right.attempts - left.attempts)[0];
+  const strongestTopic = [...rankedTopics].sort((left, right) => right.accuracy - left.accuracy || right.attempts - left.attempts)[0];
+  const responseTimes = x.topics.filter((topic) => topic.attempts > 0).sort((left, right) => right.avg_ms - left.avg_ms);
+  const maxResponseTime = Math.max(1, ...responseTimes.map((topic) => topic.avg_ms));
   return (
-    <div className="analyticsPage">
+    <div className="studioShell">
+      <StudioNavigation activePath="/analytics" refreshLabel="Refresh analytics" onRefresh={() => void loadAnalytics()} />
+      <main className="studioPage analyticsStudioPage">
+      <div className="analyticsPage">
       <div className="analyticsHead">
         <div>
           <b>Learning Analytics</b>
@@ -353,20 +383,53 @@ export function Analytics() {
           <Download size={15} /> Export CSV
         </a>
       </div>
+      {error && <p className="analyticsLoadError" role="status">{error}</p>}
+      <section className="analyticsSummary" aria-label="Overall SQL practice summary">
+        <article><span>QUESTIONS ATTEMPTED</span><strong>{loading ? "—" : attempts}</strong><small>SQL practice attempts</small></article>
+        <article><span>OVERALL ACCURACY</span><strong>{loading || !attempts ? "—" : `${accuracy}%`}</strong><small>{correct} correct · {incorrect} incorrect</small></article>
+        <article><span>TOPICS PRACTICED</span><strong>{loading ? "—" : practicedTopics}</strong><small>with at least one attempt</small></article>
+        <article className="analyticsFocusCard"><span>FOCUS AREA</span><strong>{loading ? "—" : focusTopic?.topic || "Keep practicing"}</strong><small>{focusTopic ? `${focusTopic.accuracy}% accuracy · ${focusTopic.attempts} attempts` : "Need at least 3 attempts for a recommendation"}</small></article>
+      </section>
+      <section className="analyticsVisualGrid" aria-label="Performance analysis">
+        <article className="analyticsVisualCard analyticsAccuracyPanel">
+          <header><div><span>ANSWER QUALITY</span><h2>Accuracy breakdown</h2></div></header>
+          <div className="analyticsAccuracyContent">
+            <div className="analyticsDonut" style={{ background: attempts ? `conic-gradient(#46cba6 0% ${accuracy}%, #d2777e ${accuracy}% 100%)` : "conic-gradient(#294255 0% 100%)" }} role="img" aria-label={attempts ? `${accuracy}% correct, ${incorrect} incorrect answers` : "No answer data yet"}>
+              <div><strong>{loading || !attempts ? "—" : `${accuracy}%`}</strong><small>correct</small></div>
+            </div>
+            <div className="analyticsAccuracyLegend">
+              <span><i className="analyticsCorrectDot" /><b>Correct</b><strong>{loading ? "—" : correct}</strong></span>
+              <span><i className="analyticsIncorrectDot" /><b>Incorrect</b><strong>{loading ? "—" : incorrect}</strong></span>
+              <small>{attempts ? `${correct} of ${attempts} attempts were correct` : "Submit practice answers to build your report."}</small>
+            </div>
+          </div>
+        </article>
+        <article className="analyticsVisualCard analyticsSpeedPanel">
+          <header><div><span>QUERY PERFORMANCE</span><h2>Average execution time</h2></div><small>milliseconds</small></header>
+          {responseTimes.length ? <div className="analyticsSpeedList">{responseTimes.slice(0, 6).map((topic) => <div className="analyticsSpeedRow" key={topic.topic} title={`${topic.topic}: ${topic.avg_ms} ms average`}>
+            <span>{topic.topic}</span><div><i style={{ width: `${Math.max(2, topic.avg_ms / maxResponseTime * 100)}%` }} /></div><strong>{topic.avg_ms} ms</strong>
+          </div>)}</div> : <p className="analyticsEmpty">Execution-time details will appear after practice attempts.</p>}
+        </article>
+      </section>
+      <div className="analyticsTopicHeading"><div><span>SKILL BREAKDOWN</span><h2>Practice performance and topic mastery</h2></div>{strongestTopic && <p>Strongest: <b>{strongestTopic.topic}</b> · {strongestTopic.accuracy}%</p>}</div>
       <div className="topicCards">
-        {x.topics.map((t: any) => (
+        {x.topics.map((t) => (
           <div className="topicCard" key={t.topic}>
             <b>{t.topic}</b>
             <strong>
               {t.attempts ? Math.round((t.correct / t.attempts) * 100) : 0}%
             </strong>
+            <i className="topicMasteryBar"><span style={{ width: `${t.attempts ? Math.round((t.correct / t.attempts) * 100) : 0}%` }} /></i>
             <span>
               {t.correct}/{t.attempts} correct · {t.avg_ms} ms avg
             </span>
           </div>
         ))}
+        {!loading && !error && x.topics.length === 0 && <p className="analyticsEmpty">Complete a SQL practice question to start building your topic report.</p>}
       </div>
       <DailyProgressCalendar />
+      </div>
+      </main>
     </div>
   );
 }

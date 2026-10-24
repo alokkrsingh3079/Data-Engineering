@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { Activity, ArrowRight, BarChart3, Bookmark, BookOpen, Check, Code2, Database, Flag, Layers3, Lightbulb, LogOut, Play, Sparkles, Target } from "lucide-react";
+import { Activity, ArrowRight, Bookmark, BookOpen, Check, Code2, Flag, Layers3, Lightbulb, Play } from "lucide-react";
 import CopyButton from "./CopyButton";
+import StudioNavigation from "./StudioNavigation";
 import "./learning-track-lab.css";
 import "./learning-track-editor.css";
 import "./learning-track-levels.css";
@@ -54,7 +55,6 @@ export default function LearningTrackLab() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [question, setQuestion] = useState<Question | null>(null);
   const [module, setModule] = useState<any>(null);
-  const [userName, setUserName] = useState("Learner");
   const [level, setLevel] = useState<Level>("A");
   const [railWidth, setRailWidth] = useState(() => {
     const saved = Number(localStorage.getItem(`${moduleId}-question-rail-width`));
@@ -120,12 +120,12 @@ export default function LearningTrackLab() {
     const controller = new AbortController();
     void Promise.all([
       fetch(`${API}/api/learning/runners/status`, { credentials: "include", signal: controller.signal }).then((response) => response.ok ? response.json() : null),
-      fetch(`${API}/api/auth/me`, { credentials: "include", signal: controller.signal }).then((response) => response.ok ? response.json() : null),
-    ]).then(([runnerState, account]) => {
+    ]).then(([runnerState]) => {
       if (controller.signal.aborted) return;
       if (runnerState) setRunner(runnerState);
-      setUserName(account?.user?.name || "Learner");
-    }).catch(() => {});
+    }).catch((cause) => {
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Could not load runner status.");
+    });
     Promise.all([
       fetch(`${API}/api/learning/studio`, { credentials: "include", signal: controller.signal }).then(async (response) => { if (response.status === 401) { location.href = "/login"; return null; } if (!response.ok) throw Error("Learning track is unavailable."); return response.json(); }),
       Promise.all(track.moduleIds.map(async (id) => {
@@ -213,13 +213,12 @@ export default function LearningTrackLab() {
     setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, revisionMarked: marked } : item));
   }
 
-  async function signOut() { await fetch(`${API}/api/auth/logout`, { method: "POST", credentials: "include" }); location.href = "/login"; }
   const example = question?.public_examples?.[0];
   const languageAvailable = question?.language === "python" ? runner.python.available : question?.language === "pyspark" ? runner.pyspark.available : false;
 
-  return <div className="trackShell">
-    <aside className="trackSidebar"><a className="trackBrand" href="/"><span><Layers3 size={18} /></span><strong>Data Engineering<small>PRACTICE PLATFORM</small></strong></a><nav><a href="/"><Activity size={15} />Dashboard</a><a href="/sql"><Database size={15} />SQL lab</a><a className={moduleId === "python-etl" ? "active" : ""} href="/learn/python-etl"><Code2 size={15} />Python lab</a><a href="/pyspark"><Layers3 size={15} />PySpark lab</a><a className={moduleId === "azure-data-factory" || moduleId === "databricks-delta" ? "active" : ""} href="/learn/azure-data-factory"><Activity size={15} />Azure &amp; Databricks</a><a className={moduleId === "etl-data-quality" ? "active" : ""} href="/learn/etl-data-quality"><Target size={15} />ETL testing</a><a href={`/interview?track=${moduleId}`}><BookOpen size={15} />Timed interview</a><a href="/ask-ai"><Sparkles size={15} />Ask AI</a><a href="/analytics"><BarChart3 size={15} />Progress</a></nav><button className="trackAccount" onClick={() => void signOut()}><span>{userName.slice(0, 1).toUpperCase()}</span><strong>{userName}</strong><LogOut size={14} /></button></aside>
-    <main className="trackMain">
+  return <div className="studioShell trackShell">
+    <StudioNavigation activePath={moduleId === "etl-data-quality" ? "/learn/etl-data-quality" : moduleId === "python-etl" ? "/learn/python-etl" : "/learn/azure-data-factory"} />
+    <main className="studioPage trackMain">
       <div className="trackBreadcrumb"><a href="/">Learning paths</a><span>/</span><span>{track.title}</span></div>
       <header className="trackHero"><div><div className="trackEyebrow"><Icon size={14} /> {track.eyebrow}</div><h1>{track.title}</h1><p>{module?.description || track.description}</p></div><div className="trackStats"><strong>{questions.length}</strong><span>QUESTIONS</span></div></header>
       {error && <div className="trackError" role="alert">{error}</div>}

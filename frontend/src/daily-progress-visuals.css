@@ -1,0 +1,36 @@
+.dailyProgressSummary{grid-template-columns:repeat(4,minmax(0,1fr))}
+.dailyProgressInsights{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(220px,1fr);gap:12px;margin:16px 0}
+.dailyInsightPanel{min-width:0;padding:14px;border:1px solid #1d384e;border-radius:5px;background:#091725}
+.dailyInsightPanel>header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dailyInsightPanel>header>div{display:grid;gap:4px}
+.dailyInsightPanel>header b{color:#69d2e3;font:700 9px Arial,sans-serif;letter-spacing:.8px}
+.dailyInsightPanel>header span{color:#d7e5ee;font:12px Arial,sans-serif}
+.dailyInsightPanel>header>small{color:#839aad;font:9px Arial,sans-serif;white-space:nowrap}
+.dailyTrendLegend{display:flex;gap:14px;margin:12px 0 8px;color:#8fa7b8;font:9px Arial,sans-serif}
+.dailyTrendLegend>span{display:inline-flex;align-items:center;gap:5px}
+.dailyTrendLegend i{width:8px;height:8px;border-radius:2px;background:#46cba6}
+.dailyTrendLegend i.trendAttempts{background:#4589b7}
+.dailyTrendChart{display:flex;align-items:stretch;gap:4px;height:132px;padding:8px 2px 0;border-bottom:1px solid #20394d}
+.dailyTrendColumn{display:grid;grid-template-rows:minmax(0,1fr) 23px;flex:1;min-width:0;gap:5px}
+.dailyTrendBars{display:flex;align-items:flex-end;justify-content:center;gap:3px;min-height:0}
+.dailyTrendBar{display:block;width:min(42%,16px);min-height:3px;border-radius:3px 3px 0 0;background:#46cba6}
+.dailyTrendBar.trendAttempts{background:#4589b7;opacity:.78}
+.dailyTrendColumn>small{overflow:hidden;color:#7f98ab;font:8px Arial,sans-serif;text-align:center;white-space:nowrap}
+.dailyTrackBreakdownList{display:grid;gap:12px;margin-top:16px}
+.dailyTrackBreakdownItem{display:grid;grid-template-columns:minmax(76px,1fr) minmax(50px,1.4fr) 28px;align-items:center;gap:9px}
+.dailyTrackBreakdownName{overflow:hidden;color:#a9bdcb;font:10px Arial,sans-serif;text-overflow:ellipsis;white-space:nowrap}
+.dailyTrackBreakdownName.tone-0{color:#79d6e5}
+.dailyTrackBreakdownName.tone-1{color:#70d8b4}
+.dailyTrackBreakdownName.tone-2{color:#b8b1ff}
+.dailyTrackBreakdownName.tone-3{color:#ffc27b}
+.dailyTrackBreakdownName.tone-4{color:#8cb9ff}
+.dailyTrackBreakdownName.tone-5{color:#f29cb4}
+.dailyTrackBreakdownName.tone-6{color:#c6df85}
+.dailyTrackBreakdownName.tone-7{color:#e0a8f2}
+.dailyTrackBreakdownName.tone-8{color:#91e1d5}
+.dailyTrackBreakdownItem>div{height:6px;overflow:hidden;border-radius:5px;background:#142a3c}
+.dailyTrackBreakdownItem>div>i{display:block;height:100%;min-width:2px;border-radius:5px;background:linear-gradient(90deg,#237b83,#61d7bc)}
+.dailyTrackBreakdownItem>strong{color:#dceaf2;font:600 10px ui-monospace,monospace;text-align:right}
+.dailyProgressSection .dailyProgressLoading{margin:10px 0}
+@media(max-width:760px){.dailyProgressInsights{grid-template-columns:1fr}.dailyTrackBreakdownList{gap:10px}}
+@media(max-width:560px){.dailyProgressSummary{grid-template-columns:repeat(2,minmax(0,1fr))}.dailyProgressSummary>div:nth-child(2){border-right:0}.dailyProgressSummary>div:nth-child(3){padding-left:0}.dailyTrendChart{gap:2px;height:112px}.dailyTrendColumn>small{font-size:7px}}

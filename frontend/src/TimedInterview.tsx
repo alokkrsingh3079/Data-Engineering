@@ -4,6 +4,7 @@ import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { ArrowLeft, ArrowRight, Clock3, Database, Play, SkipForward } from "lucide-react";
 import "./timed-interview.css";
+import StudioNavigation from "./StudioNavigation";
 
 type TrackId = "sql-interview-lab" | "python-etl" | "pyspark-foundations" | "azure-data-factory" | "databricks-delta" | "etl-data-quality";
 type Track = { id: TrackId; title: string; mode: "sql" | "learning"; language: "sql" | "python" | "text" };
@@ -319,7 +320,9 @@ export default function TimedInterview() {
     const finalScore = score?.score ?? learningSession?.score;
     const sqlQuestions = sqlSession?.questions || [];
     const learningResponses = learningSession?.responses || [];
-    return <main className="timedInterviewPage dataInterviewPage">
+    return <div className="studioShell">
+      <StudioNavigation activePath={location.pathname === "/ai-interview" ? "/ai-interview" : "/interview"} refreshLabel="Refresh interview" />
+      <main className="studioPage timedInterviewPage dataInterviewPage">
       <header className="timedInterviewHeader"><a href="/"><ArrowLeft size={15} /> Learning path</a><span>INTERVIEW REPORT</span></header>
       <section className="timedInterviewReport"><span className="timedInterviewEyebrow">{track.title} timed practice</span><h1>Session complete</h1>
         <div className="timedInterviewMetrics"><div><strong>{finalScore === null || finalScore === undefined ? "—" : `${finalScore}%`}</strong><span>{sessionMode === "sql" ? "Verified query score" : "AI rubric score"}</span></div><div><strong>{score?.correct ?? learningSession?.responses?.filter((response) => response.feedback).length ?? 0}</strong><span>{sessionMode === "sql" ? `Correct answers · ${score?.total || 0} total` : "Responses evaluated"}</span></div><div><strong>{learningSession?.unanswered_count ?? 0}</strong><span>Unanswered or skipped</span></div></div>
@@ -346,10 +349,13 @@ export default function TimedInterview() {
         {error && <div className="timedInterviewAlert" role="alert">{error}</div>}
         <a className="timedInterviewButton" href={`/interview?track=${trackId}`}>Start another interview</a>
       </section>
-    </main>;
+      </main>
+    </div>;
   }
 
-  return <main className="timedInterviewPage dataInterviewPage">
+  return <div className="studioShell">
+    <StudioNavigation activePath={location.pathname === "/ai-interview" ? "/ai-interview" : "/interview"} refreshLabel="Refresh interview" />
+    <main className="studioPage timedInterviewPage dataInterviewPage">
     <header className="timedInterviewHeader"><a href="/"><ArrowLeft size={15} /> Back to learning</a><span>TIME-BOUND PRACTICE</span></header>
     <section className="timedInterviewIntro"><span className="timedInterviewEyebrow">INTERVIEW MODE</span><h1>Practice under<br />real interview timing.</h1><p>One question at a time. Each question has its own countdown, and the session also has a hard time limit.</p></section>
     {error && <div className="timedInterviewAlert" role="alert">{error}</div>}
@@ -422,5 +428,6 @@ export default function TimedInterview() {
         <button className="timedInterviewButton" disabled={busy} onClick={() => void finishInterview()}><Play size={15} />Try finishing again</button>
       </>}
     </section>}
-  </main>;
+    </main>
+  </div>;
 }
