@@ -22,6 +22,17 @@ export async function connectMongo(): Promise<Db> {
     }
   }
 
+  const revisionMarks = database.collection("question_revision_marks");
+  if (await database.listCollections({ name: "question_revision_marks" }).hasNext()) {
+    const indexes = await revisionMarks.indexes();
+    const legacyIndex = indexes.find(index =>
+      index.unique &&
+      index.key?.sessionId === 1 &&
+      index.key?.challengeId === 1
+    );
+    if (legacyIndex?.name) await revisionMarks.dropIndex(legacyIndex.name);
+  }
+
   await Promise.all([
     database.collection("users").createIndex({ email: 1 }, { unique: true }),
     sessions.createIndex({ token_hash: 1 }, { unique: true, name: "sessions_token_hash_unique" }),
@@ -34,9 +45,13 @@ export async function connectMongo(): Promise<Db> {
     database.collection("question_sets").createIndex({ database_id: 1, created_at: -1 }),
     database.collection("question_collections").createIndex({ database_id: 1, is_published: 1, created_at: -1 }),
     database.collection("attempts").createIndex({ challenge_id: 1, session_id: 1, created_at: -1 }),
-    database.collection("question_revision_marks").createIndex(
-      { sessionId: 1, challengeId: 1 },
-      { unique: true }
+    revisionMarks.createIndex(
+      { session_id: 1, challenge_id: 1 },
+      {
+        unique: true,
+        name: "question_revision_marks_session_challenge_unique",
+        partialFilterExpression: { session_id: { $type: "string" }, challenge_id: { $type: "string" } }
+      }
     ),
     database.collection("learning_modules").createIndex({ order: 1 }),
     database.collection("learning_progress").createIndex({ user_id: 1, lesson_id: 1 }, { unique: true }),
