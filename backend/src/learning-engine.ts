@@ -570,11 +570,23 @@ export async function listLearningQuestions(userId: string, input: LearningQuest
       .toArray()
   ]);
   const ids = questions.map((question) => String(question._id));
+  const datasetIds = [...new Set(questions
+    .filter((question) => question.source === "dataset-generation" && typeof question.dataset_id === "string")
+    .map((question) => String(question.dataset_id)))];
+  const datasets = datasetIds.length
+    ? await mongoCollection("question_datasets")
+      .find({ id: { $in: datasetIds }, owner_user_id: userId }, { projection: { id: 1, name: 1 } })
+      .toArray()
+    : [];
+  const datasetNames = new Map(datasets.map((dataset) => [String(dataset.id), String(dataset.name)]));
   const state = await userQuestionState(userId, ids);
   return {
     items: questions.map((question) => ({
       ...publicLearningQuestion(question),
       id: String(question._id),
+      ...(question.dataset_id && datasetNames.has(String(question.dataset_id))
+        ? { dataset_name: datasetNames.get(String(question.dataset_id)) }
+        : {}),
       bookmarked: state.bookmarks.has(String(question._id)),
       completed: state.completed.has(String(question._id)),
       revisionMarked: state.revisions.has(String(question._id))

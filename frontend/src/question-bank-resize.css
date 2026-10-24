@@ -59,6 +59,24 @@
   color: #f3d28e;
 }
 
+.sparkLevelSelector button.level-dataset {
+  grid-column: span 2;
+}
+
+.sparkLevelSelector button.level-dataset strong,
+.pythonBankLevels .trackLevelTabs button.level-dataset span {
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sparkLevelSelector button.level-dataset.active {
+  border-color: #d1a158;
+  background-color: #382e1c;
+  color: #f3d28e;
+}
+
 .trackLevelTabs {
   flex-wrap: wrap;
 }
@@ -88,11 +106,18 @@
 }
 
 .pythonBankLevels .trackLevelTabs button.level-generated,
+.pythonBankLevels .trackLevelTabs button.level-dataset,
 .pythonBankLevels .trackLevelTabs button.level-all {
-  grid-column: span 2;
+  grid-column: 1 / -1;
 }
 
 .pythonBankLevels .trackLevelTabs button.level-generated.selected {
+  border-color: #d1a158;
+  background: #382e1c;
+  color: #f3d28e;
+}
+
+.pythonBankLevels .trackLevelTabs button.level-dataset.selected {
   border-color: #d1a158;
   background: #382e1c;
   color: #f3d28e;

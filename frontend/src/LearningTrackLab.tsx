@@ -18,7 +18,7 @@ type Question = {
   difficulty: string; difficulty_label?: string; learning_level?: string; level_title?: string; type: string; language?: "python" | "pyspark";
   options?: Option[]; hints?: string[]; starter_code?: string; input_description?: string;
   output_description?: string; public_examples?: Example[]; bookmarked?: boolean; completed?: boolean; revisionMarked?: boolean;
-  source?: string; created_at?: string | Date; generation_index?: number;
+  source?: string; dataset_id?: string; dataset_name?: string; created_at?: string | Date; generation_index?: number;
 };
 type Level = string;
 const levels = [..."ABCDEFGHIJKLMNOPQR"];
@@ -31,6 +31,7 @@ const TRACKS: Record<string, { title: string; eyebrow: string; description: stri
 };
 const API = "";
 const isGeneratedQuestion = (question: Question) => question.source === "dataset-generation";
+const datasetFilterKey = (question: Question) => `dataset:${question.dataset_id || "legacy"}`;
 const levelFor = (question: Question): Exclude<Level, "all"> => question.learning_level || (question.difficulty === "beginner" ? "A" : question.difficulty === "advanced" ? "C" : "B");
 function levelBand(level: string) {
   if (level <= "D") return "VERY EASY";
@@ -73,15 +74,32 @@ export default function LearningTrackLab() {
   const [revisionOnly, setRevisionOnly] = useState(() => new URLSearchParams(location.search).get("revision") === "1");
   const [tab, setTab] = useState("Problem");
 
+  const generatedDatasets = useMemo(() => {
+    const datasets = new Map<string, { key: string; id: string; name: string; count: number }>();
+    for (const item of questions) {
+      if (!isGeneratedQuestion(item)) continue;
+      const id = item.dataset_id || "legacy";
+      const existing = datasets.get(id);
+      if (existing) existing.count++;
+      else datasets.set(id, { key: datasetFilterKey(item), id, name: item.dataset_name || (id === "legacy" ? "Older generated questions" : `Dataset ${id.slice(0, 8)}`), count: 1 });
+    }
+    const groups = [...datasets.values()];
+    const nameCounts = new Map<string, number>();
+    for (const dataset of groups) nameCounts.set(dataset.name, (nameCounts.get(dataset.name) || 0) + 1);
+    return groups.map((dataset) => ({
+      ...dataset,
+      name: (nameCounts.get(dataset.name) || 0) > 1 && dataset.id !== "legacy" ? `${dataset.name} · ${dataset.id.slice(0, 8)}` : dataset.name
+    })).sort((left, right) => left.name.localeCompare(right.name));
+  }, [questions]);
   const filteredQuestions = useMemo(() => questions.filter((item) => {
-    const matchesLevel = level === "all" || (level === "generated" ? isGeneratedQuestion(item) : item.learning_level === level);
+    const matchesLevel = level === "all" || (level.startsWith("dataset:") ? isGeneratedQuestion(item) && datasetFilterKey(item) === level : item.learning_level === level);
     const matchesSearch = !search.trim() || `${item.title} ${item.topic} ${item.prompt}`.toLowerCase().includes(search.trim().toLowerCase());
     return matchesLevel && matchesSearch && (!revisionOnly || item.revisionMarked);
   }), [questions, level, search, revisionOnly]);
   const levelCounts = useMemo(() => Object.fromEntries([
     ...levels.map((item) => [item, questions.filter((question) => question.learning_level === item).length]),
-    ["generated", questions.filter(isGeneratedQuestion).length]
-  ]), [questions]);
+    ...generatedDatasets.map((dataset) => [dataset.key, dataset.count])
+  ]), [questions, generatedDatasets]);
 
   useEffect(() => {
     localStorage.setItem(`${moduleId}-question-rail-width`, String(railWidth));
@@ -141,7 +159,7 @@ export default function LearningTrackLab() {
       const revisionMode = params.get("revision") === "1";
       if (revisionMode) { setRevisionOnly(true); setLevel("all"); }
       const initial = items.find((item: Question) => item.id === requested) || items.find((item: Question) => item.language === "python" && item.learning_level === "A") || items[0];
-      if (initial) { void selectQuestion(initial); if (!revisionMode) setLevel(isGeneratedQuestion(initial) ? "generated" : levelFor(initial)); }
+      if (initial) { void selectQuestion(initial); if (!revisionMode) setLevel(isGeneratedQuestion(initial) ? datasetFilterKey(initial) : levelFor(initial)); }
     }).catch((cause) => { if (cause.name !== "AbortError") setError(cause instanceof Error ? cause.message : "Could not load this learning track."); });
     return () => controller.abort();
   }, [moduleId]);
@@ -207,9 +225,29 @@ export default function LearningTrackLab() {
       {error && <div className="trackError" role="alert">{error}</div>}
       {moduleId !== "python-etl" && <section className="trackLevelBar"><div className="trackLevelIntro"><strong>Choose your starting point</strong><span>A–D very easy · E–H easy · I–K medium · L–N hard · O–R very hard</span></div><div className="trackLevelTabs" role="tablist" aria-label="Learning question bank">{[...levels, "all"].map((item) => <button key={item} role="tab" aria-label={item === "all" ? "All questions" : `Level ${item}, ${levelBand(item)}`} title={item === "all" ? "All questions" : `Level ${item} · ${levelBand(item)}`} aria-selected={level === item} className={level === item ? `selected level-${item.toLowerCase()}` : ""} onClick={() => setLevel(item)}><span>{item === "all" ? "All" : item}</span><small>{item === "all" ? questions.length : levelCounts[item]}</small></button>)}</div></section>}
       <div className="trackLayout" style={{ "--question-rail-width": `${railWidth}px` } as CSSProperties}>
-        <aside className="trackQuestionRail"><div className="trackRailTitle"><strong>{revisionOnly ? "REVISION ONLY" : "QUESTION BANK"}</strong><span>{filteredQuestions.length}</span></div><label className="questionRailWidthControl">Bank width <output>{railWidth}px</output><input type="range" min="220" max="560" step="10" value={railWidth} aria-label="Question bank width" onChange={(event) => setRailWidth(Number(event.target.value))} /></label>{moduleId === "python-etl" && <section className="pythonBankLevels"><div className="trackLevelIntro"><strong>Choose your starting point</strong><span>A–D very easy · E–H easy · I–K medium · L–N hard · O–R very hard</span></div><div className="trackLevelTabs" role="tablist" aria-label="Python question bank">{[...levels, "generated", "all"].map((item) => <button key={item} role="tab" aria-label={item === "all" ? "All questions" : item === "generated" ? "Dataset-generated questions" : `Level ${item}, ${levelBand(item)}`} title={item === "all" ? "All questions" : item === "generated" ? "Dataset-generated questions" : `Level ${item} · ${levelBand(item)}`} aria-selected={level === item} className={level === item ? `selected level-${item.toLowerCase()}` : ""} onClick={() => setLevel(item)}><span>{item === "all" ? "All" : item === "generated" ? "Generated" : item}</span><small>{item === "all" ? questions.length : levelCounts[item]}</small></button>)}</div></section>}<button className={`trackRevisionFilter ${revisionOnly ? "active" : ""}`} onClick={() => { setRevisionOnly(!revisionOnly); if (!revisionOnly) setLevel("all"); }}><Flag size={13} />{revisionOnly ? "Show all questions" : "Revision only"}</button><label className="trackSearch">Search this track<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search exercises…" /></label><div className="trackQuestionList">{filteredQuestions.map((item, index) => <button className={question?.id === item.id ? "selected" : ""} key={item.id} onClick={() => void selectQuestion(item)}><span className="trackQuestionName"><em>{String(index + 1).padStart(2, "0")}</em>{item.title}</span><small>{isGeneratedQuestion(item) ? `Generated · ${item.topic}` : `Level ${levelFor(item)} · ${item.topic}`}{item.completed ? <Check size={12} /> : null}{item.revisionMarked ? <Flag size={12} aria-label="Marked for revision" /> : null}{item.bookmarked ? <Bookmark size={12} aria-label="Bookmarked" /> : null}</small></button>)}{!filteredQuestions.length && <p className="trackEmpty">{revisionOnly ? "No questions are marked for revision." : level === "generated" ? "No dataset-generated questions yet." : "No questions at this level yet."}</p>}</div></aside>
+        <aside className="trackQuestionRail">
+          <div className="trackRailTitle"><strong>{revisionOnly ? "REVISION ONLY" : "QUESTION BANK"}</strong><span>{filteredQuestions.length}</span></div>
+          <label className="questionRailWidthControl">Bank width <output>{railWidth}px</output><input type="range" min="220" max="560" step="10" value={railWidth} aria-label="Question bank width" onChange={(event) => setRailWidth(Number(event.target.value))} /></label>
+          {moduleId === "python-etl" && <section className="pythonBankLevels">
+            <div className="trackLevelIntro"><strong>Choose your starting point</strong><span>A–D very easy · E–H easy · I–K medium · L–N hard · O–R very hard</span></div>
+            <div className="trackLevelTabs" role="tablist" aria-label="Python question bank">
+              {[...levels, ...generatedDatasets.map((dataset) => dataset.key), "all"].map((item) => {
+                const dataset = generatedDatasets.find((entry) => entry.key === item);
+                const label = item === "all" ? "All" : dataset ? dataset.name : item;
+                const count = item === "all" ? questions.length : levelCounts[item] || 0;
+                return <button key={item} role="tab" aria-label={dataset ? `${dataset.name}, ${dataset.count} questions` : item === "all" ? "All questions" : `Level ${item}, ${levelBand(item)}`} title={dataset ? dataset.name : item === "all" ? "All questions" : `Level ${item} · ${levelBand(item)}`} aria-selected={level === item} className={`${level === item ? "selected " : ""}${dataset ? "level-dataset" : `level-${item.toLowerCase()}`}`} onClick={() => setLevel(item)}><span>{label}</span><small>{count}</small></button>;
+              })}
+            </div>
+          </section>}
+          <button className={`trackRevisionFilter ${revisionOnly ? "active" : ""}`} onClick={() => { setRevisionOnly(!revisionOnly); if (!revisionOnly) setLevel("all"); }}><Flag size={13} />{revisionOnly ? "Show all questions" : "Revision only"}</button>
+          <label className="trackSearch">Search this track<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search exercises…" /></label>
+          <div className="trackQuestionList">
+            {filteredQuestions.map((item, index) => <button className={question?.id === item.id ? "selected" : ""} key={item.id} onClick={() => void selectQuestion(item)}><span className="trackQuestionName"><em>{String(index + 1).padStart(2, "0")}</em>{item.title}</span><small>{isGeneratedQuestion(item) ? `${item.dataset_name || "Dataset"} · ${item.topic}` : `Level ${levelFor(item)} · ${item.topic}`}{item.completed ? <Check size={12} /> : null}{item.revisionMarked ? <Flag size={12} aria-label="Marked for revision" /> : null}{item.bookmarked ? <Bookmark size={12} aria-label="Bookmarked" /> : null}</small></button>)}
+            {!filteredQuestions.length && <p className="trackEmpty">{revisionOnly ? "No questions are marked for revision." : level.startsWith("dataset:") ? "This dataset has no questions yet." : "No questions at this level yet."}</p>}
+          </div>
+        </aside>
         {question ? <article className="trackQuestionDetail">
-          <div className="trackQuestionMeta"><span className={`trackLevelBadge ${isGeneratedQuestion(question) ? "level-generated" : `level-${levelFor(question)}`}`}>{question.level_title || (isGeneratedQuestion(question) ? "Generated question" : `LEVEL ${levelFor(question)} · ${levelBand(levelFor(question))}`)}</span><span>{question.topic}{question.subtopic ? ` · ${question.subtopic}` : ""}</span><span>{question.difficulty_label || question.difficulty}</span><button className={`revision-action ${question.revisionMarked ? "active" : ""}`} aria-pressed={Boolean(question.revisionMarked)} onClick={() => void toggleRevisionMark()} aria-label={question.revisionMarked ? "Remove revision mark" : "Mark for revision"} title={question.revisionMarked ? "Remove revision mark" : "Mark for revision"}><Flag size={15} /></button><button className={`bookmark-action ${question.bookmarked ? "active" : ""}`} aria-pressed={Boolean(question.bookmarked)} onClick={() => void toggleBookmark()} aria-label={question.bookmarked ? "Remove bookmark" : "Bookmark question"} title={question.bookmarked ? "Remove bookmark" : "Bookmark question"}><Bookmark size={15} /></button></div>
+          <div className="trackQuestionMeta"><span className={`trackLevelBadge ${isGeneratedQuestion(question) ? "level-generated" : `level-${levelFor(question)}`}`}>{question.level_title || (isGeneratedQuestion(question) ? question.dataset_name || "Dataset-generated question" : `LEVEL ${levelFor(question)} · ${levelBand(levelFor(question))}`)}</span><span>{question.topic}{question.subtopic ? ` · ${question.subtopic}` : ""}</span><span>{question.difficulty_label || question.difficulty}</span><button className={`revision-action ${question.revisionMarked ? "active" : ""}`} aria-pressed={Boolean(question.revisionMarked)} onClick={() => void toggleRevisionMark()} aria-label={question.revisionMarked ? "Remove revision mark" : "Mark for revision"} title={question.revisionMarked ? "Remove revision mark" : "Mark for revision"}><Flag size={15} /></button><button className={`bookmark-action ${question.bookmarked ? "active" : ""}`} aria-pressed={Boolean(question.bookmarked)} onClick={() => void toggleBookmark()} aria-label={question.bookmarked ? "Remove bookmark" : "Bookmark question"} title={question.bookmarked ? "Remove bookmark" : "Bookmark question"}><Bookmark size={15} /></button></div>
           <h2>{question.title}</h2><p className="trackPrompt">{question.prompt}</p>
           <div className="trackActions"><button disabled={!review} onClick={() => setReviewVisible(!reviewVisible)}><BookOpen size={14} />{reviewVisible ? "Hide reference solution" : "Show reference solution"}</button></div>
           {question.type === "coding" ? <>
