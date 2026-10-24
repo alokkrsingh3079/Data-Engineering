@@ -1,38 +1,62 @@
-# MongoDB Migration Roadmap
+# Product and Reliability Roadmap
 
-This roadmap refines the project phases for the requested MongoDB application storage while preserving SQL Software's SQL practice workflow.
+This is a prioritized follow-up list for the deployed project. It does not claim that these items are already implemented. The immediate goal is to improve confidence and reliability before expanding the product surface.
 
-## Storage boundary
+## Priority 0: restore a dependable release signal
 
-- **MongoDB:** user profiles, credentials metadata (password hashes only), sessions, question content, question sets, attempts, progress, bookmarks/revision marks, imports/reviews, snapshots/metadata, collections, audit events, feature configuration, and interview/learning records.
-- **PostgreSQL:** isolated SQL practice databases and their schemas/tables/rows, plus the SQL execution engine. Do not store SQL practice datasets as Mongo documents or pretend MongoDB executes SQL.
-- **API:** authorization and ownership checks apply before either store is read or mutated. MongoDB and PostgreSQL credentials remain backend-only.
+- Diagnose the repeated backend GitHub Actions `npm test` failure.
+- Make the backend suite finish reliably in both local and CI environments.
+- Separate unit, database integration, and sandbox integration test jobs so skips and failures are unambiguous.
+- Require the TypeScript checks, backend tests, frontend build, and deployment build to pass before deployment.
 
-## Phase order and gates
+**Exit evidence:** clean CI run on a commit; test summary identifies every pass, skip, and failure.
 
-Verified status as of 2026-10-19: Phase 1 is complete. Phases 2–6 have substantial implementation but remain partial: disposable PostgreSQL/MongoDB integrations, runner-adapter tests, rubric schema tests, and a two-account API smoke test pass. Remaining gaps include full multipart security coverage, content authoring/review, real Python/Spark services, actual AI-provider verification, cloud integrations, and PostgreSQL-to-Mongo reconciliation. Phase 7 remains blocked on migration, browser, and production deployment validation. Detailed evidence is in `PROJECT_AUDIT.md` and `FINAL_QA_REPORT.md`. Do not treat the planned milestones below as completed work.
+## Priority 1: improve generated-question correctness
 
-1. Audit (complete): document the existing architecture, verified features, test limits, risks, and migration boundary in `docs/PROJECT_AUDIT.md`.
-2. Security stabilization: fix multipart ownership checks, constrain SQL imports, remove insecure secret defaults, and add behavior tests. Gate: backend build and security tests pass in an environment with installed dependencies and isolated databases.
-3. Mongo foundation: add MongoDB driver, connection lifecycle, indexes, configuration validation, health checks, and local Compose service. Keep the existing PostgreSQL service for SQL execution. Gate: clean startup/shutdown, unavailable-store behavior, unique user email/session token indexes.
-4. Application data migration: create Mongo repositories for user/session/auth/audit, workspace metadata, questions/sets, attempts/progress/revisions, imports/snapshots, collections, flags, and jobs. Replace application SQL queries with Mongo operations; retain PostgreSQL only for practice DDL/DML and read-only query execution. Gate: API contract and ownership regression tests pass.
-5. Existing data migration: implement a dry-run and resumable importer from current PostgreSQL application tables into MongoDB. Reconcile records and foreign-key relationships using stable IDs. Never delete source PostgreSQL tables automatically. Gate: counts, sample records, ownership, and SQL workspace mappings verify before cutover.
-6. Learning dashboard/question engine: build on Mongo-backed models and add module/topic/content/progress behavior incrementally. Gate: persistence across restarts and user isolation tests pass.
-7. Python Lab: build UI/content and a runner contract. Real execution is unavailable until a separate isolated runner is deployed and verified.
-8. PySpark Lab: build UI/content and a runner contract. Real execution is unavailable until isolated Spark infrastructure is configured.
-9. Azure, Databricks, ETL, and mock interviews: add educational scenario content and persisted sessions. Real cloud integrations require explicit configuration and authorization.
-10. Final QA/release: test clean installs, migrations, rollback, store outages, builds, security, and deployment. Report simulated/unavailable functions accurately.
+- Add held-out records from the selected dataset in addition to AI-authored examples.
+- Cover nulls, empty outputs, duplicate values, formatted numerics, and date parsing where relevant.
+- Validate expected output shapes and column types, not just row equality.
+- Provide clearer per-candidate failure causes and a review/edit/approve step before publishing.
+- Let users inspect and normalize inferred dataset types before sending samples to AI.
+- Preserve dataset ownership, source attribution, and a clear delete/retention policy.
 
-## Migration requirements
+**Exit evidence:** deterministic tests for malformed candidates and a representative set of real uploads, with candidates saved only after independent checks pass.
 
-- Use additive Mongo collections and indexes; define document validation where it protects contracts.
-- Keep stable IDs or an explicit old-to-new ID map so existing workspace references remain valid.
-- Make the importer idempotent and resumable; support dry-run and per-collection reconciliation.
-- Back up both stores before production migration. Cut over through an explicit deployment step, not an automatic destructive startup migration.
-- Preserve the existing API response shapes during the storage refactor.
-- Do not migrate practice table rows out of PostgreSQL unless a separate SQL-compatible execution service is deliberately selected and verified.
-- Never put secrets in documents, frontend bundles, logs, or committed environment files.
+## Priority 2: make background work durable
 
-## Required release evidence
+- Move question generation from in-process fire-and-forget work to a durable queue.
+- Preserve progress and retry safely across API restarts/deployments.
+- Make saving batches idempotent to prevent duplicate questions after retry.
+- Define job retention, cancellation, rate limits, and concurrency behavior.
 
-Each phase reports changed files, migration behavior, test commands/results, build status, manual checks, remaining risks, and whether any capability is simulated. Production cutover is blocked until the MongoDB migration is reconciled and SQL execution remains isolated and functional.
+**Exit evidence:** restart/retry integration tests show jobs resume or reach an explicit terminal state without duplicate results.
+
+## Priority 3: expand end-to-end confidence
+
+- Add browser automation for authentication, SQL practice, dataset upload/generation, dataset-specific banks, Python/PySpark execution, and failure states.
+- Add authorization regression cases for two separate users and all upload/ownership-sensitive routes.
+- Add backup/restore and migration reconciliation procedures for MongoDB and PostgreSQL.
+
+**Exit evidence:** repeatable test reports from clean test databases and a documented rollback procedure.
+
+## Priority 4: strengthen operations and content workflows
+
+- Monitor API, database, AI, and runner availability independently.
+- Make runner queue/capacity, execution duration, and failure reasons visible without exposing secrets or submitted private data.
+- Prefer a dedicated runner host for continuous availability; keep Codespaces as a development option.
+- Add editorial review and versioning for curated and AI-generated question content.
+- Use existing topic progress and attempts for explainable recommendations instead of adding disconnected dashboards.
+
+**Exit evidence:** documented service objectives/alerts and a content review history with safe rollback.
+
+## Later product expansion
+
+After the reliability work, prioritize based on learner feedback:
+
+- dataset profiling and safe type normalization;
+- adaptive study plans and revision scheduling;
+- more ETL/data-quality scenarios with realistic, validated test fixtures;
+- expanded system-design interviews;
+- optional real cloud integrations only with explicit credentials, cost controls, and secure isolation.
+
+Do not provision billable cloud services automatically. Educational content should be clearly distinguished from real cloud execution.

@@ -1,64 +1,62 @@
-# Self-Hosted Python and Spark Runners
+# Python and Spark Runner Operations
 
-This stack runs only the isolated Python and PySpark execution services. Keep the main API on Render, MongoDB on Atlas, and PostgreSQL on Neon. It does not start duplicate databases or the backend.
+The Python and PySpark controllers are separate from the web API. They launch disposable job containers and require access to the host Docker socket. Treat the controller host as privileged infrastructure; do not run unrelated untrusted workloads there or expose the Docker socket.
 
-## On-demand GitHub Codespaces
+## Current hosting options
 
-For temporary testing instead of a persistent VM, run `bash scripts/start-codespace-runners.sh` from the repository root inside Codespaces. On first run, it generates separate tokens, stores them in the Git-ignored `deploy/runners/.env`, starts both runner containers, and makes ports 4020/4021 public. Copy the printed token values to the matching Render environment variables, then redeploy Render. Later runs reuse the saved tokens and restore the port visibility. Use `bash scripts/start-codespace-runners.sh --rotate` to generate replacement tokens, then update Render with both new values. The Codespace must remain running; stopping it makes the runners unavailable to Render. This is not an always-on production host and uses Codespaces compute quota.
+The deployed API can use runner endpoints configured through `PYTHON_RUNNER_URL`/`PYTHON_RUNNER_TOKEN` and `SPARK_RUNNER_URL`/`SPARK_RUNNER_TOKEN`. At the last status check on 2026-10-24, both reported configured and available.
 
-## Host requirements
+The Codespaces helper in `scripts/start-codespace-runners.sh` supports on-demand testing. A Codespace must remain running; stopping it interrupts access. Use a dedicated Docker-compatible VM for a continuously available service. The runners are not hosted by Cloudflare Workers or the regular Render API service.
 
-- A dedicated Ubuntu 24.04 Linux VM with Docker Engine and the Compose plugin.
-- A stable public IP and two DNS names, such as `spark-runner.example.com` and `python-runner.example.com`.
-- 8 GB RAM recommended for two concurrent Spark jobs (each job is limited to 2 GB); 4 GB can be used for light testing but may run out of memory.
-- Allow inbound TCP ports 80 and 443 for Caddy and SSH only from trusted addresses. Do not expose ports 4020, 4021, or the Docker socket to the internet.
+## Dedicated host requirements
 
-The runner controllers require access to the host Docker socket so they can create disposable, network-isolated execution containers. Treat this as privileged infrastructure and do not run unrelated or untrusted workloads on the VM.
+- Ubuntu 24.04 or compatible Linux with Docker Engine and Compose.
+- Stable IP and two DNS names, one per runner.
+- Recommended 8 GB RAM for concurrent Spark jobs.
+- Inbound HTTPS through Caddy; do not expose runner ports 4020/4021 or the Docker socket publicly.
 
-## Configure and start
+The Spark job uses Python 3.11, PySpark 3.5.6, and Java 17 in local Spark mode. It is a single-host Spark environment, not a multi-node cluster. The Spark controller queue is in-memory and limited; it does not survive controller restarts or support safe horizontal replication.
 
-1. Create the VM and install Docker Engine plus the Docker Compose plugin using the provider's Ubuntu instructions.
-2. Add DNS-only A records for both runner names pointing to the VM's public IP. Keep the DNS records unproxied while Caddy obtains HTTPS certificates. Confirm both names resolve to that IP and ports 80/443 are reachable.
-3. Clone this repository on the VM and change into its project directory.
-4. Create `deploy/runners/.env` on the VM with these values. Generate each token independently with `openssl rand -hex 32`, and keep this file out of Git:
+## Configure a dedicated runner host
+
+1. Install Docker Engine and Compose on a dedicated host.
+2. Point DNS-only A records for the Python and Spark domains to the host while Caddy obtains certificates.
+3. Clone the project and create `deploy/runners/.env` (Git-ignored) with:
 
    ```env
    SPARK_RUNNER_DOMAIN=spark-runner.example.com
    PYTHON_RUNNER_DOMAIN=python-runner.example.com
-   SPARK_RUNNER_TOKEN=replace-with-a-new-random-token
-   PYTHON_RUNNER_TOKEN=replace-with-a-different-random-token
-   DOCKER_GID=replace-with-docker-socket-group-id
+   SPARK_RUNNER_TOKEN=<fresh-random-token>
+   PYTHON_RUNNER_TOKEN=<different-fresh-random-token>
+   DOCKER_GID=<numeric-docker-socket-group-id>
    ```
 
-   Set `DOCKER_GID` to the numeric group ID of the VM's Docker socket, for example the output of `stat -c '%g' /var/run/docker.sock`.
-
-5. From the repository root, build and start the runners:
+   Generate separate long random tokens with a secure local method. Never paste tokens into chat or commit them.
+4. Start the runners:
 
    ```bash
    docker compose --env-file deploy/runners/.env -f docker-compose.runners.yml up -d --build
    docker compose --env-file deploy/runners/.env -f docker-compose.runners.yml ps
    ```
+5. Configure the matching HTTPS runner URLs and tokens in the backend host's secret manager, then restart/redeploy the API.
+6. Check `GET /api/learning/runners/status` and run one Python and one PySpark exercise with a test account.
 
-   Wait for both runner services to become healthy. Caddy obtains and renews HTTPS certificates automatically.
-6. In Render, add these environment variables, using the same values as the VM's private env file:
+## On-demand Codespaces
 
-   ```text
-   SPARK_RUNNER_URL=https://spark-runner.example.com
-   SPARK_RUNNER_TOKEN=<same Spark token as on the VM>
-   PYTHON_RUNNER_URL=https://python-runner.example.com
-   PYTHON_RUNNER_TOKEN=<same Python token as on the VM>
-   ```
-
-   Save and redeploy the backend. Open `/api/learning/runners/status` on the API to verify both runners report configured and available, then try one Python and one PySpark submission.
-
-## Operations
-
-Update the VM by pulling the desired Git commit and rerunning the Compose `up -d --build` command. View logs with:
+From a Codespace, run:
 
 ```bash
-docker compose --env-file deploy/runners/.env -f docker-compose.runners.yml logs -f spark_runner python_runner caddy
+bash scripts/start-codespace-runners.sh
 ```
 
-For a failed PySpark submission, open the browser developer console and find `[PySpark Lab] Spark job creation failed` or `Spark job response could not be read`. Copy the `requestId` and any `cfRay` or `renderRequestId` values; do not share cookies, tokens, or learner code. Search the Render backend logs for the same request ID and `pyspark_job_creation_failed`, `pyspark_job_creation_exception`, or `spark_job_runner_response`. The runner response diagnostic includes its HTTP status, content type, host, and provider request IDs without logging request bodies or credentials. If the browser has a `cfRay` but Render has no matching request ID, the request likely failed before reaching the backend.
+The helper manages local runner configuration and Codespaces port visibility. Keep its generated `.env` private and use the printed tokens only in the backend secret manager. For token rotation, use the script's documented `--rotate` option, update the backend and runner together, and verify both services afterward. Stopping the Codespace makes the runners unavailable.
 
-The Spark job queue is in memory and limited to one controller; do not run multiple replicas. Back up `deploy/runners/.env` securely and rotate the two runner tokens together in the VM and Render. Do not put them in Cloudflare frontend variables or commit them.
+## Troubleshooting
+
+- **Runner unavailable:** check API `/api/learning/runners/status`, host health, DNS/TLS, and matching backend/runner token configuration.
+- **401:** backend and runner bearer tokens do not match, or the request lacks the expected authorization.
+- **404:** confirm the runner base URL points to the controller root and the requested route exists.
+- **Timeout/capacity errors:** inspect host resources and queue status; do not remove limits to mask overload.
+- **Spark job failure:** correlate safe request IDs from browser and backend logs. Do not share tokens, cookies, private data, or full submitted code in support requests.
+
+Logs should not include credentials or private test payloads. Rotate runner tokens on suspected exposure and update both ends together.

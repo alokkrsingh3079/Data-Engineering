@@ -1,37 +1,60 @@
 # Environment Variables
 
-Supply secrets through the deployment platform's secret store. Do not commit populated environment files or place backend values in the frontend or Cloudflare Worker configuration.
+Configure values in the service that uses them. Keep secrets in a host secret manager or GitHub Actions secrets; never commit populated `.env` files or put server-only values in frontend/Worker variables.
 
-| Variable | Required | Service | Purpose |
-|---|---|---|---|
-| `MONGODB_URI` | Production | Backend | MongoDB connection URI for platform records. Development defaults to local MongoDB if unset. |
-| `MONGODB_DATABASE` | No | Backend | MongoDB database name; defaults to `sql_software`. |
-| `DATABASE_URL` | Yes | Backend | PostgreSQL database used by startup migrations, legacy/application provisioning, and SQL-practice schemas. Current platform user and learning records are stored in MongoDB, but PostgreSQL is still required by startup and SQL execution. |
-| `PRACTICE_DATABASE_URL` | No | Backend | Optional connection override for the constrained SQL-practice executor. Defaults to `DATABASE_URL`; if set, it must point to the same PostgreSQL host and database because per-workspace roles are provisioned through `DATABASE_URL`. |
-| `PRACTICE_ROLE_SECRET` | No | Backend | HMAC key used to derive deterministic credentials for per-workspace PostgreSQL roles. Defaults to `AUTH_SECRET`; use a separate stable secret in production and preserve it during rotations. |
-| `PRACTICE_DATABASE_PASSWORD` | Local Compose initialization | PostgreSQL | Initializes the legacy `practice_executor` role. Current backend execution uses per-workspace roles and revokes this legacy role's workspace grants. |
-| `AUTH_SECRET` | Yes | Backend | Secret used to sign session tokens; production values must be at least 32 characters. |
-| `ADMIN_PASSWORD` | First administrator bootstrap | Backend | Initial administrator password. No default is supplied. |
-| `ADMIN_EMAIL` | No | Backend | Initial administrator email; defaults to `admin@sqlpractice.local`. |
-| `ADMIN_NAME` | No | Backend | Initial administrator display name. |
-| `OPENAI_API_KEY` | No | Backend | Enables AI question generation, tutoring, and schema-image assistance. |
-| `OPENAI_MODEL` | No | Backend | AI model name; defaults to `gpt-4o-mini`. |
-| `PYTHON_RUNNER_URL` | No | Backend | Trusted isolated Python runner origin. Must be HTTPS in production; `/health` is public for availability checks and `/v1/execute` requires bearer authentication. Without it, Python execution reports unavailable. |
-| `PYTHON_RUNNER_TOKEN` | No | Backend | Server-only bearer token for the Python runner; store in the backend secret manager. |
-| `SPARK_RUNNER_URL` | No | Backend | Trusted isolated Spark runner origin. HTTPS in production; development may use `http://127.0.0.1:4021`. `/health` is public for availability checks; `/v1/jobs`, `/v1/jobs/:id`, and `/v1/execute` require bearer authentication. Without it, PySpark execution reports unavailable. |
-| `SPARK_RUNNER_TOKEN` | Yes for production Compose | Spark worker and backend | Shared backend-to-worker bearer token. Generate a long random value and store it in both services' secret configuration; never expose it to the browser. |
-| `SPARK_RUNNER_ALLOW_PRIVATE_HTTP` | Production Compose only | Backend | Compose sets `true` only for `http://spark_runner:4021` on the dedicated internal network. All other production runner URLs must use HTTPS. |
-| `DOCKER_GID` | Yes for production Compose | Spark worker | Numeric group ID owning `/var/run/docker.sock` on the dedicated Spark host; allows the non-root controller to create restricted job containers. |
-| `PORT` | No | Backend | Express listen port; defaults to `4000`. |
-| `ALLOWED_ORIGIN` | Production | Backend | Allowed browser origin for credentialed API requests. |
-| `RATE_LIMIT_PER_MINUTE` | No | Backend | Per-IP/path in-memory request limit; defaults to `180`. |
-| `SESSION_DAYS` | No | Backend | Session lifetime in days; defaults to `7`. |
-| `DB_POOL_SIZE` | No | Backend | Maximum PostgreSQL pool connections; defaults to `10`. |
-| `API_ORIGIN` | Local Worker / secret | Cloudflare Worker | HTTPS origin of the deployed Express API, used by the Worker proxy. |
-| `NODE_ENV` | Deployment | Backend | Set to `production` in production to enforce production auth validation and secure cookies. |
+## Backend
 
-MongoDB stores current platform user and learning records. PostgreSQL remains a required second database service for startup migrations, legacy/application provisioning, workspace schemas, and SQL practice. Use one PostgreSQL database for both `DATABASE_URL` and SQL practice; `PRACTICE_DATABASE_URL` may be omitted, or set to a direct connection to that same database. Do not configure a separate practice database unless the role-provisioning architecture is changed. The Python runner adapter exists; Python execution remains unavailable without a separate configured service. The Spark worker image and queue are implemented and locally verified, but production deployment to a dedicated Docker host is not yet verified.
+| Variable | Required | Purpose |
+|---|---|---|
+| `NODE_ENV` | Production | Set to `production` to enable production auth/cookie behavior. |
+| `PORT` | No | HTTP listen port; defaults to `4000`. The host may inject this value. |
+| `MONGODB_URI` | Yes in production | MongoDB connection URI for platform records. Local development defaults to loopback MongoDB if unset. |
+| `MONGODB_DATABASE` | No | MongoDB database name; defaults to `sql_software`. |
+| `DATABASE_URL` | Yes | PostgreSQL database used by startup compatibility migrations/provisioning and SQL practice. Its identity needs the privileges used for schema and practice-role setup. |
+| `PRACTICE_DATABASE_URL` | No | Optional practice connection override; defaults to `DATABASE_URL`. It must target the same PostgreSQL database because roles are provisioned using `DATABASE_URL`. |
+| `AUTH_SECRET` | Yes | Session signing key. Production configuration must be at least 32 characters and should be randomly generated. |
+| `PRACTICE_ROLE_SECRET` | Recommended in production | Stable, separate HMAC key for deterministic per-workspace PostgreSQL credentials. If omitted, the app falls back to `AUTH_SECRET`. Preserve it during rotation to avoid breaking existing practice roles. |
+| `ADMIN_EMAIL` | No | Email for first administrator bootstrap; defaults to `admin@sqlpractice.local`. |
+| `ADMIN_PASSWORD` | Initial bootstrap | Required only when creating the initial administrator. Use a unique strong password. Changing it does not reset an existing account. |
+| `ADMIN_NAME` | No | Initial administrator display name. |
+| `OPENAI_API_KEY` | Optional | Enables AI question generation, tutoring, interview feedback, note generation, and schema-image assistance. |
+| `OPENAI_MODEL` | No | OpenAI model name; defaults to `gpt-4o-mini`. |
+| `ALLOWED_ORIGIN` | Production | Allowed browser origin for credentialed API requests, normally the Cloudflare Worker origin. |
+| `PYTHON_RUNNER_URL` | Required for Python execution | HTTPS origin of the trusted Python runner in production. |
+| `PYTHON_RUNNER_TOKEN` | Required with runner URL | Backend-to-runner bearer token. Configure the matching value on the runner host. |
+| `SPARK_RUNNER_URL` | Required for PySpark execution | HTTPS origin of the trusted Spark runner in production. |
+| `SPARK_RUNNER_TOKEN` | Required with runner URL | Backend-to-runner bearer token. Configure the matching value on the runner host. |
+| `SPARK_RUNNER_ALLOW_PRIVATE_HTTP` | Private Compose only | Enables HTTP only for the documented internal `spark_runner` service. Do not use for public endpoints. |
+| `RATE_LIMIT_PER_MINUTE` | No | Default per-IP/path rate limit; defaults to `180`, with stricter limits for expensive routes. |
+| `SESSION_DAYS` | No | Session lifetime in days; defaults to `7`. |
+| `DB_POOL_SIZE` | No | PostgreSQL API pool size; defaults to `10`. |
 
-Spark uses `POST /v1/jobs`, `GET /v1/jobs/:id`, and `DELETE /v1/jobs/:id`, plus `/health`. Public-example results include structured DataFrame output; hidden submission tests return anonymized summaries only. Redirects are rejected so bearer tokens are not forwarded. The Spark image pins Python 3.11.11, PySpark 3.5.6, and Java 17. It runs Spark in `local[2]`; each submission gets one disposable Docker container and one SparkContext, while test cases run with fresh Python globals and Spark SQL sessions. Containers use `network_mode=none`, a read-only root, non-root UID 10001, dropped capabilities, `no-new-privileges`, 2 GiB memory, 1 CPU, 128 PIDs, a 256 MiB temporary filesystem, 45-second wall timeout per submission, 500-row cap per case, and 256 KB output cap. JVM processor and GC thread counts are restricted explicitly. The trusted controller uses the host Docker socket and therefore must run on a dedicated Spark host/VM; learner containers never receive the socket, credentials, or network access. The controller permits two running jobs and eight queued jobs. These are single-machine local Spark limits, not a multi-node cluster. The Spark worker must run separately from Cloudflare Workers and is reachable only on the private Compose network in production.
+`PRACTICE_DATABASE_PASSWORD` is used by the local Compose PostgreSQL initialization for the legacy `practice_executor` role. The current workspace practice roles are provisioned separately.
 
-For local development, run `docker compose up --build spark_runner`. A host-run backend should use `SPARK_RUNNER_URL=http://127.0.0.1:4021`, `SPARK_RUNNER_TOKEN=local-development-only-token`, and `NODE_ENV=development`. For production Compose, set a long random `SPARK_RUNNER_TOKEN` and `DOCKER_GID` to the Docker socket's numeric group on a dedicated Spark VM, then run `docker compose -f docker-compose.prod.yml up --build`. The private service uses HTTP only on the Compose internal network with `SPARK_RUNNER_ALLOW_PRIVATE_HTTP=true`; every external production runner endpoint remains HTTPS-only. The queue is in-memory and single-controller; do not add replicas without a durable queue and job ownership store. Cloudflare Workers/serverless hosts cannot host the Spark worker.
+## Python and Spark runner host
+
+| Variable | Service | Purpose |
+|---|---|---|
+| `PYTHON_RUNNER_TOKEN` | Python controller | Bearer credential accepted by the Python runner. Must match the backend value. |
+| `PYTHON_JOB_IMAGE` | Python controller | Optional Python execution image override. |
+| `SPARK_RUNNER_TOKEN` | Spark controller | Bearer credential accepted by the Spark runner. Must match the backend value. |
+| `SPARK_JOB_IMAGE` | Spark controller | Optional pinned Spark job image override. |
+| `DOCKER_GID` | Runner Compose | Numeric group ID owning `/var/run/docker.sock`, for controller access. |
+| `PYTHON_RUNNER_DOMAIN` | Runner Compose/Caddy | HTTPS hostname routed to the Python controller. |
+| `SPARK_RUNNER_DOMAIN` | Runner Compose/Caddy | HTTPS hostname routed to the Spark controller. |
+
+Runner tokens are server-to-server credentials. Do not include them in browser requests, frontend build variables, or public issue reports.
+
+## Cloudflare and GitHub Actions
+
+| Variable/secret | Location | Purpose |
+|---|---|---|
+| `API_ORIGIN` | Cloudflare Worker variable | HTTPS origin of the Express API; configured in `wrangler.jsonc` for this deployment. |
+| `CLOUDFLARE_API_TOKEN` | GitHub Actions secret | Scoped Cloudflare token used by Wrangler to deploy the Worker. |
+| `CLOUDFLARE_ACCOUNT_ID` | GitHub Actions secret | Cloudflare account targeted by the deploy workflow. |
+
+The frontend workflow skips the deployment step if either Cloudflare secret is missing. Confirm an actual Worker publish in logs after each deployment.
+
+## Local configuration
+
+Start from `backend/.env.example`, replace placeholders with local-only values, and keep the resulting `backend/.env` untracked. Use `docker-compose.yml` defaults only for local development; do not reuse sample passwords or tokens in production.

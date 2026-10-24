@@ -1,89 +1,67 @@
-# Project Audit
+# Project Architecture and Feature Audit
 
-Audit date: 2026-10-19
+**Reviewed:** 2026-10-24
+**Revision:** `553dbf3`
+**Scope:** Repository structure, key frontend/backend/runner boundaries, documentation, relevant tests, and public health endpoints. This is a project overview, not a formal security review.
 
-## Scope and evidence
+## Product summary
 
-This audit inspected the backend persistence and SQL execution code, authentication and operations helpers, the main frontend/API call paths, Docker Compose and deployment documentation, and the existing backend security tests. The local `backend/.env` was not opened. No production database or credentials were accessed.
-
-Commands actually run:
-
-| Command | Result |
-|---|---|
-| `npm --prefix backend test` | Passed: 7 tests. These tests primarily inspect source text; they do not exercise a live database or API. |
-| `npm --prefix backend run check` | Blocked: `tsc` is not installed because backend dependencies are absent. |
-| `npm --prefix backend run build` | Not run; the preceding check failed and the chained command stopped. |
-| `npm --prefix backend ls --depth=0` | Confirmed backend dependencies are missing. |
-
-The worktree already contained a modified root `package-lock.json` before audit edits. It was left untouched.
+The application is a data-engineering learning and interview platform that has grown from a SQL practice app. It combines SQL workspaces, coding labs, curated learning content, dataset-grounded challenge generation, interview practice, AI study tools, notes, progress tracking, and admin functions.
 
 ## Architecture
 
-- Frontend: React 18 and Vite, with the SQL workspace and account/admin/interview views calling the Express API.
-- API: Node.js, Express, TypeScript, Zod, Multer, and the OpenAI SDK.
-- Current persistence and SQL execution: PostgreSQL through `pg`. `backend/src/db.ts` initializes application tables and also creates per-workspace PostgreSQL schemas, inspects their tables, imports SQL, runs read-only practice queries, and stores snapshots.
-- Deployment: Docker Compose currently provisions PostgreSQL and the API. The Cloudflare Worker serves frontend assets and proxies `/api/*` to the Node API.
-- No MongoDB driver, MongoDB URI, MongoDB service, or MongoDB persistence code was found in the inspected backend/configuration.
-
-## Verified feature inventory
-
-| Area | Status | Evidence / limitation |
+| Layer | Implementation | Responsibility |
 |---|---|---|
-| Account registration, login, logout, role checks | Implemented; needs runtime tests | Routes use PostgreSQL users/sessions and HttpOnly cookies. |
-| Per-user SQL workspaces | Implemented; needs runtime tests | PostgreSQL `app_databases.owner_user_id` and per-user schemas. |
-| SQL editor, schema/table exploration, imports, snapshots | Implemented; security concerns below | API routes call PostgreSQL schema and import helpers. |
-| SQL execution and output comparison | Implemented; needs stronger security validation | Single-statement/read-only keyword checks, transaction read-only mode, statement timeout, and bounded `work_mem` exist. |
-| SQL questions, generated sets, starter questions, collections | Implemented; needs database-backed integration tests | Stored as PostgreSQL tables; AI questions are executed against a practice schema before acceptance. |
-| Attempts, revision marks, progress and analytics | Implemented; needs isolation tests | Stored in PostgreSQL; the current tests only assert source patterns. |
-| AI tutor and image schema extraction | Implemented when provider credentials are configured | Server-side OpenAI integration; provider-failure and prompt-safety testing is not evidenced. |
-| Python Lab and isolated Python execution | Not implemented | No Python runner or module was found in the inspected workspace. |
-| PySpark Lab and isolated Spark execution | Not implemented | No Spark runtime or runner was found. |
-| Azure, Databricks, ETL learning modules and AI mock interviews | Partial/planned | There is an SQL interview flow, but not the full roadmap modules or persistent interview sessions. |
-| Production deployment | Documented, not verified | Deployment docs describe Node API + PostgreSQL + Worker; no production build or deployment was run. |
+| Frontend | React 18, TypeScript, Vite | SQL Lab, learning tracks, Python/PySpark labs, dataset generation, notes, AI, interview, admin and analytics screens. |
+| Web edge | Cloudflare Worker / Wrangler assets | Serves the built frontend and proxies `/api` to the API origin. |
+| API | Node.js, Express, TypeScript, Zod | Authentication, validation, ownership checks, question workflows, progress, SQL coordination, AI calls, and runner adapters. |
+| Platform records | MongoDB | Users/sessions, learning questions and progress, generated-question jobs, notes, interviews, and other product records. |
+| SQL execution | PostgreSQL | Practice schemas, tables, SQL challenge execution, snapshots, and compatibility/provisioning data. |
+| Code execution | Python and Spark worker services | Authenticated requests to separate controllers, which run disposable constrained containers. |
+| AI | OpenAI API (optional) | Question generation, tutoring, study content, and interview feedback. |
 
-## Current PostgreSQL data model
+Production origins and deployment details are in [DEPLOYMENT.md](../DEPLOYMENT.md). Local setup is in [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md).
 
-`initDb()` creates application collections/tables for `users`, `sessions`, `app_databases`, `challenges`, `question_sets`, `attempts`, `question_revision_marks`, `schema_imports`, `database_snapshots`, `challenge_flags`, `question_reviews`, `question_collections`, `collection_questions`, `audit_logs`, `feature_flags`, `api_usage_daily`, and `refresh_jobs`.
+## Feature inventory
 
-Separately, PostgreSQL schemas contain learner SQL-practice tables and rows. Those schemas are the execution environment for the SQL product, not merely application metadata. Replacing that engine with MongoDB would remove the feature the user explicitly wants to keep. Target architecture: MongoDB stores platform/user/learning records; PostgreSQL remains a constrained SQL practice runtime. Store each practice database's owner, metadata, and PostgreSQL schema identifier in MongoDB.
+| Area | Implemented capability | Important boundary |
+|---|---|---|
+| SQL Lab | User workspaces, PostgreSQL schema/table inspection, SQL editor, practice queries, question banks, generation sets, snapshots, import/review flows. | SQL safety depends on server validation and PostgreSQL role isolation; full production threat-model review is separate work. |
+| Learning Studio | Lessons, track question banks, filters, answers/review, progress, attempts, bookmarks, revision, and analytics. | Some question types are objectively checked; content authoring/review still needs a stronger editorial workflow. |
+| Python Lab | Coding questions, editor, examples, submission/result workflow, runner adapter. | Requires a configured isolated Python worker. |
+| PySpark Lab | Spark coding bank, DataFrame preview/output, examples, submissions, async job handling, runner adapter. | Spark runs local mode on a single host; it is not a distributed Spark cluster. |
+| Dataset question generation | CSV, JSON/JSONL, Parquet, and constrained SQL import; dataset preview; SQL/Python/PySpark generation; progress; validation; dataset-specific banks. | Uploads are bounded. AI receives sample data; avoid personal/confidential records. Generated answer correctness remains bounded by coverage of validation cases. |
+| Interviews | Timed learning interviews, persisted answers, optional AI feedback and reports. | AI score and coaching are subjective, not guaranteed. |
+| AI study tools | Assistant, note/reminder generation, schema-image support, PDF-based notes. | Require configured provider credentials and subject to provider availability and cost. |
+| Admin/analytics | User/access administration, audit views, content operations, metrics and learning analytics. | Server-side authorization and least privilege remain essential for each admin operation. |
 
-## Security findings
+## Data flow for dataset question generation
 
-### Medium: multipart import ownership is not checked after parsing
+1. The API parses an upload under documented file, row, column, and table limits.
+2. Dataset tables are stored in a user-owned PostgreSQL practice schema; dataset metadata is stored in MongoDB.
+3. The generator sends the selected schema and a bounded preview sample to the configured AI service.
+4. Candidate Python/PySpark inputs are checked for exact selected-table columns, required question structure, and valid reference code.
+5. A configured isolated runner executes the reference solution against test cases. Questions are saved only when the requested batch validates.
+6. Generated coding questions are associated with the dataset and shown in its lab question bank.
 
-The `/api` authentication/ownership middleware runs before route-level `upload.single('file')` middleware. For multipart requests, `databaseId` is not available to the shared guard at that point. The SQL file import and image import handlers later read `req.body.databaseId` and call `dbRow()` without checking that the authenticated user owns that database. A signed-in user who obtains another workspace's UUID can target its imports. Verify ownership inside each handler after Multer parses the form, before reading or mutating the database. The same principle applies to future multipart routes.
+This pipeline reduces common errors but does not prove a candidate correct for all possible records. Held-out rows and meaningful null/type/edge-case tests are recommended.
 
-### High: SQL import executes uploaded SQL with the API's PostgreSQL role
+## Operational observations
 
-`executeImport()` submits the provided SQL directly to the shared PostgreSQL connection after setting a search path; it does not constrain statements to a practice schema or use a separate least-privilege role. The SQL import route accepts uploaded SQL and the API connection is also used for application tables. An imported script can therefore attempt operations outside the learner's intended schema. Use a dedicated constrained execution role and validate/import within an isolated database or schema boundary; add tests for attempts to alter application schemas and other workspaces. Do not expose this import path to production until the execution permissions are verified.
+- On 2026-10-24, `/api/health` returned HTTP 200 with MongoDB and PostgreSQL healthy; runner status reported Python and PySpark available.
+- Render and Cloudflare deployments are automated from `main`.
+- The latest checked Cloudflare deploy workflow succeeded. The latest checked backend CI run failed at `npm test`, as did two preceding runs.
+- Backend TypeScript check and frontend production build passed during the current review. The full local backend suite did not complete within the review window.
+- On-demand Codespaces runner hosting can interrupt execution when the Codespace stops. A dedicated Docker-compatible host is more suitable for continuous use.
 
-### High: insecure authentication fallbacks
+## Key architecture risks and improvement areas
 
-`auth.ts` falls back to `change-me-in-production` for `AUTH_SECRET`; `ops.ts` also has a predictable default administrator password. Deployment documentation requires production secrets, but the application code does not fail startup when those variables are absent. Reject missing/weak production secrets and require an explicit admin bootstrap password or one-time setup flow.
+1. **Regression signal:** investigate repeated backend test failures and make the suite terminate reliably.
+2. **Background work:** generation is launched from the API process and interrupted work is marked failed after restart; consider a durable queue with idempotent jobs.
+3. **Persistence transition:** PostgreSQL is still required for SQL execution and compatibility operations even though MongoDB stores platform records. Reconcile migration state before removing legacy data/tables.
+4. **Question quality:** add independent/held-out validation and a learner/editor review step for AI-generated coding challenges.
+5. **End-to-end verification:** add browser tests for the flows learners use, including runner unavailable/failure states.
+6. **Runner operations:** monitor capacity, uptime, resource use, and job cleanup; use a durable controller host rather than relying on an on-demand Codespace for expected production availability.
+7. **Privacy:** minimize sample data passed to AI, make retention/deletion behavior clear, and do not encourage uploads containing sensitive information.
 
-### Medium: SQL read-only checks are not a substitute for database privileges
-
-The read-only executor combines statement prefix/keyword checks with PostgreSQL read-only transactions and a timeout. This is stronger than prefix checks alone, but the inspected code does not establish a dedicated least-privilege PostgreSQL role or prove behavior for every callable function and schema. Verify with integration tests under a restricted role before production claims.
-
-## MongoDB migration decisions
-
-1. Use the official MongoDB Node driver and a server-only `MONGODB_URI` plus database name. Do not place Mongo credentials in frontend or Worker configuration.
-2. Move account, session, question, question-set, attempt, progress/revision, import-review, snapshot metadata, collection, audit, feature-flag, and operational records to MongoDB.
-3. Keep uploaded practice table definitions and rows in PostgreSQL so submitted SQL continues to execute as SQL. MongoDB stores the workspace ownership and schema mapping.
-4. Provide an explicit, resumable PostgreSQL-to-Mongo migration with dry-run/verification, backups, idempotent checkpoints, and no destructive source drops. Do not switch production until counts and representative records reconcile.
-5. Make both stores' health/readiness explicit. The API must not silently start with default auth credentials or claim healthy when a required store is unavailable.
-6. Preserve the existing SQL APIs and frontend contract while repositories are migrated; add tests for Mongo persistence and cross-user isolation.
-
-## Prioritized next phases
-
-1. **Stabilize/security:** fix multipart ownership, isolate SQL imports with least privilege, and remove weak production secret fallbacks. Add runtime-oriented tests where dependencies and services are available.
-2. **MongoDB persistence:** add Mongo connection/configuration and repositories, migrate platform records while retaining PostgreSQL SQL execution, provide data migration and verification, then update Compose/deployment docs.
-3. **Learning foundation:** generalize the existing question/progress model in MongoDB and add the learning dashboard only after migration tests pass.
-4. **Python Lab:** content/editor first; real code execution stays disabled until a separate hardened runner is available.
-5. **Spark Lab:** content/editor first; real Spark execution stays disabled until isolated Spark infrastructure is configured.
-6. **Azure/Databricks/ETL/mock interviews:** implement educational scenarios and persisted sessions; label integrations/simulations accurately and do not provision paid resources.
-7. **Final QA:** reconcile migrations, run authorization and regression suites, document deployment/rollback, and report actual readiness.
-
-## Blockers and next safe action
-
-Backend packages are not installed in this workspace, so TypeScript checks/builds and live API tests could not be run. Install dependencies from the existing lockfile before code changes are accepted. The next code task is the Phase 2 security slice, beginning with post-Multer ownership checks; the MongoDB migration should follow with a verified schema/data migration plan rather than a destructive database swap.
+See the [QA report](FINAL_QA_REPORT.md) and [prioritized roadmap](IMPLEMENTATION_ROADMAP.md).
