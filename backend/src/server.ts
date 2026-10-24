@@ -14,6 +14,7 @@ import { completeInterview, getInterviewSession, startInterview } from "./interv
 import { answerLearningInterview, finishLearningInterview, getLearningInterview, listLearningInterviews, startLearningInterview } from "./learning-interviews.js";
 import { cancelLearningExecution, createLearningExecution, executeLearningExample, getLearningExecution, getLearningQuestion, getLearningQuestionReview, learningRunnerStatus, listLearningAttempts, listLearningBookmarks, listLearningQuestions, listLearningTopics, listRevisionQueue, seedLearningQuestions, setLearningBookmark, setLearningRevisionMark, submitLearningAnswer, submitLearningCode, topicProgress } from "./learning-engine.js";
 import { createQuestionDataset, deleteQuestionDataset, getQuestionDataset, listQuestionDatasets, updateQuestionDataset } from "./question-datasets.js";
+import { validateDatasetCodingInput } from "./dataset-coding.js";
 import { validateLearningQuestion } from "./learning-engine.js";
 import { executeOnRunner, normalizeRunnerInput } from "./runners.js";
 import { MAX_DATASET_BYTES } from "./dataset-files.js";
@@ -68,13 +69,13 @@ const datasetGeneration=z.object({language:z.enum(['python','pyspark']),count:z.
 async function runDatasetQuestionGeneration(jobId:string,userId:string,dataset:any,codingTable:any,input:z.infer<typeof datasetGeneration>){
  const jobs=mongoCollection('question_generation_jobs');
  const accepted:Record<string,any>[]=[];const rejected:string[]=[];const attemptedTitles=new Set<string>();
- const allGeneratedTitles:string[]=[];let generatedCount=0;
+ const allGeneratedTitles:string[]=[];const generationFeedback:string[]=[];let generatedCount=0;
  const updateProgress=async(fields:Record<string,unknown>)=>jobs.updateOne({_id:jobId,user_id:userId},{$set:{...fields,updated_at:new Date()}});
  try{
   let generationAttempts=0;
   while(accepted.length<input.count&&generationAttempts<5){
    await updateProgress({stage:'generating',currentTitle:null});
-   const batch=await generateDatasetCodingQuestions({schema:JSON.stringify({table:codingTable.name,columns:codingTable.columns}),sample:JSON.stringify(codingTable.preview),language:input.language,count:input.count-accepted.length,difficulty:input.difficulty,topic:input.topic,avoidTitles:[...attemptedTitles].slice(-30)});
+   const batch=await generateDatasetCodingQuestions({schema:JSON.stringify({table:codingTable.name,columns:codingTable.columns}),sample:JSON.stringify(codingTable.preview),language:input.language,count:input.count-accepted.length,difficulty:input.difficulty,topic:input.topic,avoidTitles:[...attemptedTitles].slice(-30),feedback:generationFeedback.slice(-10)});
    generationAttempts++;
    generatedCount+=batch.questions.length;
    const generatedTitles=batch.questions.map((raw)=>String(raw.title||'Generated question').trim());
@@ -98,6 +99,9 @@ async function runDatasetQuestionGeneration(jobId:string,userId:string,dataset:a
       if(!test.input_json.trim()||!test.expected_json.trim())throw new Error(`Test case ${index+1} has an empty input or expected JSON value`);
       const testInput:unknown=parseJsonLike(test.input_json);const expected:unknown=parseJsonLike(test.expected_json);const normalizedInput=normalizeRunnerInput(testInput);
       if(!normalizedInput||typeof normalizedInput!=='object')throw new Error('Test input must be a JSON object or a single list payload');
+      const schemaColumns=codingTable.columns.map((column:any)=>String(column.name));
+      const inputError=validateDatasetCodingInput(normalizedInput,schemaColumns,String(test.name||`Case ${index+1}`));
+      if(inputError)throw new Error(inputError);
       return{name:String(test.name||`Case ${index+1}`).slice(0,120),input:normalizedInput,expected};
      }):[];
      const functionName=String(raw.function_name||'');
@@ -121,7 +125,12 @@ async function runDatasetQuestionGeneration(jobId:string,userId:string,dataset:a
      }
      accepted.push(question);
      await updateProgress({validated:accepted.length,validatedTitles:accepted.map((item)=>item.title),failed:rejected.length,rejected});
-    }catch(error){rejected.push(`${title}: ${(error as Error).message}`);await updateProgress({failed:rejected.length,rejected})}
+    }catch(error){
+     const message=(error as Error).message;
+     rejected.push(`${title}: ${message}`);
+     if(message.includes("must match the selected table schema")||message.includes("must use a non-empty list of dataset records")||message.startsWith("Reference solution failed validation"))generationFeedback.push(`${title}: ${message}`);
+     await updateProgress({failed:rejected.length,rejected});
+    }
    }
   }
   if(accepted.length!==input.count){
