@@ -11,6 +11,8 @@ import "./learning-track-levels.css";
 import "./question-bank-resize.css";
 import "./solution-copy.css";
 import "./revision-bookmark.css";
+import "./question-bank-progress.css";
+import { questionBankProgress, questionBankProgressClass, questionBankProgressLabel, questionBankProgressStyle } from "./questionBankProgress";
 
 type Option = { id: string; text: string };
 type Example = { input: unknown; expected: unknown };
@@ -18,7 +20,7 @@ type Question = {
   id: string; title: string; prompt: string; module_id: string; topic: string; subtopic?: string;
   difficulty: string; difficulty_label?: string; learning_level?: string; level_title?: string; type: string; language?: "python" | "pyspark";
   options?: Option[]; hints?: string[]; starter_code?: string; input_description?: string;
-  output_description?: string; public_examples?: Example[]; bookmarked?: boolean; completed?: boolean; revisionMarked?: boolean;
+  output_description?: string; public_examples?: Example[]; bookmarked?: boolean; completed?: boolean; attempted?: boolean; revisionMarked?: boolean;
   source?: string; dataset_id?: string; dataset_name?: string; created_at?: string | Date; generation_index?: number;
 };
 type Level = string;
@@ -100,6 +102,11 @@ export default function LearningTrackLab() {
     ...levels.map((item) => [item, questions.filter((question) => question.learning_level === item).length]),
     ...generatedDatasets.map((dataset) => [dataset.key, dataset.count])
   ]), [questions, generatedDatasets]);
+  const bankProgress = (items: Question[]) => questionBankProgress(
+    items.filter((item) => item.completed).length,
+    items.length,
+    items.filter((item) => item.attempted).length
+  );
 
   useEffect(() => {
     localStorage.setItem(`${moduleId}-question-rail-width`, String(railWidth));
@@ -172,8 +179,8 @@ export default function LearningTrackLab() {
       const result = await response.json();
       if (!response.ok) throw Error(result.error || "Answer could not be saved.");
       setAttemptResult(result);
-      setQuestion((current) => current?.id === question.id ? { ...current, completed: current.completed || result.correct, revisionMarked: result.correct ? false : current.revisionMarked } : current);
-      setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, completed: item.completed || result.correct, revisionMarked: result.correct ? false : item.revisionMarked } : item));
+      setQuestion((current) => current?.id === question.id ? { ...current, attempted: true, completed: current.completed || result.correct, revisionMarked: result.correct ? false : current.revisionMarked } : current);
+      setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, attempted: true, completed: item.completed || result.correct, revisionMarked: result.correct ? false : item.revisionMarked } : item));
       await loadAttempts(question.id);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Answer could not be saved."); }
     finally { setBusy(false); }
@@ -187,8 +194,9 @@ export default function LearningTrackLab() {
       const result = await response.json();
       if (!response.ok) throw Error(result.error || "Isolated execution failed.");
       setCodeResult(result);
-      if (result.correct) setQuestion({ ...question, completed: true, revisionMarked: false });
-      setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, completed: item.completed || result.correct, revisionMarked: result.correct ? false : item.revisionMarked } : item));
+      if (result.correct) setQuestion({ ...question, attempted: true, completed: true, revisionMarked: false });
+      else setQuestion({ ...question, attempted: true });
+      setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, attempted: true, completed: item.completed || result.correct, revisionMarked: result.correct ? false : item.revisionMarked } : item));
       await Promise.all([loadAttempts(question.id), fetch(`${API}/api/learning/questions/${question.id}/review`, { credentials: "include" }).then(async (reviewResponse) => { if (reviewResponse.ok) setReview(await reviewResponse.json()); })]);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "The isolated Python runner is unavailable."); }
     finally { setBusy(false); }
@@ -222,7 +230,7 @@ export default function LearningTrackLab() {
       <div className="trackBreadcrumb"><a href="/">Learning paths</a><span>/</span><span>{track.title}</span></div>
       <header className="trackHero"><div><div className="trackEyebrow"><Icon size={14} /> {track.eyebrow}</div><h1>{track.title}</h1><p>{module?.description || track.description}</p></div><div className="trackStats"><strong>{questions.length}</strong><span>QUESTIONS</span></div></header>
       {error && <div className="trackError" role="alert">{error}</div>}
-      {moduleId !== "python-etl" && <section className="trackLevelBar"><div className="trackLevelIntro"><strong>Choose your starting point</strong><span>A–D very easy · E–H easy · I–K medium · L–N hard · O–R very hard</span></div><div className="trackLevelTabs" role="tablist" aria-label="Learning question bank">{[...levels, "all"].map((item) => <button key={item} role="tab" aria-label={item === "all" ? "All questions" : `Level ${item}, ${levelBand(item)}`} title={item === "all" ? "All questions" : `Level ${item} · ${levelBand(item)}`} aria-selected={level === item} className={level === item ? `selected level-${item.toLowerCase()}` : ""} onClick={() => setLevel(item)}><span>{item === "all" ? "All" : item}</span><small>{item === "all" ? questions.length : levelCounts[item]}</small></button>)}</div></section>}
+      {moduleId !== "python-etl" && <section className="trackLevelBar"><div className="trackLevelIntro"><strong>Choose your starting point</strong><span>A–D very easy · E–H easy · I–K medium · L–N hard · O–R very hard</span></div><div className="trackLevelTabs" role="tablist" aria-label="Learning question bank">{[...levels, "all"].map((item) => {const bankQuestions=item==="all"?questions:questions.filter((question)=>question.learning_level===item);const completed=bankQuestions.filter((question)=>question.completed).length;const attempted=bankQuestions.filter((question)=>question.attempted).length;const progress=bankProgress(bankQuestions);return <button key={item} style={questionBankProgressStyle(completed,bankQuestions.length,attempted)} role="tab" aria-label={`${item === "all" ? "All questions" : `Level ${item}, ${levelBand(item)}`}, ${questionBankProgressLabel(progress)}`} title={`${item === "all" ? "All questions" : `Level ${item} · ${levelBand(item)}`} · ${questionBankProgressLabel(progress)}`} aria-selected={level === item} className={`${questionBankProgressClass(progress)} ${level === item ? `selected level-${item.toLowerCase()}` : ""}`} onClick={() => setLevel(item)}><span>{item === "all" ? "All" : item}</span><small>{bankQuestions.length}</small></button>})}</div></section>}
       <div className="trackLayout" style={{ "--question-rail-width": `${railWidth}px` } as CSSProperties}>
         <aside className="trackQuestionRail">
           <div className="trackRailTitle"><strong>{revisionOnly ? "REVISION ONLY" : "QUESTION BANK"}</strong><span>{filteredQuestions.length}</span></div>
@@ -234,7 +242,11 @@ export default function LearningTrackLab() {
                 const dataset = generatedDatasets.find((entry) => entry.key === item);
                 const label = item === "all" ? "All" : dataset ? dataset.name : item;
                 const count = item === "all" ? questions.length : levelCounts[item] || 0;
-                return <button key={item} role="tab" aria-label={dataset ? `${dataset.name}, ${dataset.count} questions` : item === "all" ? "All questions" : `Level ${item}, ${levelBand(item)}`} title={dataset ? dataset.name : item === "all" ? "All questions" : `Level ${item} · ${levelBand(item)}`} aria-selected={level === item} className={`${level === item ? "selected " : ""}${dataset ? "level-dataset" : `level-${item.toLowerCase()}`}`} onClick={() => setLevel(item)}><span>{label}</span><small>{count}</small></button>;
+                const bankQuestions=item==="all"?questions:dataset?questions.filter((question)=>isGeneratedQuestion(question)&&datasetFilterKey(question)===item):questions.filter((question)=>question.learning_level===item);
+                const completed=bankQuestions.filter((question)=>question.completed).length;
+                const attempted=bankQuestions.filter((question)=>question.attempted).length;
+                const progress=bankProgress(bankQuestions);
+                return <button key={item} style={questionBankProgressStyle(completed,bankQuestions.length,attempted)} role="tab" aria-label={`${dataset ? `${dataset.name}, ${dataset.count} questions` : item === "all" ? "All questions" : `Level ${item}, ${levelBand(item)}`}, ${questionBankProgressLabel(progress)}`} title={`${dataset ? dataset.name : item === "all" ? "All questions" : `Level ${item} · ${levelBand(item)}`} · ${questionBankProgressLabel(progress)}`} aria-selected={level === item} className={`${questionBankProgressClass(progress)} ${level === item ? "selected " : ""}${dataset ? "level-dataset" : `level-${item.toLowerCase()}`}`} onClick={() => setLevel(item)}><span>{label}</span><small>{count}</small></button>;
               })}
             </div>
           </section>}

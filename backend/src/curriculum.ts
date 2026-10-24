@@ -232,12 +232,13 @@ export async function seedCurriculum(): Promise<void> {
 }
 
 export async function getLearningStudio(userId: string) {
-  const [workspaces, storedModules, progress, questionCounts, questionRows, recentAttempt] = await Promise.all([
+  const [workspaces, storedModules, progress, questionCounts, questionRows, attemptedQuestionRows, recentAttempt] = await Promise.all([
     listWorkspaces(userId, false),
     mongoCollection("learning_modules").find().sort({ order: 1 }).toArray(),
     mongoCollection("learning_progress").find({ user_id: userId }).toArray(),
     mongoCollection("learning_questions").aggregate([{ $match: { status: "published", $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] } }, { $group: { _id: "$module_id", count: { $sum: 1 } } }]).toArray(),
     mongoCollection("learning_question_progress").find({ user_id: userId, completed: true }, { projection: { question_id: 1 } }).toArray(),
+    mongoCollection("learning_attempts").distinct("question_id", { user_id: userId }),
     mongoCollection("learning_attempts").findOne({ user_id: userId }, { sort: { created_at: -1 }, projection: { question_id: 1 } })
   ]);
   const workspaceIds = workspaces.map((workspace: any) => String(workspace.id || workspace._id));
@@ -247,15 +248,23 @@ export async function getLearningStudio(userId: string) {
   const completed = new Set(progress.filter((item) => item.completed).map((item) => String(item.lesson_id)));
   const counts = new Map(questionCounts.map((row) => [String(row._id), Number(row.count)]));
   const completedQuestionIds = new Set(questionRows.map((item) => String(item.question_id)));
+  const attemptedQuestionIds = new Set(attemptedQuestionRows.map(String));
   const completedModules = new Map<string, number>();
+  const attemptedModules = new Map<string, number>();
   const sqlQuestionIds = sqlQuestions.map((question: any) => String(question.id));
   const recentId = String(recentAttempt?.question_id || "");
-  const [completedQuestions, completedSql, recentQuestion] = await Promise.all([
+  const [completedQuestions, completedSql, attemptedQuestions, attemptedSql, recentQuestion] = await Promise.all([
     completedQuestionIds.size
       ? mongoCollection("learning_questions").find({ _id: { $in: [...completedQuestionIds] }, $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] }, { projection: { module_id: 1 } }).toArray()
       : Promise.resolve([]),
     sqlQuestionIds.length
       ? mongoCollection("attempts").distinct("challenge_id", { session_id: userId, challenge_id: { $in: sqlQuestionIds }, correct: true })
+      : Promise.resolve([]),
+    attemptedQuestionIds.size
+      ? mongoCollection("learning_questions").find({ _id: { $in: [...attemptedQuestionIds] }, $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] }, { projection: { module_id: 1 } }).toArray()
+      : Promise.resolve([]),
+    sqlQuestionIds.length
+      ? mongoCollection("attempts").distinct("challenge_id", { session_id: userId, challenge_id: { $in: sqlQuestionIds } })
       : Promise.resolve([]),
     recentId
       ? mongoCollection("learning_questions").findOne({ _id: recentId, $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] }, { projection: { module_id: 1 } })
@@ -264,10 +273,14 @@ export async function getLearningStudio(userId: string) {
   if (completedQuestions.length) {
     for (const question of completedQuestions) completedModules.set(String(question.module_id), (completedModules.get(String(question.module_id)) || 0) + 1);
   }
+  if (attemptedQuestions.length) {
+    for (const question of attemptedQuestions) attemptedModules.set(String(question.module_id), (attemptedModules.get(String(question.module_id)) || 0) + 1);
+  }
   return storedModules.map((module) => ({
     ...module,
     questionCount: module.id === "sql-interview-lab" ? sqlQuestionIds.length : counts.get(String(module.id)) || 0,
     completedQuestions: module.id === "sql-interview-lab" ? completedSql.length : completedModules.get(String(module.id)) || 0,
+    attemptedQuestions: module.id === "sql-interview-lab" ? attemptedSql.length : attemptedModules.get(String(module.id)) || 0,
     continueQuestionId: recentQuestion?.module_id === module.id ? recentId : null,
     lessons: (module.lessons || []).map((lesson: any) => ({ ...lesson, completed: completed.has(String(lesson.id)) }))
   }));

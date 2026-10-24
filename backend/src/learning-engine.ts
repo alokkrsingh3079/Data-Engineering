@@ -495,16 +495,18 @@ function accessibleQuestionFilter(questionId: string, userId: string) {
 }
 
 async function userQuestionState(userId: string, questionIds: string[]) {
-  if (!questionIds.length) return { bookmarks: new Set<string>(), completed: new Set<string>(), revisions: new Set<string>() };
-  const [bookmarks, progress, revisions] = await Promise.all([
+  if (!questionIds.length) return { bookmarks: new Set<string>(), completed: new Set<string>(), revisions: new Set<string>(), attempted: new Set<string>() };
+  const [bookmarks, progress, revisions, attempts] = await Promise.all([
     mongoCollection("learning_bookmarks").find({ user_id: userId, question_id: { $in: questionIds } }, { projection: { question_id: 1 } }).toArray(),
     mongoCollection("learning_question_progress").find({ user_id: userId, question_id: { $in: questionIds }, completed: true }, { projection: { question_id: 1 } }).toArray(),
-    mongoCollection("learning_revision_marks").find({ user_id: userId, question_id: { $in: questionIds } }, { projection: { question_id: 1 } }).toArray()
+    mongoCollection("learning_revision_marks").find({ user_id: userId, question_id: { $in: questionIds } }, { projection: { question_id: 1 } }).toArray(),
+    mongoCollection("learning_attempts").find({ user_id: userId, question_id: { $in: questionIds } }, { projection: { question_id: 1 } }).toArray()
   ]);
   return {
     bookmarks: new Set(bookmarks.map((item) => String(item.question_id))),
     completed: new Set(progress.map((item) => String(item.question_id))),
-    revisions: new Set(revisions.map((item) => String(item.question_id)))
+    revisions: new Set(revisions.map((item) => String(item.question_id))),
+    attempted: new Set(attempts.map((item) => String(item.question_id)))
   };
 }
 
@@ -589,6 +591,7 @@ export async function listLearningQuestions(userId: string, input: LearningQuest
         : {}),
       bookmarked: state.bookmarks.has(String(question._id)),
       completed: state.completed.has(String(question._id)),
+      attempted: state.attempted.has(String(question._id)),
       revisionMarked: state.revisions.has(String(question._id))
     })),
     page: filters.page,
@@ -607,6 +610,7 @@ export async function getLearningQuestion(questionId: string, userId: string) {
     id: questionId,
     bookmarked: state.bookmarks.has(questionId),
     completed: state.completed.has(questionId),
+    attempted: state.attempted.has(questionId),
     revisionMarked: state.revisions.has(questionId)
   };
 }

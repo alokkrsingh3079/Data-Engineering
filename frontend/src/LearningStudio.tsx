@@ -14,6 +14,8 @@ import "./revision-queue.css";
 import "./solution-copy.css";
 import "./revision-bookmark.css";
 import "./dashboard-progress.css";
+import "./question-bank-progress.css";
+import { questionBankProgress, questionBankProgressClass, questionBankProgressLabel, questionBankProgressStyle } from "./questionBankProgress";
 
 type Lesson = {
   id: string;
@@ -33,6 +35,7 @@ type Module = {
   href?: string;
   questionCount: number;
   completedQuestions: number;
+  attemptedQuestions?: number;
   continueQuestionId: string | null;
   lessons: Lesson[];
 };
@@ -57,6 +60,7 @@ type Question = {
   bookmarked: boolean;
   revisionMarked: boolean;
   completed: boolean;
+  attempted?: boolean;
 };
 
 type QuestionResult = {
@@ -342,8 +346,13 @@ export default function LearningStudio() {
       return;
     }
     setAnswerResult(result);
-    setQuestion((current) => current?.id === question.id ? { ...current, completed: current.completed || result.correct, revisionMarked: result.correct ? false : current.revisionMarked } : current);
-    setQuestions((current) => current.map((item) => item.id === question.id ? { ...item, completed: item.completed || result.correct, revisionMarked: result.correct ? false : item.revisionMarked } : item));
+    setQuestion((current) => current?.id === question.id ? { ...current, attempted: true, completed: current.completed || result.correct, revisionMarked: result.correct ? false : current.revisionMarked } : current);
+    setQuestions((current) => current.map((item) => item.id === question.id ? { ...item, attempted: true, completed: item.completed || result.correct, revisionMarked: result.correct ? false : item.revisionMarked } : item));
+    setModules((current) => current.map((module) => module.id === question.module_id ? {
+      ...module,
+      attemptedQuestions: (module.attemptedQuestions || 0) + (question.attempted ? 0 : 1),
+      completedQuestions: module.completedQuestions + (result.correct && !question.completed ? 1 : 0),
+    } : module));
     if (result.correct && question.revisionMarked) await refreshRevisionQueue();
     const history = await fetch(`${API}/api/learning/questions/${question.id}/attempts?limit=10`, { credentials: "include" });
     if (history.ok) setAttempts(await history.json());
@@ -371,8 +380,13 @@ export default function LearningStudio() {
         return;
       }
       setCodeResult(result);
-      setQuestion((current) => current?.id === question.id ? { ...current, completed: current.completed || result.correct, revisionMarked: result.correct ? false : current.revisionMarked } : current);
-      setQuestions((current) => current.map((item) => item.id === question.id ? { ...item, completed: item.completed || result.correct, revisionMarked: result.correct ? false : item.revisionMarked } : item));
+      setQuestion((current) => current?.id === question.id ? { ...current, attempted: true, completed: current.completed || result.correct, revisionMarked: result.correct ? false : current.revisionMarked } : current);
+      setQuestions((current) => current.map((item) => item.id === question.id ? { ...item, attempted: true, completed: item.completed || result.correct, revisionMarked: result.correct ? false : item.revisionMarked } : item));
+      setModules((current) => current.map((module) => module.id === question.module_id ? {
+        ...module,
+        attemptedQuestions: (module.attemptedQuestions || 0) + (question.attempted ? 0 : 1),
+        completedQuestions: module.completedQuestions + (result.correct && !question.completed ? 1 : 0),
+      } : module));
       if (result.correct && question.revisionMarked) await refreshRevisionQueue();
       const history = await fetch(`${API}/api/learning/questions/${question.id}/attempts?limit=10`, { credentials: "include" });
       if (history.ok) setAttempts(await history.json());
@@ -520,8 +534,10 @@ export default function LearningStudio() {
             <div className="studioDashboardModules">{visibleModules.map((module, index) => {
               const completed = module.completedQuestions;
               const percent = module.questionCount ? Math.round((completed / module.questionCount) * 100) : 0;
+              const progress = questionBankProgress(completed, module.questionCount, module.attemptedQuestions || 0);
+              const progressStyle = questionBankProgressStyle(completed, module.questionCount, module.attemptedQuestions || 0);
               const Icon = module.category === "SQL" ? Database : module.category === "Python" ? Code2 : module.category === "Spark" ? Layers3 : module.category === "Interview" ? Sparkles : module.category === "Azure" || module.category === "Databricks" ? Activity : module.category === "Concepts" ? Lightbulb : BookOpen;
-              return <button key={module.id} className={`studioDashboardModule tone-${index % 6}`} onClick={() => chooseModule(module)}>
+              return <button key={module.id} style={progressStyle} aria-label={`${module.title}: ${questionBankProgressLabel(progress)}`} title={questionBankProgressLabel(progress)} className={`studioDashboardModule tone-${index % 6} ${questionBankProgressClass(progress)}`} onClick={() => chooseModule(module)}>
                 <div className="dashboardModuleTop"><span className="dashboardModuleIcon"><Icon size={19} /></span><span className="dashboardModuleCategory">{module.category}</span><ArrowRight size={15} /></div>
                 <strong>{module.title}</strong><p>{module.description}</p>
                 <div className="dashboardModuleMeta"><span>{module.questionCount} questions</span><span>{percent}%</span></div><div className="dashboardProgress"><span style={{ width: `${percent}%` }} /></div>
@@ -541,7 +557,8 @@ export default function LearningStudio() {
             {visibleModules.map((module, index) => {
               const done = module.completedQuestions;
               const total = Math.max(module.questionCount, 1);
-              return <button key={module.id} className={`studioModule ${activeModule?.id === module.id ? "active" : ""}`} onClick={() => chooseModule(module)}>
+              const progress = questionBankProgress(done, module.questionCount, module.attemptedQuestions || 0);
+              return <button key={module.id} style={questionBankProgressStyle(done,module.questionCount,module.attemptedQuestions||0)} aria-label={`${module.title}: ${questionBankProgressLabel(progress)}`} title={questionBankProgressLabel(progress)} className={`studioModule ${questionBankProgressClass(progress)} ${activeModule?.id === module.id ? "active" : ""}`} onClick={() => chooseModule(module)}>
                 <span className="moduleIndex">{String(index + 1).padStart(2, "0")}</span>
                 <span className="moduleCopy"><strong>{module.title}</strong><small>{module.category} · {done}/{module.questionCount} questions</small><progress max={total} value={Math.min(done, total)} aria-label={`${module.title} completion`} /></span>
                 <ArrowRight size={15} />

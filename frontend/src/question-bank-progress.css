@@ -1,0 +1,97 @@
+.sqlLevelBar button.bankProgress-complete,
+.sparkLevelSelector button.bankProgress-complete,
+.trackLevelTabs button.bankProgress-complete,
+.sqlLevelBar button.bankProgress-in-progress,
+.sparkLevelSelector button.bankProgress-in-progress,
+.trackLevelTabs button.bankProgress-in-progress,
+.sqlLevelBar button.bankProgress-not-started,
+.sparkLevelSelector button.bankProgress-not-started,
+.trackLevelTabs button.bankProgress-not-started {
+  position: relative;
+  overflow: hidden;
+  color: #dce8f2 !important;
+}
+
+.sqlLevelBar button.bankProgress-complete,
+.sparkLevelSelector button.bankProgress-complete,
+.trackLevelTabs button.bankProgress-complete {
+  border-color: #008844 !important;
+  background-color: #061b14 !important;
+}
+
+.sqlLevelBar button.bankProgress-in-progress,
+.sparkLevelSelector button.bankProgress-in-progress,
+.trackLevelTabs button.bankProgress-in-progress {
+  border-color: #a56a00 !important;
+  background-color: #211806 !important;
+}
+
+.sqlLevelBar button.bankProgress-not-started,
+.sparkLevelSelector button.bankProgress-not-started,
+.trackLevelTabs button.bankProgress-not-started {
+  border-color: #a82c38 !important;
+  background-color: #210d12 !important;
+}
+
+.sqlLevelBar button.bankProgress-complete::after,
+.sqlLevelBar button.bankProgress-in-progress::after,
+.sqlLevelBar button.bankProgress-not-started::after,
+.sparkLevelSelector button.bankProgress-complete::after,
+.sparkLevelSelector button.bankProgress-in-progress::after,
+.sparkLevelSelector button.bankProgress-not-started::after,
+.trackLevelTabs button.bankProgress-complete::after,
+.trackLevelTabs button.bankProgress-in-progress::after,
+.trackLevelTabs button.bankProgress-not-started::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    #008844 0 var(--bank-solved-width, 0%),
+    #a56a00 var(--bank-solved-width, 0%) var(--bank-attempted-width, 0%),
+    #a82c38 var(--bank-attempted-width, 0%) 100%
+  );
+  content: "";
+}
+
+.catalogPanel .catalogItem.bankProgress-complete,
+.catalogPanel .catalogItem.bankProgress-in-progress,
+.catalogPanel .catalogItem.bankProgress-not-started {
+  position: relative;
+  overflow: hidden;
+  padding-bottom: 11px;
+}
+
+.catalogPanel .catalogItem.bankProgress-complete {
+  border-color: #008844;
+  background-color: #061b14;
+}
+
+.catalogPanel .catalogItem.bankProgress-in-progress {
+  border-color: #a56a00;
+  background-color: #211806;
+}
+
+.catalogPanel .catalogItem.bankProgress-not-started {
+  border-color: #a82c38;
+  background-color: #210d12;
+}
+
+.catalogPanel .catalogItem.bankProgress-complete::after,
+.catalogPanel .catalogItem.bankProgress-in-progress::after,
+.catalogPanel .catalogItem.bankProgress-not-started::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    #008844 0 var(--bank-solved-width, 0%),
+    #a56a00 var(--bank-solved-width, 0%) var(--bank-attempted-width, 0%),
+    #a82c38 var(--bank-attempted-width, 0%) 100%
+  );
+  content: "";
+}

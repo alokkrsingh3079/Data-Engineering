@@ -11,6 +11,8 @@ import "./pyspark-level-expansion.css";
 import "./question-bank-resize.css";
 import "./solution-copy.css";
 import "./revision-bookmark.css";
+import "./question-bank-progress.css";
+import { questionBankProgress, questionBankProgressClass, questionBankProgressLabel, questionBankProgressStyle } from "./questionBankProgress";
 
 type Question = {
   id: string;
@@ -30,6 +32,7 @@ type Question = {
   hints: string[];
   bookmarked: boolean;
   completed: boolean;
+  attempted?: boolean;
   revisionMarked: boolean;
   source?: string;
   dataset_id?: string;
@@ -171,6 +174,11 @@ export default function PySparkLab() {
     ...levels.map((level) => [level, questions.filter((item) => item.learning_level === level).length]),
     ...generatedDatasets.map((dataset) => [dataset.key, dataset.count])
   ]), [questions, generatedDatasets]);
+  const bankProgress = (items: Question[]) => questionBankProgress(
+    items.filter((item) => item.completed).length,
+    items.length,
+    items.filter((item) => item.attempted).length
+  );
 
   useEffect(() => {
     if (!busy) { setElapsedSeconds(0); return; }
@@ -348,6 +356,8 @@ export default function PySparkLab() {
       const jobResult = completedJob.result || {};
       setResult({ ...jobResult, correct: jobResult.status === "passed" });
       if (submit) {
+        setQuestion((current) => current ? { ...current, attempted: true } : current);
+        setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, attempted: true } : item));
         if (jobResult.status === "passed") {
           setQuestion((current) => current ? { ...current, completed: true, revisionMarked: false } : current);
           setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, completed: true, revisionMarked: false } : item));
@@ -454,7 +464,11 @@ export default function PySparkLab() {
           const dataset = generatedDatasets.find((entry) => entry.key === level);
           const label = level === "all" ? "All" : dataset ? dataset.name : level;
           const count = level === "all" ? questions.length : levelCounts[level] || 0;
-          return <button key={level} role="tab" aria-label={dataset ? `${dataset.name}, ${dataset.count} questions` : level === "all" ? "All questions" : `Level ${level}, ${levelBand(level)}`} title={dataset ? dataset.name : level === "all" ? "All questions" : `Level ${level} · ${levelBand(level)}`} aria-selected={filter === level} className={`${filter === level ? "active " : ""}${dataset ? "level-dataset" : `level-${level.toLowerCase()}`}`} onClick={() => setFilter(level)}><strong>{label}</strong><span>{count}</span></button>;
+          const bankQuestions = level === "all" ? questions : dataset ? questions.filter((item) => isGeneratedQuestion(item) && datasetFilterKey(item) === level) : questions.filter((item) => item.learning_level === level);
+          const completed = bankQuestions.filter((item) => item.completed).length;
+          const attempted = bankQuestions.filter((item) => item.attempted).length;
+          const progress = bankProgress(bankQuestions);
+          return <button key={level} style={questionBankProgressStyle(completed,bankQuestions.length,attempted)} role="tab" aria-label={`${dataset ? `${dataset.name}, ${dataset.count} questions` : level === "all" ? "All questions" : `Level ${level}, ${levelBand(level)}`}, ${questionBankProgressLabel(progress)}`} title={`${dataset ? dataset.name : level === "all" ? "All questions" : `Level ${level} · ${levelBand(level)}`} · ${questionBankProgressLabel(progress)}`} aria-selected={filter === level} className={`${questionBankProgressClass(progress)} ${filter === level ? "active " : ""}${dataset ? "level-dataset" : `level-${level.toLowerCase()}`}`} onClick={() => setFilter(level)}><strong>{label}</strong><span>{count}</span></button>;
         })}</div>
         {(() => {
           const dataset = generatedDatasets.find((entry) => entry.key === filter);
