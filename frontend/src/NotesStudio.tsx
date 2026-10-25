@@ -1,14 +1,24 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import CodeMirror from "@uiw/react-codemirror";
+import { python } from "@codemirror/lang-python";
+import { sql } from "@codemirror/lang-sql";
+import { oneDark } from "@codemirror/theme-one-dark";
 import { ArrowLeft, ArrowRight, Bookmark, BookOpen, BriefcaseBusiness, Check, ChevronRight, Clock3, Cloud, Code2, Columns2, Database, Download, FileText, FolderOpen, GitBranch, GraduationCap, Layers3, Lightbulb, LogOut, Maximize2, Minimize2, Pencil, Pin, Plus, Printer, Search, Sparkles, Trash2, Type, Workflow, X, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
 import "./notes-studio.css";
 import "./notes-print.css";
 import "./sticky-notes.css";
+import HybridNotesBuilder from "./HybridNotesBuilder";
+import { renderInlineNoteMarkdown } from "./note-markdown";
 
-type Note = {
+export type Note = {
   id: string;
   title: string;
   subject: string;
   chapter: string;
+  subtopic?: string;
+  tags?: string[];
+  source?: string;
+  status?: "draft" | "published";
   difficulty: "beginner" | "intermediate" | "advanced";
   content: string;
   bookmarked: boolean;
@@ -22,7 +32,7 @@ type Note = {
   updated_at: string;
 };
 
-type View = "dashboard" | "all" | "bookmarks" | "revision" | "recent" | "subject" | "pdf" | "sticky";
+type View = "dashboard" | "all" | "bookmarks" | "revision" | "recent" | "subject" | "pdf" | "sticky" | "builder";
 type ReaderMode = "notes" | "source" | "split";
 type StickyFormat = "text" | "code";
 type StickyLanguage = "plaintext" | "sql" | "python" | "pyspark" | "bash" | "json";
@@ -30,8 +40,8 @@ type StickyNote = { id: string; text: string; color: "yellow" | "pink" | "blue" 
 type PdfDocument = { id: string; filename: string; size_bytes: number; status: "uploaded" | "processing" | "completed" | "failed"; generated_note_id: string | null; processing_error: string | null; created_at: string };
 const stickyLanguages: StickyLanguage[] = ["sql", "python", "pyspark", "bash", "json", "plaintext"];
 const API = "";
-const subjects = ["SQL", "Python", "PySpark", "Azure Data Factory", "Databricks", "ETL & Data Warehousing", "Data Engineering System Design", "Data Engineering Concepts", "Interview Preparation"];
-const subjectIcons: Record<string, LucideIcon> = { SQL: Database, Python: Code2, PySpark: Sparkles, "Azure Data Factory": Cloud, Databricks: Layers3, "ETL & Data Warehousing": Workflow, "Data Engineering System Design": GitBranch, "Data Engineering Concepts": Lightbulb, "Interview Preparation": BriefcaseBusiness };
+const subjects = ["SQL", "Python", "PySpark", "Data Engineering", "ETL Testing", "Databricks", "Azure", "Snowflake", "Data Warehousing", "Azure Data Factory", "ETL & Data Warehousing", "Data Engineering System Design", "Data Engineering Concepts", "Interview Preparation"];
+const subjectIcons: Record<string, LucideIcon> = { SQL: Database, Python: Code2, PySpark: Sparkles, "Azure Data Factory": Cloud, Azure: Cloud, Databricks: Layers3, "ETL & Data Warehousing": Workflow, "Data Warehousing": Workflow, "ETL Testing": Check, Snowflake: Database, "Data Engineering": Workflow, "Data Engineering System Design": GitBranch, "Data Engineering Concepts": Lightbulb, "Interview Preparation": BriefcaseBusiness };
 const blankNote = { title: "", subject: "SQL", chapter: "", difficulty: "intermediate" as Note["difficulty"], content: "" };
 
 async function readApiJson(response: Response, action: string) {
@@ -44,6 +54,12 @@ async function readApiJson(response: Response, action: string) {
     throw new Error(`The ${action} request received an HTML page instead of an API response. Reload the workspace and sign in again; if it persists, restart the local backend and frontend.`);
   }
   return response.json();
+}
+
+function noteCodeExtensions(language: string) {
+  if (language.toLowerCase() === "sql") return [sql()];
+  if (["python", "pyspark"].includes(language.toLowerCase())) return [python()];
+  return [];
 }
 
 function subjectColor(subject: string) {
@@ -81,6 +97,7 @@ export default function NotesStudio() {
   const [activeSubject, setActiveSubject] = useState("");
   const [search, setSearch] = useState("");
   const [activeNote, setActiveNote] = useState<Note | null>(null);
+  const [builderNote, setBuilderNote] = useState<Note | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(blankNote);
   const [loading, setLoading] = useState(true);
@@ -355,6 +372,15 @@ export default function NotesStudio() {
     setEditing(true);
   }
 
+  function startHybridBuilder(note: Note | null = null) {
+    setBuilderNote(note);
+    setActiveNote(null);
+    setEditing(false);
+    setView("builder");
+    setError("");
+    setNotice("");
+  }
+
   async function saveNote(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
@@ -444,16 +470,11 @@ export default function NotesStudio() {
     }
     if (code.trim()) blocks.push({ type: "code", value: code.trimEnd(), language });
     if (text.trim()) blocks.push({ type: "text", value: text.trimEnd() });
-    const renderLine = (line: string) => line.split(/(\[Source: page \d+\])/g).map((part, partIndex) => {
-      const citation = /^\[Source: page (\d+)\]$/.exec(part);
-      return citation && activeNote?.source_document_id
-        ? <a className="sourceCitation" key={partIndex} href={`/api/notes/documents/${activeNote.source_document_id}/file#page=${citation[1]}`} target="_blank" rel="noreferrer">Source page {citation[1]}</a>
-        : part;
-    });
+    const renderLine = (line: string) => renderInlineNoteMarkdown(line, (page) => activeNote?.source_document_id ? `/api/notes/documents/${activeNote.source_document_id}/file#page=${page}` : undefined);
     return blocks.map((block, index) => block.type === "code"
       ? block.language?.toLowerCase() === "flow"
         ? <div className="visualFlow" key={index} aria-label={block.value.replace(/\s*(?:->|→)\s*/g, ", then ")}>{block.value.split(/\s*(?:->|→)\s*/).filter(Boolean).map((step, stepIndex) => <Fragment key={stepIndex}>{stepIndex > 0 && <ArrowRight className="flowArrow" size={17} aria-hidden="true" />}<div className={`flowNode tone-${stepIndex % 5}`}><small>{String(stepIndex + 1).padStart(2, "0")}</small><strong>{step}</strong></div></Fragment>)}</div>
-        : <div className={`noteCode ${block.language || ""}`} key={index}><div className="noteCodeBar"><span>{block.language || "CODE"}</span><button title="Copy code" aria-label="Copy code" onClick={() => void navigator.clipboard.writeText(block.value).then(() => setNotice("Code copied"))}><Check size={14} /> Copy</button></div><pre><code>{block.value}</code></pre></div>
+        : <div className={`noteCode ${block.language || ""}`} key={index}><div className="noteCodeBar"><span>{block.language || "CODE"}</span><button title="Copy code" aria-label="Copy code" onClick={() => void Promise.resolve().then(() => navigator.clipboard.writeText(block.value)).then(() => setNotice("Code copied")).catch(() => setError("Clipboard access was denied. Select and copy the code manually."))}><Check size={14} /> Copy</button></div><CodeMirror value={block.value} extensions={noteCodeExtensions(block.language || "")} theme={oneDark} editable={false} basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false }} /></div>
       : <div className="noteText" key={index}>{(() => {
         const lines = block.value.split("\n");
         const elements: JSX.Element[] = [];
@@ -463,10 +484,16 @@ export default function NotesStudio() {
           if (!line) { lineIndex++; continue; }
           const heading = /^(#{1,3})\s+(.+)$/.exec(line);
           if (heading) {
-            const Tag = `h${heading[1].length + 1}` as "h2" | "h3" | "h4";
+            const Tag = `h${heading[1].length}` as "h1" | "h2" | "h3";
             const id = heading[2].toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
             elements.push(<Tag id={id} key={lineIndex}>{heading[2]}</Tag>);
             lineIndex++;
+            continue;
+          }
+          if (/^\d+[.)]\s/.test(line)) {
+            const items: string[] = [];
+            while (lineIndex < lines.length && /^\s*\d+[.)]\s/.test(lines[lineIndex])) items.push(lines[lineIndex++].trim().replace(/^\d+[.)]\s/, ""));
+            elements.push(<ol className="noteListPoints" key={lineIndex}>{items.map((item, itemIndex) => <li key={itemIndex}>{renderLine(item)}</li>)}</ol>);
             continue;
           }
           if (/^\|.*\|$/.test(line)) {
@@ -495,7 +522,7 @@ export default function NotesStudio() {
           }
           const paragraph = [line];
           lineIndex++;
-          while (lineIndex < lines.length && lines[lineIndex].trim() && !/^(#{1,3})\s+|^[-*]\s|^>|^\|.*\|$/.test(lines[lineIndex].trim())) paragraph.push(lines[lineIndex++].trim());
+          while (lineIndex < lines.length && lines[lineIndex].trim() && !/^(#{1,3})\s+|^[-*]\s|^\d+[.)]\s|^>|^\|.*\|$/.test(lines[lineIndex].trim())) paragraph.push(lines[lineIndex++].trim());
           elements.push(<p key={lineIndex}>{renderLine(paragraph.join(" "))}</p>);
         }
         return elements;
@@ -507,7 +534,7 @@ export default function NotesStudio() {
     location.href = "/login";
   }
 
-  const title = view === "dashboard" ? "Notes & Study Material" : view === "bookmarks" ? "Bookmarks" : view === "revision" ? "Revision Notes" : view === "recent" ? "Recently Viewed" : view === "subject" ? activeSubject : view === "pdf" ? "PDF Library" : view === "sticky" ? "Sticky Notes" : "My Notes";
+  const title = view === "dashboard" ? "Notes & Study Material" : view === "bookmarks" ? "Bookmarks" : view === "revision" ? "Revision Notes" : view === "recent" ? "Recently Viewed" : view === "subject" ? activeSubject : view === "pdf" ? "PDF Library" : view === "sticky" ? "Sticky Notes" : view === "builder" ? "Hybrid Notes Builder" : "My Notes";
   const ActiveSubjectIcon = activeNote ? subjectIcons[activeNote.subject] || BookOpen : BookOpen;
 
   return <div className={`notesShell ${activeNote && !editing && readerExpanded ? "notesReaderExpanded" : ""} ${readerTocVisible ? "" : "readerTocHidden"} ${readerToolsVisible ? "" : "readerToolsHidden"}`}>
@@ -521,6 +548,7 @@ export default function NotesStudio() {
         <button className={view === "recent" ? "active" : ""} onClick={() => { setView("recent"); setActiveNote(null); }}><Clock3 size={17} /> Recently Viewed</button>
         <button className={view === "pdf" ? "active" : ""} onClick={() => { setView("pdf"); setActiveNote(null); }}><FileText size={17} /> PDF Library <span>{documents.length}</span></button>
         <button className={view === "sticky" ? "active" : ""} onClick={() => { setView("sticky"); setActiveNote(null); }}><Pin size={17} /> Sticky Notes <span>{stickyNotes.length}</span></button>
+        <button className={view === "builder" ? "active" : ""} onClick={() => startHybridBuilder()}><Sparkles size={17} /> Hybrid Notes Builder</button>
         <div className="notesNavLabel">SUBJECTS</div>
         {subjects.map((subject) => <button key={subject} className={view === "subject" && activeSubject === subject ? "active subjectNav" : "subjectNav"} onClick={() => { setActiveSubject(subject); setView("subject"); setActiveNote(null); }}><span className={`subjectDot ${subjectColor(subject)}`} />{subject}<span>{notes.filter((note) => note.subject === subject).length}</span></button>)}
       </nav>
@@ -529,8 +557,8 @@ export default function NotesStudio() {
 
     <main className="notesMain">
       <input ref={pdfFileRef} type="file" accept="application/pdf,.pdf" hidden onChange={(event) => void uploadPdf(event.target.files?.[0])} />
-      {activeNote && !editing ? <>
-        <header className="notesTopbar"><button className="notesBack" onClick={() => { setReaderExpanded(false); setActiveNote(null); }}><ArrowLeft size={16} /> All notes</button><div className="notesTopActions"><button title={activeNote.bookmarked ? "Remove bookmark" : "Bookmark note"} aria-label="Toggle bookmark" onClick={() => void toggleNoteFlag(activeNote, "bookmarked")}><Bookmark size={16} fill={activeNote.bookmarked ? "currentColor" : "none"} /></button><button title="Download Markdown" aria-label="Download note" onClick={() => downloadNote(activeNote)}><Download size={16} /></button><button title="Print note" aria-label="Print note" onClick={() => window.print()}><Printer size={16} /></button><button className="notesPrimary small" onClick={() => startEdit(activeNote)}>Edit note</button></div></header>
+      {view === "builder" ? <HybridNotesBuilder key="hybrid-builder" note={builderNote} onClose={() => { setView("dashboard"); setBuilderNote(null); setActiveNote(null); }} onSaved={(saved) => { setBuilderNote(saved); void loadNotes(); }} /> : activeNote && !editing ? <>
+        <header className="notesTopbar"><button className="notesBack" onClick={() => { setReaderExpanded(false); setActiveNote(null); }}><ArrowLeft size={16} /> All notes</button><div className="notesTopActions"><button title={activeNote.bookmarked ? "Remove bookmark" : "Bookmark note"} aria-label="Toggle bookmark" onClick={() => void toggleNoteFlag(activeNote, "bookmarked")}><Bookmark size={16} fill={activeNote.bookmarked ? "currentColor" : "none"} /></button><button title="Download Markdown" aria-label="Download note" onClick={() => downloadNote(activeNote)}><Download size={16} /></button><button title="Print note" aria-label="Print note" onClick={() => window.print()}><Printer size={16} /></button><button className="notesSecondary small" onClick={() => startHybridBuilder(activeNote)}>Edit with Hybrid Builder</button><button className="notesPrimary small" onClick={() => startEdit(activeNote)}>Edit note</button></div></header>
         <div className={`readerLayout ${subjectColor(activeNote.subject)} ${readerTocVisible ? "" : "readerTocHidden"} ${readerToolsVisible ? "" : "readerToolsHidden"}`}>
           <aside className="readerToc"><span>IN THIS NOTE</span>{headings.length ? headings.map((heading) => <a href={`#${heading.id}`} key={heading.id}>{heading.title}</a>) : <p>Add headings with # in the editor to build a table of contents.</p>}<button className={activeNote.revision_marked ? "revisionOn" : ""} onClick={() => void toggleNoteFlag(activeNote, "revision_marked")}><BookOpen size={15} />{activeNote.revision_marked ? "In revision queue" : "Mark for revision"}</button></aside>
           <article className="noteReader" ref={readerRef} onScroll={updateProgress}>
@@ -553,7 +581,7 @@ export default function NotesStudio() {
               <div className="readerHeroMark"><ActiveSubjectIcon size={29} /></div>
               <div className={`readerSubject ${subjectColor(activeNote.subject)}`}><ActiveSubjectIcon size={15} />{activeNote.subject.toUpperCase()}<span>{activeNote.difficulty}</span></div>
               <h1>{activeNote.title}</h1>
-              <div className="readerMeta">Updated {formatDate(activeNote.updated_at)}{activeNote.chapter && <span>{activeNote.chapter}</span>}{activeNote.source_document_id && <a href={`/api/notes/documents/${activeNote.source_document_id}/file`} target="_blank" rel="noreferrer">Source: {activeNote.source_filename || "PDF"}</a>}</div>
+              <div className="readerMeta">Updated {formatDate(activeNote.updated_at)}{activeNote.chapter && <span>{activeNote.chapter}</span>}{activeNote.subtopic && <span>{activeNote.subtopic}</span>}{activeNote.status === "draft" && <span>Draft</span>}{activeNote.tags?.map((tag) => <span key={tag}>#{tag}</span>)}{activeNote.source && <span>Source: {activeNote.source}</span>}{activeNote.source_document_id && <a href={`/api/notes/documents/${activeNote.source_document_id}/file`} target="_blank" rel="noreferrer">Source: {activeNote.source_filename || "PDF"}</a>}</div>
             </header>
             <div className={`readerStudyLayout readerMode-${readerMode}`} style={{ "--reader-text-scale": [0.95, 1, 1.12, 1.25][readerTextSize] } as React.CSSProperties}>
               {readerMode !== "source" && <div className="readerContent">{activeNote.content ? renderContent(activeNote.content) : <div className="readerEmpty">This note has no content yet. Add your study material with Edit note.</div>}</div>}
@@ -566,7 +594,7 @@ export default function NotesStudio() {
           <aside className="readerQuick"><div className="quickProgress"><span>READING PROGRESS</span><strong>{progress}%</strong><div><i style={{ width: `${progress}%` }} /></div></div><div className="quickBox"><span>STUDY TOOLS</span><button onClick={() => void toggleNoteFlag(activeNote, "revision_marked")}><BookOpen size={15} />{activeNote.revision_marked ? "Remove revision mark" : "Add to revision"}</button><button onClick={() => startEdit(activeNote)}><FileText size={15} />Personal annotations</button></div><div className="quickBox related"><span>RELATED PRACTICE</span><a href={activeNote.subject === "PySpark" ? "/pyspark" : "/sql"}>{activeNote.subject === "PySpark" ? "Open PySpark Lab" : "Open SQL Lab"}<ChevronRight size={14} /></a></div></aside>
         </div>
       </> : <>
-        <header className="notesTopbar dashboardTopbar"><div><div className="notesEyebrow">YOUR PERSONAL LEARNING LIBRARY</div><h1>{title}</h1></div>{view !== "sticky" && <div className="notesTopActions"><button className="notesSecondary" disabled={pdfBusy} onClick={() => pdfFileRef.current?.click()}><Plus size={15} /> Upload PDF</button><button className="notesSecondary" onClick={() => { setView("pdf"); setActivePdf(null); }}><Sparkles size={15} /> Generate from PDF</button><button className="notesSecondary" onClick={() => { setTopicDraft({ topic: "", subject: "PySpark", difficulty: "intermediate" }); setTopicComposerOpen(true); }}><Sparkles size={15} /> Generate from topic</button><button className="notesPrimary" onClick={startCreate}><Plus size={16} /> Create note</button></div>}</header>
+        <header className="notesTopbar dashboardTopbar"><div><div className="notesEyebrow">YOUR PERSONAL LEARNING LIBRARY</div><h1>{title}</h1></div>{view !== "sticky" && <div className="notesTopActions"><button className="notesSecondary" disabled={pdfBusy} onClick={() => pdfFileRef.current?.click()}><Plus size={15} /> Upload PDF</button><button className="notesSecondary" onClick={() => { setView("pdf"); setActivePdf(null); }}><Sparkles size={15} /> Generate from PDF</button><button className="notesSecondary" onClick={() => { setTopicDraft({ topic: "", subject: "PySpark", difficulty: "intermediate" }); setTopicComposerOpen(true); }}><Sparkles size={15} /> Generate from topic</button><button className="notesSecondary" onClick={() => startHybridBuilder()}><Sparkles size={15} /> Hybrid Builder</button><button className="notesPrimary" onClick={startCreate}><Plus size={16} /> Create note</button></div>}</header>
         {view !== "pdf" && <section className="notesToolbar"><label className="notesSearch"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search notes, chapters and concepts" /><kbd>/</kbd></label><div className="notesCount"><FileText size={15} />{notes.length} saved {notes.length === 1 ? "note" : "notes"}</div></section>}
         {notice && <div className="notesNotice" role="status"><span>{notice}</span><button aria-label="Dismiss" onClick={() => setNotice("")}><X size={15} /></button></div>}
         {error && <div className="notesError" role="alert">{error}<button onClick={() => setError("")}><X size={14} /></button></div>}
@@ -629,11 +657,11 @@ function PdfLibrary({ documents, activePdf, subject, busy, onSubjectChange, onSe
 }
 
 function NoteRow({ note, open }: { note: Note; open: (note: Note) => void }) {
-  return <button className="noteRow" onClick={() => void open(note)}><span className={`noteFileIcon ${subjectColor(note.subject)}`}><FileText size={17} /></span><span className="noteRowCopy"><strong>{note.title}</strong><small>{note.subject}{note.chapter ? ` · ${note.chapter}` : ""}</small></span><span className="noteRowDate">{formatDate(note.last_viewed_at || note.updated_at)}</span><ChevronRight size={15} /></button>;
+  return <button className="noteRow" onClick={() => void open(note)}><span className={`noteFileIcon ${subjectColor(note.subject)}`}><FileText size={17} /></span><span className="noteRowCopy"><strong>{note.title || "Untitled draft"}{note.status === "draft" && <em className="noteDraftBadge">DRAFT</em>}</strong><small>{note.subject}{note.chapter ? ` · ${note.chapter}` : ""}</small></span><span className="noteRowDate">{formatDate(note.last_viewed_at || note.updated_at)}</span><ChevronRight size={15} /></button>;
 }
 
 function NoteCard({ note, open, bookmark }: { note: Note; open: (note: Note) => void; bookmark: () => void }) {
-  return <article className={`noteCard ${subjectColor(note.subject)}`}><button className="noteCardOpen" onClick={() => void open(note)}><span className="noteCardTop"><FileText size={18} /><span>{note.difficulty}</span></span><strong>{note.title}</strong><small>{note.subject}{note.chapter ? ` · ${note.chapter}` : ""}</small><span className="noteCardPreview">{note.content.split("\n").find((line) => line.trim() && !line.trim().startsWith("#")) || "No preview text yet."}</span><span className="noteCardProgress"><span><i style={{ width: `${note.progress_percent}%` }} /></span>{note.progress_percent}% read</span></button><button className="noteCardBookmark" aria-label={note.bookmarked ? "Remove bookmark" : "Bookmark"} onClick={bookmark}><Bookmark size={15} fill={note.bookmarked ? "currentColor" : "none"} /></button></article>;
+  return <article className={`noteCard ${subjectColor(note.subject)}`}><button className="noteCardOpen" onClick={() => void open(note)}><span className="noteCardTop"><FileText size={18} /><span>{note.status === "draft" ? "Draft" : note.difficulty}</span></span><strong>{note.title || "Untitled draft"}</strong><small>{note.subject}{note.chapter ? ` · ${note.chapter}` : ""}</small><span className="noteCardPreview">{note.content.split("\n").find((line) => line.trim() && !line.trim().startsWith("#")) || "No preview text yet."}</span><span className="noteCardProgress"><span><i style={{ width: `${note.progress_percent}%` }} /></span>{note.progress_percent}% read</span></button><button className="noteCardBookmark" aria-label={note.bookmarked ? "Remove bookmark" : "Bookmark"} onClick={bookmark}><Bookmark size={15} fill={note.bookmarked ? "currentColor" : "none"} /></button></article>;
 }
 
 function EmptyNotes({ search, create }: { search: string; create: () => void }) {

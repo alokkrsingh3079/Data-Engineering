@@ -8,6 +8,18 @@ function stickyNotesCollection() {
   return mongoCollection("study_sticky_notes");
 }
 
+export type StudyNoteInput = {
+  title: string;
+  subject: string;
+  chapter: string;
+  difficulty: string;
+  content: string;
+  subtopic?: string;
+  tags?: string[];
+  source?: string;
+  status?: "draft" | "published";
+};
+
 export async function listStickyNotes(userId: string) {
   return stickyNotesCollection().find({ user_id: userId }).sort({ pinned: -1, updated_at: -1 }).toArray();
 }
@@ -53,7 +65,7 @@ export async function getNote(userId: string, noteId: string) {
   return notesCollection().findOne({ _id: noteId, user_id: userId });
 }
 
-export async function createNote(userId: string, input: { title: string; subject: string; chapter: string; difficulty: string; content: string }) {
+export async function createNote(userId: string, input: StudyNoteInput) {
   const id = crypto.randomUUID();
   const now = new Date();
   const note = {
@@ -63,8 +75,12 @@ export async function createNote(userId: string, input: { title: string; subject
     title: input.title,
     subject: input.subject,
     chapter: input.chapter,
+    subtopic: input.subtopic || "",
+    tags: input.tags || [],
+    source: input.source || "",
     difficulty: input.difficulty,
     content: input.content,
+    status: input.status || "published",
     bookmarked: false,
     revision_marked: false,
     progress_percent: 0,
@@ -152,10 +168,11 @@ export async function deletePdfDocument(userId: string, documentId: string) {
   return result.deletedCount > 0;
 }
 
-export async function updateNote(userId: string, noteId: string, input: { title: string; subject: string; chapter: string; difficulty: string; content: string }) {
+export async function updateNote(userId: string, noteId: string, input: StudyNoteInput) {
+  const values = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
   const updated = await notesCollection().findOneAndUpdate(
     { _id: noteId, user_id: userId },
-    { $set: { ...input, updated_at: new Date() } },
+    { $set: { ...values, updated_at: new Date() } },
     { returnDocument: "after" },
   );
   return updated;
