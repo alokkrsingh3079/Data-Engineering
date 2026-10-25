@@ -3,9 +3,10 @@ import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { sql } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { ArrowDown, ArrowLeft, ArrowUp, Check, Copy, Image, Mic, Plus, Save, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, Check, Code2, Copy, Image, Mic, Plus, Save, Sparkles, Trash2, X } from "lucide-react";
 import type { Note } from "./NotesStudio";
 import { renderInlineNoteMarkdown } from "./note-markdown";
+import { noteCodeTemplate, preferredNoteCodeLanguage, type NoteCodeLanguage } from "./note-code";
 import "./hybrid-notes-builder.css";
 
 type Language = "plaintext" | "sql" | "python" | "pyspark" | "json";
@@ -154,6 +155,7 @@ function MarkdownPreview({ content, onCopyError, onCopySuccess }: { content: str
 export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: Note | null; onClose: () => void; onSaved: (note: Note) => void }) {
   const [savedNote, setSavedNote] = useState<Note | null>(note || null);
   const [metadata, setMetadata] = useState<Metadata>(() => ({ title: note?.title || "", subject: note?.subject || "SQL", topic: note?.chapter || "", subtopic: note?.subtopic || "", difficulty: note?.difficulty || "intermediate", tags: (note?.tags || []).join(", "), source: note?.source || "" }));
+  const [codeTemplateLanguage, setCodeTemplateLanguage] = useState<NoteCodeLanguage>(() => preferredNoteCodeLanguage(note?.subject || "SQL"));
   const [sections, setSections] = useState<Section[]>(() => parseSections(note?.content || ""));
   const [activeSectionId, setActiveSectionId] = useState("");
   const [stage, setStage] = useState<"edit" | "review">("edit");
@@ -282,6 +284,26 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
       const editor = sectionRefs.current[activeSection.id];
       editor?.focus();
       editor?.setSelectionRange(start + before.length, start + before.length + selected.length);
+    });
+  }
+
+  function insertCodeTemplate() {
+    if (!activeSection || activeSection.kind !== "markdown") return;
+    const textarea = sectionRefs.current[activeSection.id];
+    const start = textarea?.selectionStart ?? activeSection.content.length;
+    const end = textarea?.selectionEnd ?? start;
+    const current = activeSection.content;
+    const template = noteCodeTemplate(codeTemplateLanguage);
+    const prefix = start > 0 && current[start - 1] !== "\n" ? "\n\n" : "";
+    const suffix = current.slice(end).startsWith("\n") ? "" : "\n\n";
+    updateSection(activeSection.id, {
+      content: `${current.slice(0, start)}${prefix}${template}${suffix}${current.slice(end)}`,
+    });
+    setSelectedRange({ sectionId: activeSection.id, start: start + prefix.length, end: start + prefix.length + template.length });
+    requestAnimationFrame(() => {
+      const editor = sectionRefs.current[activeSection.id];
+      editor?.focus();
+      editor?.setSelectionRange(start + prefix.length + template.indexOf("\n") + 1, start + prefix.length + template.length - 4);
     });
   }
 
@@ -419,7 +441,8 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
   function suggestionForSection(value: string, asCode: boolean) {
     if (!activeSection) return value;
     if (!asCode || activeSection.kind === "code" || value.trim().startsWith("```")) return value;
-    return `\`\`\`${activeSection.language === "plaintext" ? "python" : activeSection.language}\n${value.trim()}\n\`\`\``;
+    const language: NoteCodeLanguage = preferredNoteCodeLanguage(metadata.subject);
+    return `\`\`\`${language}\n${value.trim()}\n\`\`\``;
   }
 
   function insertSuggestion(asCode = false) {
@@ -681,7 +704,7 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
 
     <div className="hybridMetadata">
       <label className="hybridTitleField">Note title<input maxLength={160} value={metadata.title} onChange={(event) => setMetadata({ ...metadata, title: event.target.value })} placeholder="e.g. Understanding DataFrames in PySpark" /></label>
-      <label>Subject / category<select value={metadata.subject} onChange={(event) => setMetadata({ ...metadata, subject: event.target.value })}>{subjects.map((subject) => <option key={subject}>{subject}</option>)}</select></label>
+      <label>Subject / category<select value={metadata.subject} onChange={(event) => { const subject = event.target.value; setMetadata({ ...metadata, subject }); setCodeTemplateLanguage(preferredNoteCodeLanguage(subject)); }}>{subjects.map((subject) => <option key={subject}>{subject}</option>)}</select></label>
       <label>Topic<input maxLength={120} value={metadata.topic} onChange={(event) => setMetadata({ ...metadata, topic: event.target.value })} placeholder="DataFrames" /></label>
       <label>Subtopic <span>optional</span><input maxLength={120} value={metadata.subtopic} onChange={(event) => setMetadata({ ...metadata, subtopic: event.target.value })} placeholder="Filtering and transformations" /></label>
       <label>Difficulty<select value={metadata.difficulty} onChange={(event) => setMetadata({ ...metadata, difficulty: event.target.value as Metadata["difficulty"] })}><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
@@ -698,8 +721,8 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
       <aside className="hybridOutline"><div className="hybridPanelHeading"><strong>NOTE OUTLINE</strong><button type="button" aria-label="Add text section" onClick={() => addSection()}><Plus size={15} /></button></div>
         <div className="hybridOutlineSections">{sections.map((section, index) => <button type="button" className={section.id === activeSectionId ? "active" : ""} key={section.id} onClick={() => editSection(section)}><span>{String(index + 1).padStart(2, "0")}</span>{section.title || "Untitled section"}</button>)}</div>
         <button type="button" className="hybridAddSection" onClick={() => addSection()}><Plus size={14} /> Add text section</button>
-        <button type="button" className="hybridAddSection" onClick={() => addSection("code")}><Plus size={14} /> Add code block</button>
-        <div className="hybridOutlineHelp">Reorder or duplicate sections from the editor. Code blocks stay editable and retain their language.</div>
+        <button type="button" className="hybridAddSection" onClick={() => addSection("code")}><Plus size={14} /> Add standalone code section</button>
+        <div className="hybridOutlineHelp">Add code snippets inside any text section with its Code snippet button, or add an optional standalone code section.</div>
       </aside>
 
       <div className="hybridEditColumn">
@@ -710,7 +733,7 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
           </div>
           {section.kind === "code" ? <div className="hybridCodeEditor"><label>Language<select value={section.language} onChange={(event) => updateSection(section.id, { language: event.target.value as Language })}>{languages.map((language) => <option key={language}>{language}</option>)}</select></label><CodeMirror value={section.content} onChange={(value) => updateSection(section.id, { content: value })} extensions={codeExtensions(section.language)} theme={oneDark} basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }} /></div> : <>
             {section.id === activeSectionId && <div className="hybridFormatToolbar" aria-label="Markdown formatting toolbar">
-              <button type="button" title="Heading 1" onClick={() => insertFormatting("# ", "", "Heading")}>H1</button><button type="button" title="Heading 2" onClick={() => insertFormatting("## ", "", "Heading")}>H2</button><button type="button" title="Heading 3" onClick={() => insertFormatting("### ", "", "Heading")}>H3</button><button type="button" title="Bold" onClick={() => insertFormatting("**", "**", "bold text")}><strong>B</strong></button><button type="button" title="Italic" onClick={() => insertFormatting("*", "*", "italic text")}><em>I</em></button><button type="button" title="Inline code" onClick={() => insertFormatting("`", "`", "code")}>{"</>"}</button><button type="button" title="Bulleted list" onClick={() => insertFormatting("- ", "", "List item")}>• List</button><button type="button" title="Numbered step" onClick={() => insertFormatting("1. ", "", "Step")}>1. List</button><button type="button" title="Insert table" onClick={() => insertFormatting("| Column | Value |\n| --- | --- |\n| Example | Detail |", "", "")}>Table</button><button type="button" title="Insert warning callout" onClick={() => insertFormatting("> [!WARNING]\n> ", "", "Check this carefully.")}>Warning</button>
+              <button type="button" title="Heading 1" onClick={() => insertFormatting("# ", "", "Heading")}>H1</button><button type="button" title="Heading 2" onClick={() => insertFormatting("## ", "", "Heading")}>H2</button><button type="button" title="Heading 3" onClick={() => insertFormatting("### ", "", "Heading")}>H3</button><button type="button" title="Bold" onClick={() => insertFormatting("**", "**", "bold text")}><strong>B</strong></button><button type="button" title="Italic" onClick={() => insertFormatting("*", "*", "italic text")}><em>I</em></button><button type="button" title="Inline code" onClick={() => insertFormatting("`", "`", "code")}>{"</>"}</button><button type="button" title="Bulleted list" onClick={() => insertFormatting("- ", "", "List item")}>• List</button><button type="button" title="Numbered step" onClick={() => insertFormatting("1. ", "", "Step")}>1. List</button><button type="button" title="Insert table" onClick={() => insertFormatting("| Column | Value |\n| --- | --- |\n| Example | Detail |", "", "")}>Table</button><button type="button" title="Insert warning callout" onClick={() => insertFormatting("> [!WARNING]\n> ", "", "Check this carefully.")}>Warning</button><label className="hybridCodeTemplateLanguage">Code<select aria-label="Code snippet language" value={codeTemplateLanguage} onChange={(event) => setCodeTemplateLanguage(event.target.value as NoteCodeLanguage)}>{languages.map((language) => <option key={language} value={language}>{language}</option>)}</select></label><button type="button" className="hybridCodeTemplateButton" title={`Insert a ${codeTemplateLanguage} code template in this section`} onClick={insertCodeTemplate}><Code2 size={13} />Code snippet</button>
               <span className="hybridColorPalette" role="group" aria-label="Text color">{noteColors.map((color) => <button type="button" key={color} className={`hybridColorSwatch ${color}`} title={`Apply ${color} text`} aria-label={`Apply ${color} text`} onClick={() => insertFormatting(`[color=${color}]`, "[/color]", "colored text")} />)}</span>
               <button type="button" className="hybridImageButton" title="Insert image" disabled={imageBusy} onClick={() => imageInputRef.current?.click()}><Image size={13} />{imageBusy ? "Adding…" : "Image"}</button>
               <input ref={imageInputRef} className="hybridImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="Choose an image for this note" onChange={(event) => { const file = event.target.files?.[0]; if (file) void addImage(file); }} />

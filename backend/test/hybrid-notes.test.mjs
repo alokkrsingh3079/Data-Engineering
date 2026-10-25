@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { buildHybridNoteAssistPrompt, decodeHybridNoteAudio, hybridNoteAssistRequest, hybridNoteAssistSystemPrompt, hybridNoteTranscriptionRequest, parseHybridNoteAssistRequest, parseHybridNoteTranscriptionRequest } from '../src/ai.ts';
+import { noteCodeTemplate, preferredNoteCodeLanguage } from '../../frontend/src/note-code.ts';
 
 const aiSource = fs.readFileSync(new URL('../src/ai.ts', import.meta.url), 'utf8');
 const serverSource = fs.readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
@@ -28,6 +29,25 @@ test('hybrid note generation streams bounded output and cancels disconnected req
   assert.match(aiSource, /response\.output_text\.delta/);
   assert.match(serverSource, /Content-Type':'application\/x-ndjson/);
   assert.match(serverSource, /if\(!res\.writableEnded\)controller\.abort\(\)/);
+});
+
+test('hybrid note code templates stay in Markdown sections and select the note subject language', () => {
+  const cases = [
+    ['SQL', 'sql', 'WITH source_data'],
+    ['PySpark', 'pyspark', 'spark.read'],
+    ['Databricks', 'pyspark', 'Use the existing Spark session'],
+    ['Python', 'python', 'def transform_records'],
+    ['ETL', 'python', 'transformed = []'],
+    ['Data Engineering', 'python', 'def transform_records']
+  ];
+  for (const [subject, language, expectedContent] of cases) {
+    const selectedLanguage = preferredNoteCodeLanguage(subject);
+    const template = noteCodeTemplate(selectedLanguage);
+    assert.equal(selectedLanguage, language);
+    assert.ok(template.startsWith(`\`\`\`${language}\n`));
+    assert.ok(template.includes(expectedContent));
+    assert.ok(template.endsWith('\n\`\`\`'));
+  }
 });
 
 test('hybrid note prompt scopes generation to one user-selected section and warns against false execution claims', () => {

@@ -283,6 +283,8 @@ The note editor may optionally embed user-selected PNG, JPEG, WebP, or GIF image
 
 AI section suggestions should stream into the review panel as tokens arrive, with a visible elapsed time. Bound generation to 30 seconds and 1,000 output tokens, and stop provider work when the client disconnects.
 
+Code snippets should be insertable inside any text section using a language-aware, editable fenced-code template. Standalone code sections remain optional; AI-generated code should use the selected subject's language and stay in the current section when inserted.
+
 Allow the user to navigate back to editing without losing content.
 
 Saving must occur only after an explicit user action.

@@ -46,6 +46,10 @@
 .hybridFormatToolbar{display:flex;flex-wrap:wrap;gap:3px;padding:7px 8px 2px}
 .hybridFormatToolbar button{height:25px;padding:0 7px;border:1px solid #293c50;border-radius:3px;background:#142235;color:#a9bfd3;font-size:9px;cursor:pointer}
 .hybridFormatToolbar button:hover{border-color:#4a87b9;color:#eff7ff}
+.hybridFormatToolbar .hybridCodeTemplateButton{display:inline-flex;align-items:center;gap:4px;border-color:#38618a;background:#162b40;color:#b6d9f7}
+.hybridFormatToolbar .hybridCodeTemplateButton:hover{border-color:#66a9e3;background:#1b3854}
+.hybridCodeTemplateLanguage{display:inline-flex;align-items:center;gap:4px;padding:0 5px;border:1px solid #293c50;border-radius:3px;color:#859bb0;font-size:9px}
+.hybridCodeTemplateLanguage select{max-width:80px;border:0;outline:0;background:#142235;color:#c7d6e4;font-size:9px}
 .hybridColorPalette{display:inline-flex;align-items:center;gap:3px;padding:2px 4px;border:1px solid #293c50;border-radius:4px;background:#101b29}
 .hybridFormatToolbar .hybridColorSwatch{width:16px;height:16px;min-width:16px;padding:0;border:2px solid #d5e0eb;border-radius:50%;background:var(--swatch);box-shadow:0 0 0 1px #101b29;cursor:pointer}
 .hybridColorSwatch.red{--swatch:#ef5350}.hybridColorSwatch.orange{--swatch:#ff8a3d}.hybridColorSwatch.amber{--swatch:#e8ae32}.hybridColorSwatch.yellow{--swatch:#d9b52b}.hybridColorSwatch.lime{--swatch:#8ebd35}.hybridColorSwatch.green{--swatch:#37a66b}.hybridColorSwatch.teal{--swatch:#20a69a}.hybridColorSwatch.cyan{--swatch:#21a9c7}.hybridColorSwatch.blue{--swatch:#3988e8}.hybridColorSwatch.indigo{--swatch:#6969df}.hybridColorSwatch.violet{--swatch:#905bd6}.hybridColorSwatch.purple{--swatch:#ae58c6}.hybridColorSwatch.pink{--swatch:#df5c9b}
