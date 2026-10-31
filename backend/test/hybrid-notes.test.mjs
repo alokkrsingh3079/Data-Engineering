@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { buildHybridNoteAssistPrompt, decodeHybridNoteAudio, hybridNoteAssistRequest, hybridNoteAssistSystemPrompt, hybridNoteTranscriptionRequest, parseHybridNoteAssistRequest, parseHybridNoteTranscriptionRequest } from '../src/ai.ts';
 import { noteCodeTemplate, preferredNoteCodeLanguage } from '../../frontend/src/note-code.ts';
+import { noteHeadings } from '../../frontend/src/note-headings.ts';
 
 const aiSource = fs.readFileSync(new URL('../src/ai.ts', import.meta.url), 'utf8');
 const serverSource = fs.readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
@@ -48,6 +49,26 @@ test('hybrid note code templates stay in Markdown sections and select the note s
     assert.ok(template.includes(expectedContent));
     assert.ok(template.endsWith('\n\`\`\`'));
   }
+});
+
+test('note reader outlines sections without listing their subsections', () => {
+  const headings = noteHeadings([
+    '# Notes',
+    '## What is a Spark Session?',
+    '### Creating a Spark Session',
+    '#### Ignored deeper heading',
+    '## What is a DataFrame?',
+    '### Creating a DataFrame',
+  ].join('\n'));
+
+  assert.deepEqual(headings.map(({ title }) => title), [
+    'What is a Spark Session?',
+    'What is a DataFrame?',
+  ]);
+  assert.deepEqual(noteHeadings('# Overview\n### Details').map(({ title }) => title), [
+    'Overview',
+    'Details',
+  ]);
 });
 
 test('hybrid note prompt scopes generation to one user-selected section and warns against false execution claims', () => {

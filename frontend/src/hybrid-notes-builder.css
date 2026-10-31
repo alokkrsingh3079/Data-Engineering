@@ -24,6 +24,9 @@
 .hybridPanelHeading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:24px;margin-bottom:12px;color:#91a4b8;font-size:9px;letter-spacing:1.1px}
 .hybridPanelHeading strong{display:flex;align-items:center;gap:7px}
 .hybridPanelHeading button{width:25px;height:25px;display:grid;place-items:center;border:1px solid #2b4056;border-radius:4px;background:#152539;color:#b7d7f3;cursor:pointer}
+.hybridPanelHeading .hybridCopyAllButton{width:auto;height:28px;display:inline-flex;align-items:center;gap:6px;margin-left:auto;padding:0 9px;border-color:#345879;background:#17324b;color:#c5e1f8;font:600 10px 'DM Sans',sans-serif;letter-spacing:0;white-space:nowrap}
+.hybridPanelHeading .hybridCopyAllButton:hover:not(:disabled){border-color:#5b91bd;background:#1d4160}
+.hybridPanelHeading .hybridCopyAllButton:disabled{cursor:not-allowed;opacity:.5}
 .hybridOutlineSections{display:flex;flex-direction:column;gap:3px}
 .hybridOutlineSections button{display:flex;align-items:center;gap:7px;min-width:0;width:100%;padding:8px 6px;border:0;border-radius:4px;background:transparent;color:#9eacbb;text-align:left;font-size:10px;cursor:pointer;overflow:hidden;text-overflow:ellipsis}
 .hybridOutlineSections button.active,.hybridOutlineSections button:hover{background:#1b2d40;color:#f0f6fd}

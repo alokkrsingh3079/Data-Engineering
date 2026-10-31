@@ -688,6 +688,20 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
     }
   }
 
+  async function copyAllSections() {
+    if (!content.trim()) {
+      setError("Add content to at least one section before copying.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(content);
+      setError("");
+      setNotice("All sections copied in Markdown format.");
+    } catch {
+      setError("Clipboard access was denied. Allow clipboard access and try again.");
+    }
+  }
+
   function editSection(section: Section) {
     setActiveSectionId(section.id);
     setStage("edit");
@@ -726,7 +740,7 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
       </aside>
 
       <div className="hybridEditColumn">
-        <div className="hybridPanelHeading"><strong>WRITE YOUR NOTE</strong><span>Markdown supported</span></div>
+        <div className="hybridPanelHeading"><strong>WRITE YOUR NOTE</strong><span>Markdown supported</span><button type="button" className="hybridCopyAllButton" disabled={!content.trim()} onClick={() => void copyAllSections()}><Copy size={13} />Copy all sections</button></div>
         {sections.map((section, index) => <article id={`hybrid-section-${section.id}`} key={section.id} className={`hybridSectionEditor ${section.id === activeSectionId ? "focused" : ""}`}>
           <div className="hybridSectionHeader"><label><span>SECTION {String(index + 1).padStart(2, "0")}</span><input value={section.title} maxLength={160} aria-label={`Section ${index + 1} title`} onFocus={() => setActiveSectionId(section.id)} onChange={(event) => updateSection(section.id, { title: event.target.value })} /></label>
             <div className="hybridSectionTools"><button type="button" title="Move section up" aria-label="Move section up" disabled={index === 0} onClick={() => moveSection(section.id, -1)}><ArrowUp size={14} /></button><button type="button" title="Move section down" aria-label="Move section down" disabled={index === sections.length - 1} onClick={() => moveSection(section.id, 1)}><ArrowDown size={14} /></button><button type="button" title="Duplicate section" aria-label="Duplicate section" onClick={() => duplicateSection(section)}><Copy size={14} /></button><button type="button" title="Delete section" aria-label="Delete section" onClick={() => removeSection(section)}><Trash2 size={14} /></button></div>

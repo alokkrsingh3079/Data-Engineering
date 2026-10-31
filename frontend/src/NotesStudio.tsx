@@ -9,6 +9,7 @@ import "./notes-print.css";
 import "./sticky-notes.css";
 import HybridNotesBuilder from "./HybridNotesBuilder";
 import { renderInlineNoteMarkdown } from "./note-markdown";
+import { noteHeadings } from "./note-headings";
 
 export type Note = {
   id: string;
@@ -70,13 +71,6 @@ function subjectColor(subject: string) {
 function formatDate(value: string | null) {
   if (!value) return "Not opened yet";
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(value));
-}
-
-function noteHeadings(content: string) {
-  return content.split("\n").flatMap((line) => {
-    const match = /^(#{1,3})\s+(.+)$/.exec(line.trim());
-    return match ? [{ title: match[2], id: match[2].toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") }] : [];
-  });
 }
 
 export default function NotesStudio() {
@@ -430,12 +424,36 @@ export default function NotesStudio() {
     const target = event.currentTarget;
     const max = target.scrollHeight - target.clientHeight;
     const percent = max > 0 ? Math.round((target.scrollTop / max) * 100) : 100;
+    saveProgress(Math.round(target.scrollTop), percent);
+  }
+
+  function saveProgress(position: number, percent: number) {
+    if (!activeNote) return;
     setProgress(percent);
     if (progressTimer.current) clearTimeout(progressTimer.current);
     progressTimer.current = setTimeout(() => {
-      void fetch(`${API}/api/notes/${activeNote.id}/progress`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ position: Math.round(target.scrollTop), progressPercent: percent }) });
+      void fetch(`${API}/api/notes/${activeNote.id}/progress`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ position, progressPercent: percent }) });
     }, 500);
   }
+
+  useEffect(() => {
+    if (!activeNote || editing || readerExpanded) return;
+    function updatePageProgress() {
+      const reader = readerRef.current;
+      if (!reader) return;
+      const readerTop = reader.getBoundingClientRect().top + window.scrollY;
+      const max = Math.max(0, reader.offsetHeight - window.innerHeight);
+      const position = Math.min(max, Math.max(0, window.scrollY - readerTop));
+      saveProgress(Math.round(position), max > 0 ? Math.round((position / max) * 100) : 100);
+    }
+    window.addEventListener("scroll", updatePageProgress, { passive: true });
+    window.addEventListener("resize", updatePageProgress);
+    updatePageProgress();
+    return () => {
+      window.removeEventListener("scroll", updatePageProgress);
+      window.removeEventListener("resize", updatePageProgress);
+    };
+  }, [activeNote, editing, readerExpanded]);
 
   function downloadNote(note: Note) {
     const blob = new Blob([`${note.title}\n${"=".repeat(note.title.length)}\n${note.subject}${note.chapter ? ` · ${note.chapter}` : ""}\n\n${note.content}`], { type: "text/markdown;charset=utf-8" });
