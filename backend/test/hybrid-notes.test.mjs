@@ -5,6 +5,7 @@ import { buildHybridNoteAssistPrompt, decodeHybridNoteAudio, hybridNoteAssistReq
 import { noteCodeTemplate, preferredNoteCodeLanguage } from '../../frontend/src/note-code.ts';
 import { noteHeadings } from '../../frontend/src/note-headings.ts';
 import { markdownToEditorHtml } from '../../frontend/src/HybridNoteEditor.tsx';
+import { renderInlineNoteMarkdown } from '../../frontend/src/note-markdown.tsx';
 
 const aiSource = fs.readFileSync(new URL('../src/ai.ts', import.meta.url), 'utf8');
 const serverSource = fs.readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
@@ -73,6 +74,28 @@ test('hybrid note editor displays formatting while preserving safe note content'
   assert.match(html, /data-note-color="blue"/);
   assert.match(html, /<pre data-language="sql"><code>SELECT 1;<\/code><\/pre>/);
   assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+});
+
+test('note reader renders color markers nested inside bold and italic formatting', () => {
+  const content = '**[color=green]Evolution of the Hadoop Ecosystem[/color]** and *[color=pink]Founding of Databricks[/color]*';
+  const rendered = renderInlineNoteMarkdown(content);
+  const bold = rendered[0];
+  const italic = rendered[2];
+  assert.equal(bold.type, 'strong');
+  assert.equal(bold.props.children[0].type, 'span');
+  assert.equal(bold.props.children[0].props.style.color, '#37a66b');
+  assert.equal(italic.type, 'em');
+  assert.equal(italic.props.children[0].type, 'span');
+  assert.equal(italic.props.children[0].props.style.color, '#df5c9b');
+  const collectText = (node) => typeof node === 'string'
+    ? node
+    : Array.isArray(node)
+      ? node.map(collectText).join('')
+      : node?.props ? collectText(node.props.children) : '';
+  const visibleText = collectText(rendered);
+  assert.match(visibleText, /Evolution of the Hadoop Ecosystem/);
+  assert.match(visibleText, /Founding of Databricks/);
+  assert.doesNotMatch(visibleText, /\[\/?color=/);
 });
 
 test('note reader outlines sections without listing their subsections', () => {

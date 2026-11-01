@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 
 const noteColors: Record<string, string> = {
   red: "#ef5350",
@@ -41,9 +41,9 @@ export function renderInlineNoteMarkdown(
     } else if (token.startsWith("`")) {
       nodes.push(<code key={`code-${match.index}`}>{token.slice(1, -1)}</code>);
     } else if (token.startsWith("**")) {
-      nodes.push(<strong key={`strong-${match.index}`}>{token.slice(2, -2)}</strong>);
+      nodes.push(<strong key={`strong-${match.index}`}>{renderInlineNoteMarkdown(token.slice(2, -2), citationHref, depth + 1)}</strong>);
     } else if (token.startsWith("*")) {
-      nodes.push(<em key={`em-${match.index}`}>{token.slice(1, -1)}</em>);
+      nodes.push(<em key={`em-${match.index}`}>{renderInlineNoteMarkdown(token.slice(1, -1), citationHref, depth + 1)}</em>);
     }
     cursor = pattern.lastIndex;
   }
