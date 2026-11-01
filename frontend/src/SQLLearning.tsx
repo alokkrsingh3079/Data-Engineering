@@ -67,6 +67,7 @@ type Topic = {
 };
 type LearningModule = { id: string; order: number; title: string; topics: Topic[]; archived?: boolean; description?: string; difficulty?: string };
 type SqlResult = { columns: string[]; rows: Record<string, unknown>[]; rowCount: number; executionMs: number; correct?: boolean };
+type SubmittedSqlAnswer = { status: "ok"; correct: boolean; result: SqlResult; explanation?: string; attemptId: string };
 type TestResultSummary = { totalQuestions: number; answeredQuestions: number; correctAnswers: number; incorrectAnswers: number; skippedQuestions: number; score: number; accuracy: number; completed: boolean };
 type LessonExample = { title: string; level: string; problem: string; sql: string; explanation: string; observations: string[]; expected: SqlResult };
 type LessonContent = { overview: string; theory: string; syntax: string; parameters: string[]; returnType: string; rules: string[]; commonMistakes: string[]; useCases: string[]; interviewRelevance: string; dialectNotes: string; examples: LessonExample[] };
@@ -302,9 +303,9 @@ export default function SQLLearning() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sql: practiceSql })
       });
-      const result = await readResponse<SqlResult & { correct: boolean; explanation?: string }>(response);
-      setPracticeResult(result);
-      setPracticeMessage(result.correct ? `Correct · ${result.executionMs} ms` : "The query ran, but its result did not match the validated answer.");
+      const answer = await readResponse<SubmittedSqlAnswer>(response);
+      setPracticeResult({ ...answer.result, correct: answer.correct });
+      setPracticeMessage(answer.correct ? `Correct · ${answer.result.executionMs} ms` : "The query ran, but its result did not match the validated answer.");
       const refreshed = await fetch(`${API}/api/sql-learning/tests/${encodeURIComponent(activeTest.id)}`, { credentials: "include" });
       setActiveTest(await readResponse<PracticeTest>(refreshed));
       if (activeTopic) {
