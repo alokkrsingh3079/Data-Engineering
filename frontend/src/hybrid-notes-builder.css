@@ -60,8 +60,22 @@
 .hybridFormatToolbar .hybridImageButton{display:inline-flex;align-items:center;gap:4px}
 .hybridFormatToolbar .hybridImageButton:disabled{opacity:.5;cursor:wait}
 .hybridImageInput{display:none}
-.hybridSectionEditor>textarea{display:block;width:100%;min-height:150px;resize:vertical;padding:11px;border:0;outline:0;background:transparent;color:#dce6ef;font:12px/1.7 'DM Sans',sans-serif}
-.hybridSectionEditor>textarea::placeholder{color:#63788e}
+.hybridRichEditor{min-height:150px;padding:11px;outline:0;background:transparent;color:#dce6ef;font:12px/1.7 'DM Sans',sans-serif;overflow-wrap:anywhere;white-space:pre-wrap}
+.hybridRichEditor:empty:before{content:attr(data-placeholder);color:#63788e;pointer-events:none}
+.hybridRichEditor h1,.hybridRichEditor h2,.hybridRichEditor h3,.hybridRichEditor h4,.hybridRichEditor h5,.hybridRichEditor h6{margin:12px 0 7px;color:#eaf2fa;font-family:Manrope,sans-serif;line-height:1.35}
+.hybridRichEditor h1{font-size:20px}.hybridRichEditor h2{font-size:17px}.hybridRichEditor h3{font-size:15px}.hybridRichEditor h4,.hybridRichEditor h5,.hybridRichEditor h6{font-size:13px}
+.hybridRichEditor p{min-height:1.7em;margin:0 0 8px}
+.hybridRichEditor ul,.hybridRichEditor ol{padding-left:24px}
+.hybridRichEditor blockquote{margin:10px 0;padding:8px 11px;border-left:3px solid #d5a848;background:#252419;color:#edddaF}
+.hybridRichEditor pre,.hybridRichEditor code{border-radius:3px;background:#17283a;color:#aed4f5;font:11px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace}
+.hybridRichEditor code{padding:2px 4px}
+.hybridRichEditor pre{overflow:auto;padding:10px}
+.hybridRichEditor pre code{padding:0;background:none;color:inherit}
+.hybridRichEditor table{width:100%;margin:10px 0;border-collapse:collapse}
+.hybridRichEditor th,.hybridRichEditor td{padding:6px;border:1px solid #34495e;text-align:left}
+.hybridRichEditor th{background:#17283a}
+.hybridRichEditor img{display:block;max-width:100%;max-height:420px;margin:10px 0;object-fit:contain}
+.hybridRichEditor:focus{box-shadow:inset 0 0 0 1px #34516b}
 .hybridCharacterCount{display:block;padding:0 10px 8px;color:#62778c;text-align:right;font-size:8px}
 .hybridCodeEditor{padding:9px}
 .hybridCodeEditor>label{display:flex;align-items:center;gap:8px;margin:0 0 7px;color:#8298ad;font-size:9px}

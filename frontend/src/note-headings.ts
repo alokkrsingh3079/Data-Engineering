@@ -20,17 +20,10 @@ export function noteHeadings(content: string) {
     });
   }
 
-  const firstHeading = headings[0];
-  const hasDocumentTitle = firstHeading && (
-    firstHeading.title.toLowerCase() === "notes"
-    || headings.slice(1).some((heading) => heading.level > firstHeading.level)
-  );
-  const candidates = headings
-    .slice(hasDocumentTitle ? 1 : 0)
-    .filter(({ title }) => !/^\d+[.)]\s/.test(title));
-  const sections = candidates.filter((heading) => heading.level === 2);
-  const outline = sections.length
-    ? sections
-    : candidates.filter((heading) => heading.level === Math.min(...candidates.map(({ level }) => level)));
-  return outline.map(({ title, id }) => ({ title, id }));
+  return headings
+    .filter(({ level, title }) => level === 2 && !/^(?:[-*+]|\d+[.)])\s/.test(title))
+    .map(({ title, id }) => ({
+      title: title.replace(/[*_`]/g, "").trim(),
+      id,
+    }));
 }

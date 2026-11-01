@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { buildHybridNoteAssistPrompt, decodeHybridNoteAudio, hybridNoteAssistRequest, hybridNoteAssistSystemPrompt, hybridNoteTranscriptionRequest, parseHybridNoteAssistRequest, parseHybridNoteTranscriptionRequest } from '../src/ai.ts';
 import { noteCodeTemplate, preferredNoteCodeLanguage } from '../../frontend/src/note-code.ts';
 import { noteHeadings } from '../../frontend/src/note-headings.ts';
+import { markdownToEditorHtml } from '../../frontend/src/HybridNoteEditor.tsx';
 
 const aiSource = fs.readFileSync(new URL('../src/ai.ts', import.meta.url), 'utf8');
 const serverSource = fs.readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
@@ -51,6 +52,29 @@ test('hybrid note code templates stay in Markdown sections and select the note s
   }
 });
 
+test('hybrid note editor displays formatting while preserving safe note content', () => {
+  const html = markdownToEditorHtml([
+    '## Main section',
+    '',
+    '**Bold text** and *italic text*',
+    '',
+    '[color=blue]Colored text[/color]',
+    '',
+    '```sql',
+    'SELECT 1;',
+    '```',
+    '',
+    '<script>alert(1)</script>',
+  ].join('\n'));
+
+  assert.match(html, /<h2>Main section<\/h2>/);
+  assert.match(html, /<strong>Bold text<\/strong>/);
+  assert.match(html, /<em>italic text<\/em>/);
+  assert.match(html, /data-note-color="blue"/);
+  assert.match(html, /<pre data-language="sql"><code>SELECT 1;<\/code><\/pre>/);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+});
+
 test('note reader outlines sections without listing their subsections', () => {
   const headings = noteHeadings([
     '# Notes',
@@ -65,14 +89,12 @@ test('note reader outlines sections without listing their subsections', () => {
     'What is a Spark Session?',
     'What is a DataFrame?',
   ]);
-  assert.deepEqual(noteHeadings('# Overview\n### Details').map(({ title }) => title), [
-    'Details',
-  ]);
+  assert.deepEqual(noteHeadings('# Overview\n### Details'), []);
   assert.deepEqual(noteHeadings([
     '# Notes',
-    '## 1. **Volume**: Amount of generated data.',
-    '## 2. **Velocity**: Speed of data processing.',
-    '## 3. **Variety**: Data types.',
+    '## - **Volume**: Amount of generated data.',
+    '## - **Velocity**: Speed of data processing.',
+    '## - **Variety**: Data types.',
     '## The 3 Vs of Big Data',
     '### Examples',
     '## What is Hadoop?',
@@ -84,6 +106,9 @@ test('note reader outlines sections without listing their subsections', () => {
   ].join('\n')).map(({ title }) => title), [
     'The 3 Vs of Big Data',
     'What is Hadoop?',
+  ]);
+  assert.deepEqual(noteHeadings('## **Section title**\n### Subsection').map(({ title }) => title), [
+    'Section title',
   ]);
 });
 

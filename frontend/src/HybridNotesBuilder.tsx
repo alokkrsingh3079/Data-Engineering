@@ -6,6 +6,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { ArrowDown, ArrowLeft, ArrowUp, Check, Code2, Copy, Image, Mic, Plus, Save, Sparkles, Trash2, X } from "lucide-react";
 import type { Note } from "./NotesStudio";
 import { renderInlineNoteMarkdown } from "./note-markdown";
+import HybridNoteEditor, { type HybridNoteEditorHandle } from "./HybridNoteEditor";
 import { noteCodeTemplate, preferredNoteCodeLanguage, type NoteCodeLanguage } from "./note-code";
 import "./hybrid-notes-builder.css";
 
@@ -168,7 +169,7 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [selectedRange, setSelectedRange] = useState<{ sectionId: string; start: number; end: number } | null>(null);
+  const [selectedRange, setSelectedRange] = useState<{ sectionId: string; selectedText: string } | null>(null);
   const [voiceText, setVoiceText] = useState("");
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [voiceError, setVoiceError] = useState("");
@@ -180,7 +181,7 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
   const voiceChunksRef = useRef<Blob[]>([]);
   const cancelledRecordingRef = useRef(false);
   const liveTranscriptRef = useRef("");
-  const sectionRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const sectionRefs = useRef<Record<string, HybridNoteEditorHandle | null>>({});
   const imageInputRef = useRef<HTMLInputElement>(null);
   const generationStartedAt = useRef(0);
   const [baseline, setBaseline] = useState(() => JSON.stringify({ metadata, sections }));
@@ -270,41 +271,14 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
     setSections(next);
   }
 
-  function insertFormatting(before: string, after = before, placeholder = "text") {
+  function applyFormatting(format: string, value?: string) {
     if (!activeSection || activeSection.kind !== "markdown") return;
-    const textarea = sectionRefs.current[activeSection.id];
-    const start = textarea?.selectionStart ?? activeSection.content.length;
-    const end = textarea?.selectionEnd ?? start;
-    const current = activeSection.content;
-    const selected = current.slice(start, end) || placeholder;
-    const next = `${current.slice(0, start)}${before}${selected}${after}${current.slice(end)}`;
-    updateSection(activeSection.id, { content: next });
-    setSelectedRange({ sectionId: activeSection.id, start: start + before.length, end: start + before.length + selected.length });
-    requestAnimationFrame(() => {
-      const editor = sectionRefs.current[activeSection.id];
-      editor?.focus();
-      editor?.setSelectionRange(start + before.length, start + before.length + selected.length);
-    });
+    sectionRefs.current[activeSection.id]?.applyFormat(format, value);
   }
 
   function insertCodeTemplate() {
     if (!activeSection || activeSection.kind !== "markdown") return;
-    const textarea = sectionRefs.current[activeSection.id];
-    const start = textarea?.selectionStart ?? activeSection.content.length;
-    const end = textarea?.selectionEnd ?? start;
-    const current = activeSection.content;
-    const template = noteCodeTemplate(codeTemplateLanguage);
-    const prefix = start > 0 && current[start - 1] !== "\n" ? "\n\n" : "";
-    const suffix = current.slice(end).startsWith("\n") ? "" : "\n\n";
-    updateSection(activeSection.id, {
-      content: `${current.slice(0, start)}${prefix}${template}${suffix}${current.slice(end)}`,
-    });
-    setSelectedRange({ sectionId: activeSection.id, start: start + prefix.length, end: start + prefix.length + template.length });
-    requestAnimationFrame(() => {
-      const editor = sectionRefs.current[activeSection.id];
-      editor?.focus();
-      editor?.setSelectionRange(start + prefix.length + template.indexOf("\n") + 1, start + prefix.length + template.length - 4);
-    });
+    sectionRefs.current[activeSection.id]?.insertMarkdown(noteCodeTemplate(codeTemplateLanguage));
   }
 
   async function addImage(file: File) {
@@ -348,19 +322,13 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
       const alt = file.name.replace(/\.[^.]+$/, "").replace(/[\[\]\r\n]/g, "").trim() || "Note image";
       const insert = `![${alt}](${dataUrl})`;
       const current = activeSection.content;
-      const textarea = sectionRefs.current[activeSection.id];
-      const start = textarea?.selectionStart ?? current.length;
-      const end = textarea?.selectionEnd ?? start;
-      const prefix = start > 0 && current[start - 1] !== "\n" ? "\n\n" : "";
-      const suffix = current.slice(end).startsWith("\n") ? "" : "\n\n";
-      const nextContent = `${current.slice(0, start)}${prefix}${insert}${suffix}${current.slice(end)}`;
+      const nextContent = `${current}\n\n${insert}`;
       const totalContentLength = sections.reduce((sum, section) => sum + section.content.length, 0);
       if (totalContentLength - current.length + nextContent.length > MAX_NOTE_CHARS) {
         throw new Error("This image would exceed the 5,000,000-character note limit. Remove content or an image first.");
       }
-      updateSection(activeSection.id, { content: nextContent });
-      setNotice("Image added. Review its placement in the preview; it will be saved with the note.");
-      requestAnimationFrame(() => sectionRefs.current[activeSection.id]?.focus());
+      sectionRefs.current[activeSection.id]?.insertMarkdown(insert);
+      setNotice("Image added and shown in the editor.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The image could not be added.");
     } finally {
@@ -378,7 +346,7 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
     setError("");
     setSuggestion("");
     try {
-      const selectedText = override?.selectedText ?? (selectedRange?.sectionId === activeSection.id ? activeSection.content.slice(selectedRange.start, selectedRange.end) : "");
+      const selectedText = override?.selectedText ?? (selectedRange?.sectionId === activeSection.id ? selectedRange.selectedText : "");
       const response = await fetch(`${API}/api/notes/assist`, {
         method: "POST",
         credentials: "include",
@@ -447,25 +415,16 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
 
   function insertSuggestion(asCode = false) {
     if (!activeSection || !suggestion.trim()) return;
-    const position = selectedRange?.sectionId === activeSection.id ? selectedRange.end : activeSection.content.length;
     const text = suggestionForSection(suggestion.trim(), asCode);
-    const before = activeSection.content.slice(0, position).replace(/\s*$/, "");
-    const after = activeSection.content.slice(position).replace(/^\s*/, "");
-    updateSection(activeSection.id, { content: [before, text, after].filter(Boolean).join("\n\n") });
+    sectionRefs.current[activeSection.id]?.insertMarkdown(`\n\n${text}\n\n`);
     setSuggestion("");
-    requestAnimationFrame(() => {
-      const editor = sectionRefs.current[activeSection.id];
-      editor?.focus();
-      editor?.setSelectionRange(Math.min(position + text.length + 2, editor.value.length), Math.min(position + text.length + 2, editor.value.length));
-    });
   }
 
   function replaceSelection() {
-    if (!activeSection || !suggestion.trim() || selectedRange?.sectionId !== activeSection.id || selectedRange.start === selectedRange.end) return;
+    if (!activeSection || !suggestion.trim() || selectedRange?.sectionId !== activeSection.id || !selectedRange.selectedText) return;
     if (!window.confirm("Replace only the selected text with this AI suggestion? Your other note content will remain unchanged.")) return;
     const text = suggestionForSection(suggestion.trim(), activeSection.kind === "code");
-    const next = `${activeSection.content.slice(0, selectedRange.start)}${text}${activeSection.content.slice(selectedRange.end)}`;
-    updateSection(activeSection.id, { content: next });
+    sectionRefs.current[activeSection.id]?.insertMarkdown(text, true);
     setSelectedRange(null);
     setSuggestion("");
   }
@@ -708,7 +667,7 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
     requestAnimationFrame(() => document.getElementById(`hybrid-section-${section.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
   }
 
-  const selectedTextAvailable = selectedRange?.sectionId === activeSection?.id && selectedRange.start < selectedRange.end;
+  const selectedTextAvailable = selectedRange?.sectionId === activeSection?.id && Boolean(selectedRange.selectedText);
 
   return <section className="hybridBuilder" aria-label="Hybrid Notes Builder">
     <header className="hybridBuilderHeader">
@@ -746,13 +705,13 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
             <div className="hybridSectionTools"><button type="button" title="Move section up" aria-label="Move section up" disabled={index === 0} onClick={() => moveSection(section.id, -1)}><ArrowUp size={14} /></button><button type="button" title="Move section down" aria-label="Move section down" disabled={index === sections.length - 1} onClick={() => moveSection(section.id, 1)}><ArrowDown size={14} /></button><button type="button" title="Duplicate section" aria-label="Duplicate section" onClick={() => duplicateSection(section)}><Copy size={14} /></button><button type="button" title="Delete section" aria-label="Delete section" onClick={() => removeSection(section)}><Trash2 size={14} /></button></div>
           </div>
           {section.kind === "code" ? <div className="hybridCodeEditor"><label>Language<select value={section.language} onChange={(event) => updateSection(section.id, { language: event.target.value as Language })}>{languages.map((language) => <option key={language}>{language}</option>)}</select></label><CodeMirror value={section.content} onChange={(value) => updateSection(section.id, { content: value })} extensions={codeExtensions(section.language)} theme={oneDark} basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }} /></div> : <>
-            {section.id === activeSectionId && <div className="hybridFormatToolbar" aria-label="Markdown formatting toolbar">
-              <button type="button" title="Heading 1" onClick={() => insertFormatting("# ", "", "Heading")}>H1</button><button type="button" title="Heading 2" onClick={() => insertFormatting("## ", "", "Heading")}>H2</button><button type="button" title="Heading 3" onClick={() => insertFormatting("### ", "", "Heading")}>H3</button><button type="button" title="Bold" onClick={() => insertFormatting("**", "**", "bold text")}><strong>B</strong></button><button type="button" title="Italic" onClick={() => insertFormatting("*", "*", "italic text")}><em>I</em></button><button type="button" title="Inline code" onClick={() => insertFormatting("`", "`", "code")}>{"</>"}</button><button type="button" title="Bulleted list" onClick={() => insertFormatting("- ", "", "List item")}>• List</button><button type="button" title="Numbered step" onClick={() => insertFormatting("1. ", "", "Step")}>1. List</button><button type="button" title="Insert table" onClick={() => insertFormatting("| Column | Value |\n| --- | --- |\n| Example | Detail |", "", "")}>Table</button><button type="button" title="Insert warning callout" onClick={() => insertFormatting("> [!WARNING]\n> ", "", "Check this carefully.")}>Warning</button><label className="hybridCodeTemplateLanguage">Code<select aria-label="Code snippet language" value={codeTemplateLanguage} onChange={(event) => setCodeTemplateLanguage(event.target.value as NoteCodeLanguage)}>{languages.map((language) => <option key={language} value={language}>{language}</option>)}</select></label><button type="button" className="hybridCodeTemplateButton" title={`Insert a ${codeTemplateLanguage} code template in this section`} onClick={insertCodeTemplate}><Code2 size={13} />Code snippet</button>
-              <span className="hybridColorPalette" role="group" aria-label="Text color">{noteColors.map((color) => <button type="button" key={color} className={`hybridColorSwatch ${color}`} title={`Apply ${color} text`} aria-label={`Apply ${color} text`} onClick={() => insertFormatting(`[color=${color}]`, "[/color]", "colored text")} />)}</span>
+            {section.id === activeSectionId && <div className="hybridFormatToolbar" aria-label="Formatting toolbar" onMouseDown={(event) => { if ((event.target as HTMLElement).closest("button")) event.preventDefault(); }}>
+              <button type="button" title="Heading 1" onClick={() => applyFormatting("h1")}>H1</button><button type="button" title="Heading 2" onClick={() => applyFormatting("h2")}>H2</button><button type="button" title="Heading 3" onClick={() => applyFormatting("h3")}>H3</button><button type="button" title="Bold" onClick={() => applyFormatting("bold")}><strong>B</strong></button><button type="button" title="Italic" onClick={() => applyFormatting("italic")}><em>I</em></button><button type="button" title="Inline code" onClick={() => applyFormatting("inlineCode")}>{"</>"}</button><button type="button" title="Bulleted list" onClick={() => applyFormatting("unorderedList")}>• List</button><button type="button" title="Numbered step" onClick={() => applyFormatting("orderedList")}>1. List</button><button type="button" title="Insert table" onClick={() => applyFormatting("table")}>Table</button><button type="button" title="Insert warning callout" onClick={() => applyFormatting("warning")}>Warning</button><label className="hybridCodeTemplateLanguage">Code<select aria-label="Code snippet language" value={codeTemplateLanguage} onChange={(event) => setCodeTemplateLanguage(event.target.value as NoteCodeLanguage)}>{languages.map((language) => <option key={language} value={language}>{language}</option>)}</select></label><button type="button" className="hybridCodeTemplateButton" title={`Insert a ${codeTemplateLanguage} code template in this section`} onClick={insertCodeTemplate}><Code2 size={13} />Code snippet</button>
+              <span className="hybridColorPalette" role="group" aria-label="Text color">{noteColors.map((color) => <button type="button" key={color} className={`hybridColorSwatch ${color}`} title={`Apply ${color} text`} aria-label={`Apply ${color} text`} onClick={() => applyFormatting("color", color)} />)}</span>
               <button type="button" className="hybridImageButton" title="Insert image" disabled={imageBusy} onClick={() => imageInputRef.current?.click()}><Image size={13} />{imageBusy ? "Adding…" : "Image"}</button>
               <input ref={imageInputRef} className="hybridImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="Choose an image for this note" onChange={(event) => { const file = event.target.files?.[0]; if (file) void addImage(file); }} />
             </div>}
-            <textarea ref={(element) => { sectionRefs.current[section.id] = element; }} value={section.content} onFocus={() => setActiveSectionId(section.id)} onSelect={(event) => setSelectedRange({ sectionId: section.id, start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd })} onChange={(event) => { updateSection(section.id, { content: event.target.value }); setSelectedRange({ sectionId: section.id, start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd }); }} rows={Math.max(7, Math.min(18, section.content.split("\n").length + 3))} maxLength={MAX_NOTE_CHARS} aria-label={`Content for ${section.title || "untitled section"}`} placeholder="Write notes, apply text colors, or add an image. Markdown headings, lists, tables, and code blocks are supported." />
+            <HybridNoteEditor ref={(editor) => { sectionRefs.current[section.id] = editor; }} sectionId={section.id} content={section.content} title={section.title} onFocus={() => setActiveSectionId(section.id)} onChange={(value) => updateSection(section.id, { content: value })} onSelectionChange={(selectedText) => setSelectedRange({ sectionId: section.id, selectedText })} />
           </>}
           {section.content.length > 0 && <small className="hybridCharacterCount">{section.content.length.toLocaleString()} characters</small>}
         </article>)}

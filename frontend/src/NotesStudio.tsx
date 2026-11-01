@@ -504,7 +504,7 @@ export default function NotesStudio() {
           if (heading) {
             const Tag = `h${heading[1].length}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
             const id = heading[2].toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-            elements.push(<Tag id={id} key={lineIndex}>{heading[2]}</Tag>);
+            elements.push(<Tag id={id} key={lineIndex}>{renderLine(heading[2])}</Tag>);
             lineIndex++;
             continue;
           }
@@ -578,7 +578,7 @@ export default function NotesStudio() {
       {view === "builder" ? <HybridNotesBuilder key="hybrid-builder" note={builderNote} onClose={() => { setView("dashboard"); setBuilderNote(null); setActiveNote(null); }} onSaved={(saved) => { setBuilderNote(saved); void loadNotes(); }} /> : activeNote && !editing ? <>
         <header className="notesTopbar"><button className="notesBack" onClick={() => { setReaderExpanded(false); setActiveNote(null); }}><ArrowLeft size={16} /> All notes</button><div className="notesTopActions"><button title={activeNote.bookmarked ? "Remove bookmark" : "Bookmark note"} aria-label="Toggle bookmark" onClick={() => void toggleNoteFlag(activeNote, "bookmarked")}><Bookmark size={16} fill={activeNote.bookmarked ? "currentColor" : "none"} /></button><button title="Download Markdown" aria-label="Download note" onClick={() => downloadNote(activeNote)}><Download size={16} /></button><button title="Print note" aria-label="Print note" onClick={() => window.print()}><Printer size={16} /></button><button className="notesSecondary small" onClick={() => startHybridBuilder(activeNote)}>Edit with Hybrid Builder</button><button className="notesPrimary small" onClick={() => startEdit(activeNote)}>Edit note</button></div></header>
         <div className={`readerLayout ${subjectColor(activeNote.subject)} ${readerTocVisible ? "" : "readerTocHidden"} ${readerToolsVisible ? "" : "readerToolsHidden"}`}>
-          <aside className="readerToc"><span>IN THIS NOTE</span>{headings.length ? headings.map((heading) => <a href={`#${heading.id}`} key={heading.id}>{heading.title}</a>) : <p>Add headings with # in the editor to build a table of contents.</p>}<button className={activeNote.revision_marked ? "revisionOn" : ""} onClick={() => void toggleNoteFlag(activeNote, "revision_marked")}><BookOpen size={15} />{activeNote.revision_marked ? "In revision queue" : "Mark for revision"}</button></aside>
+          <aside className="readerToc"><span>IN THIS NOTE</span>{headings.length ? headings.map((heading) => <a href={`#${heading.id}`} key={heading.id}>{heading.title}</a>) : <p>Add titled sections in Hybrid Notes Builder to build this outline.</p>}<button className={activeNote.revision_marked ? "revisionOn" : ""} onClick={() => void toggleNoteFlag(activeNote, "revision_marked")}><BookOpen size={15} />{activeNote.revision_marked ? "In revision queue" : "Mark for revision"}</button></aside>
           <article className="noteReader" ref={readerRef} onScroll={updateProgress}>
             <div className="readerViewControls" aria-label="Note and source view controls">
               <div className="readerModeButtons" role="group" aria-label="Choose what to view">
