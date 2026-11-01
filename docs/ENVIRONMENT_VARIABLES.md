@@ -17,8 +17,8 @@ Configure values in the service that uses them. Keep secrets in a host secret ma
 | `ADMIN_EMAIL` | No | Email for first administrator bootstrap; defaults to `admin@sqlpractice.local`. |
 | `ADMIN_PASSWORD` | Initial bootstrap | Required only when creating the initial administrator. Use a unique strong password. Changing it does not reset an existing account. |
 | `ADMIN_NAME` | No | Initial administrator display name. |
-| `OPENAI_API_KEY` | Optional | Enables AI question generation, tutoring, interview feedback, note generation, and schema-image assistance. |
-| `OPENAI_MODEL` | No | OpenAI model name; defaults to `gpt-4o-mini`. |
+| `GEMINI_API_KEY` | Optional | Enables AI question generation, tutoring, interview feedback, note generation, transcription, and schema-image assistance. The legacy `GEMENI_API_KEY` spelling and `GOOGLE_API_KEY` are also accepted. |
+| `GEMINI_MODEL` | No | Google Gemini model name; defaults to `gemini-2.5-flash`. The legacy `GEMENI_MODEL` spelling is also accepted. |
 | `ALLOWED_ORIGIN` | Production | Allowed browser origin for credentialed API requests, normally the Cloudflare Worker origin. |
 | `PYTHON_RUNNER_URL` | Required for Python execution | HTTPS origin of the trusted Python runner in production. |
 | `PYTHON_RUNNER_TOKEN` | Required with runner URL | Backend-to-runner bearer token. Configure the matching value on the runner host. |

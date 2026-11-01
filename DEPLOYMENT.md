@@ -23,6 +23,8 @@ The `data-engineering-api` Render service is connected to `alokkrsingh3079/Data-
 
 Push a reviewed change to `main` to start an API deployment. Verify the deployed commit and status in Render, then check `/api/health` and relevant feature endpoints. Never put secret values in `render.yaml` or source control.
 
+For AI features, set `GEMINI_API_KEY` in the Render service's Environment settings (the Blueprint declares it as an unsynced secret). `GEMINI_MODEL` defaults to `gemini-2.5-flash`. Local `backend/.env` values are not uploaded or deployed automatically; adding the key in Render is required to enable production AI. The API can deploy without the optional key, but AI endpoints will remain unavailable until it is configured.
+
 ### Frontend on Cloudflare
 
 The [GitHub Actions workflow](.github/workflows/deploy-cloudflare.yml) builds the frontend and deploys the Worker on pushes to `main`. It requires the repository Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. If they are absent, the workflow intentionally skips the publish step. `API_ORIGIN` in [wrangler.jsonc](wrangler.jsonc) points to the API origin; keep the Worker proxy and Render `ALLOWED_ORIGIN` aligned.

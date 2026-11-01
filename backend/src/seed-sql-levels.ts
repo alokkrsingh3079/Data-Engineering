@@ -1,6 +1,6 @@
 import "dotenv/config";
 import crypto from "node:crypto";
-import { generateQuestions, openai } from "./ai.js";
+import { aiConfigured, generateQuestions } from "./ai.js";
 import { closePracticePools, executeReadOnly, pool, schemaSnapshot } from "./db.js";
 import { connectMongo, closeMongo } from "./mongo.js";
 import { migrateLegacyQuestions } from "./questions.js";
@@ -79,7 +79,7 @@ async function generateLevelQuestions(schema: string, schemaName: string, level:
 }
 
 async function main() {
-  if (!openai) throw new Error("OPENAI_API_KEY is not configured; no questions were inserted.");
+  if (!aiConfigured) throw new Error("Set GEMENI_API_KEY or GEMINI_API_KEY before seeding questions; no questions were inserted.");
   await connectMongo();
   const database = (await pool.query("SELECT id,schema_name FROM app_databases WHERE slug='demo-ecommerce'")).rows[0];
   if (!database) throw new Error("The local demo-ecommerce database was not found.");

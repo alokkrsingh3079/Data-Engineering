@@ -16,7 +16,7 @@ This guide starts the React/Vite frontend, Express API, MongoDB, PostgreSQL, and
 cp backend/.env.example backend/.env
 ```
 
-Replace the placeholder `AUTH_SECRET` and `PRACTICE_ROLE_SECRET` with fresh local-only random values. Set the local database URLs and runner URLs/tokens to match `docker-compose.yml`; do not use production credentials. `OPENAI_API_KEY` is optional for non-AI workflows.
+Replace the placeholder `AUTH_SECRET` and `PRACTICE_ROLE_SECRET` with fresh local-only random values. Set the local database URLs and runner URLs/tokens to match `docker-compose.yml`; do not use production credentials. `GEMINI_API_KEY` is optional for non-AI workflows.
 
 `backend/.env` is ignored by Git. Never commit or share a populated environment file.
 

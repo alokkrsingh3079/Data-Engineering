@@ -27,9 +27,10 @@ test('hybrid note assistance validates bounded section-level requests', () => {
 });
 
 test('hybrid note generation streams bounded output and cancels disconnected requests', () => {
-  assert.match(aiSource, /responses\.create\(\{model,max_output_tokens:1000,stream:true/);
-  assert.match(aiSource, /timeout:30_000,maxRetries:0,signal/);
-  assert.match(aiSource, /response\.output_text\.delta/);
+  assert.match(aiSource, /:streamGenerateContent\?alt=sse/);
+  assert.match(aiSource, /timeout=setTimeout\(\(\)=>controller\.abort\(\),30_000\)/);
+  assert.match(aiSource, /line\.startsWith\('data:'\)/);
+  assert.match(aiSource, /signal\.addEventListener\('abort',abort/);
   assert.match(serverSource, /Content-Type':'application\/x-ndjson/);
   assert.match(serverSource, /if\(!res\.writableEnded\)controller\.abort\(\)/);
 });

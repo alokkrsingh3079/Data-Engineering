@@ -1,0 +1,8 @@
+.sqlNavGroup{position:relative;display:flex;align-items:center}
+.sqlNavGroup>summary{list-style:none;padding:8px 10px;border-radius:6px;color:#8fa2b8;cursor:pointer}
+.sqlNavGroup>summary::-webkit-details-marker{display:none}
+.sqlNavGroup[open]>summary,.sqlNavGroup>summary:hover{background:#13263e;color:#fff}
+.sqlNavGroup>div{position:absolute;z-index:60;top:calc(100% + 5px);left:0;display:grid;min-width:145px;padding:5px;border:1px solid #29445b;border-radius:6px;background:#0b1a29;box-shadow:0 12px 30px #0008}
+.sqlNavGroup>div>a{padding:9px 10px;border-radius:4px;color:#b9c9d8;text-decoration:none}
+.sqlNavGroup>div>a:hover{background:#142c43;color:#effaff}
+@media(max-width:850px){.sqlNavGroup{flex:none}.sqlNavGroup>summary{padding:8px 7px}}

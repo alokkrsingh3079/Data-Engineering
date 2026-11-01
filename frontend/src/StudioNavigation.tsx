@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, BarChart3, BookOpen, Code2, Database, Layers3, LogOut, RefreshCw, Sparkles, Target } from "lucide-react";
+import { Activity, BarChart3, BookOpen, ChevronDown, Code2, Database, Layers3, LogOut, RefreshCw, Sparkles, Target } from "lucide-react";
 import "./studio-sidebar.css";
 
 type StudioNavigationProps = {
@@ -10,7 +10,6 @@ type StudioNavigationProps = {
 
 const links = [
   { href: "/", label: "Dashboard", icon: BarChart3 },
-  { href: "/sql", label: "SQL lab", icon: Database },
   { href: "/learn/python-etl", label: "Python lab", icon: Code2 },
   { href: "/pyspark", label: "PySpark lab", icon: Layers3 },
   { href: "/learn/azure-data-factory", label: "Azure & Databricks", icon: Activity },
@@ -26,6 +25,14 @@ const links = [
 export default function StudioNavigation({ activePath, refreshLabel = "Refresh learning path", onRefresh }: StudioNavigationProps) {
   const [userName, setUserName] = useState("Data Engineer");
   const [error, setError] = useState("");
+  const [sqlExpanded, setSqlExpanded] = useState(() => {
+    const saved = localStorage.getItem("studio.sqlNavigationExpanded");
+    return saved === null ? true : saved === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("studio.sqlNavigationExpanded", String(sqlExpanded));
+  }, [sqlExpanded]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -63,7 +70,17 @@ export default function StudioNavigation({ activePath, refreshLabel = "Refresh l
       <span><strong>Data Engineering</strong><small>PRACTICE PLATFORM</small></span>
     </a>
     <nav className="studioActions" aria-label="Main navigation">
-      {links.map(({ href, label, icon: Icon }) => <a className={activePath === href ? "studioNavActive" : ""} href={href} aria-current={activePath === href ? "page" : undefined} key={href}><Icon size={15} /> {label}</a>)}
+      {links.slice(0, 1).map(({ href, label, icon: Icon }) => <a className={activePath === href ? "studioNavActive" : ""} href={href} aria-current={activePath === href ? "page" : undefined} key={href}><Icon size={15} /> {label}</a>)}
+      <div className="studioNavGroup">
+        <button type="button" className={activePath === "/sql" || activePath === "/sql-learning" ? "studioNavActive" : ""} aria-expanded={sqlExpanded} onClick={() => setSqlExpanded((expanded) => !expanded)}>
+          <Database size={15} /> SQL <ChevronDown className={sqlExpanded ? "studioNavChevronExpanded" : ""} size={14} />
+        </button>
+        {sqlExpanded && <div className="studioNavChildren">
+          <a className={activePath === "/sql" ? "studioNavActive" : ""} href="/sql" aria-current={activePath === "/sql" ? "page" : undefined}>SQL Lab</a>
+          <a className={activePath === "/sql-learning" ? "studioNavActive" : ""} href="/sql-learning" aria-current={activePath === "/sql-learning" ? "page" : undefined}>SQL Learning</a>
+        </div>}
+      </div>
+      {links.slice(1).map(({ href, label, icon: Icon }) => <a className={activePath === href ? "studioNavActive" : ""} href={href} aria-current={activePath === href ? "page" : undefined} key={href}><Icon size={15} /> {label}</a>)}
       <button type="button" onClick={onRefresh || (() => location.reload())}><RefreshCw size={15} /> {refreshLabel}</button>
     </nav>
     {error && <p className="studioNavigationError" role="status">{error}</p>}

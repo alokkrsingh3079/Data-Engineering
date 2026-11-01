@@ -363,7 +363,7 @@ export default function QuestionGeneration() {
         <section className="qgCard qgGenerate">
           <h2><Sparkles size={18} /> Generate questions</h2>
           <p className="qgSmall">AI receives the selected database schema and a small sample of its rows. SQL generation can use every table; Python and PySpark use the selected coding target table. Avoid uploading sensitive personal data.</p>
-          {aiConfigured === false && <p className="qgLimit">AI generation is unavailable: configure the backend OPENAI_API_KEY to continue.</p>}
+          {aiConfigured === false && <p className="qgLimit">AI generation is unavailable: configure GEMENI_API_KEY or GEMINI_API_KEY on the backend to continue.</p>}
           {language !== "SQL" && runnerReady[language.toLowerCase() as "python" | "pyspark"] === false && <p className="qgLimit">The isolated {language} runner is not configured or available. Generation stays disabled until it is healthy.</p>}
           <label className="qgField">Dataset<select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option value="">Select a dataset</option>{datasets.map((dataset) => <option key={dataset.id} value={dataset.id}>{datasetOptionLabel(dataset, datasets)}</option>)}</select></label>
           <label className="qgField">Target lab<select value={language} onChange={(event) => { const value = event.target.value as keyof typeof topics; setLanguage(value); setTopic(topics[value][0]); if (value !== "SQL" && Number(count) > 10) setCount("10"); }}><option>SQL</option><option>Python</option><option>PySpark</option></select></label>

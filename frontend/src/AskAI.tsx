@@ -213,7 +213,7 @@ export default function AskAI() {
           </section>
           <div className="askAiComposeWrap">
             {error && <div className="askAiError" role="alert">{error}</div>}
-            {aiConfigured === false && <div className="askAiUnavailable" role="status">AI is not configured on the server. Add an OpenAI API key to the backend environment.</div>}
+            {aiConfigured === false && <div className="askAiUnavailable" role="status">AI is not configured on the server. Add GEMENI_API_KEY or GEMINI_API_KEY to the backend environment.</div>}
             {draftImages.length > 0 && <div className="askAiDraftImages">{draftImages.map((image) => <div key={image.id}><img src={image.dataUrl} alt={image.name} /><span title={image.name}>{image.name}</span><button type="button" onClick={() => setDraftImages((current) => current.filter((item) => item.id !== image.id))} aria-label={`Remove ${image.name}`} title="Remove image"><X size={13} /></button></div>)}</div>}
             <form className="askAiComposer" onSubmit={submit}>
               <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={handleKeyDown} maxLength={4000} rows={2} placeholder="Ask a question or paste code…" aria-label="Message to AI" disabled={!aiConfigured || busy} />

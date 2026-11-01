@@ -1,5 +1,5 @@
 {
-  "name": "sql-practice-openai-backend",
+  "name": "data-engineering-backend",
   "private": true,
   "version": "0.2.0",
   "type": "module",
@@ -19,7 +19,6 @@
     "hyparquet": "^1.31.5",
     "mongodb": "^7.7.0",
     "multer": "^1.4.5-lts.1",
-    "openai": "^4.77.0",
     "pg": "^8.13.1",
     "pgsql-ast-parser": "^12.0.2",
     "zod": "^3.23.8"

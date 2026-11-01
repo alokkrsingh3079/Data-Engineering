@@ -21,6 +21,10 @@ services:
         generateValue: true
       - key: PRACTICE_ROLE_SECRET
         generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_PASSWORD

@@ -2,7 +2,7 @@ import { useDeferredValue, useEffect, useState, type CSSProperties } from "react
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { Activity, ArrowRight, BarChart3, BookOpen, Bookmark, Check, Circle, Clock3, Code2, Database, Flag, Layers3, Lightbulb, LogOut, RefreshCw, Sparkles, Target } from "lucide-react";
+import { Activity, ArrowRight, BarChart3, BookOpen, Bookmark, Check, ChevronDown, Circle, Clock3, Code2, Database, Flag, Layers3, Lightbulb, LogOut, RefreshCw, Sparkles, Target } from "lucide-react";
 import CopyButton from "./CopyButton";
 import TodayTrackRings, { type OverallDifficultyProgress } from "./TodayTrackRings";
 import "./learning-studio.css";
@@ -82,6 +82,10 @@ export default function LearningStudio() {
   const [modules, setModules] = useState<Module[]>([]);
   const [overallDifficulty, setOverallDifficulty] = useState<OverallDifficultyProgress | null>(null);
   const [dashboardOpen, setDashboardOpen] = useState(location.pathname === "/");
+  const [sqlExpanded, setSqlExpanded] = useState(() => {
+    const saved = localStorage.getItem("studio.sqlNavigationExpanded");
+    return saved === null ? true : saved === "true";
+  });
   const [userName, setUserName] = useState("Data Engineer");
   const [selectedModule, setSelectedModule] = useState("");
   const [selectedLesson, setSelectedLesson] = useState("");
@@ -118,6 +122,10 @@ export default function LearningStudio() {
   const [codeDraft, setCodeDraft] = useState("");
   const [codeResult, setCodeResult] = useState<CodeResult | null>(null);
   const [codeRunning, setCodeRunning] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem("studio.sqlNavigationExpanded", String(sqlExpanded));
+  }, [sqlExpanded]);
   const deferredSearch = useDeferredValue(questionSearch);
 
   async function load() {
@@ -491,7 +499,15 @@ export default function LearningStudio() {
         </a>
         <nav className="studioActions" aria-label="Main navigation">
           <a className={dashboardOpen ? "studioNavActive" : ""} href="/"><BarChart3 size={15} /> Dashboard</a>
-          <a href="/sql"><Database size={15} /> SQL lab</a>
+          <div className="studioNavGroup">
+            <button type="button" className={location.pathname === "/sql" || location.pathname === "/sql-learning" ? "studioNavActive" : ""} aria-expanded={sqlExpanded} onClick={() => setSqlExpanded((expanded) => !expanded)}>
+              <Database size={15} /> SQL <ChevronDown className={sqlExpanded ? "studioNavChevronExpanded" : ""} size={14} />
+            </button>
+            {sqlExpanded && <div className="studioNavChildren">
+              <a className={location.pathname === "/sql" ? "studioNavActive" : ""} href="/sql" aria-current={location.pathname === "/sql" ? "page" : undefined}>SQL Lab</a>
+              <a className={location.pathname === "/sql-learning" ? "studioNavActive" : ""} href="/sql-learning" aria-current={location.pathname === "/sql-learning" ? "page" : undefined}>SQL Learning</a>
+            </div>}
+          </div>
           <a href="/learn/python-etl"><Code2 size={15} /> Python lab</a>
           <a href="/pyspark"><Layers3 size={15} /> PySpark lab</a>
           <a href="/learn/azure-data-factory"><Activity size={15} /> Azure &amp; Databricks</a>

@@ -8,7 +8,7 @@ A web learning and interview-practice platform for data engineers. It combines a
 
 | Area | What it does |
 |---|---|
-| SQL Lab | Create and inspect PostgreSQL practice workspaces, execute bounded read-only queries, work through SQL questions, and use snapshots and schema tools. |
+| SQL Lab | Create and inspect PostgreSQL practice workspaces, execute bounded read-only queries, work through SQL questions, and use snapshots and schema tools. SQL Learning provides all 24 curriculum modules / 708 topics, user-scoped checklists and progress, on-demand PostgreSQL-validated lessons and five practice tests per topic (15 balanced questions per test), revision scheduling/history/analytics and recommendations, a personal curriculum and lesson/question editor, 30-question module assessments, and module-scoped 45-minute SQL mock interviews. It also provides SQL hints, solutions, scoring, and contextual AI tutoring when configured. Lesson and test content is generated per learner/workspace when requested; a pre-generated, centrally reviewed corpus for every topic is not included. |
 | Learning Studio | Browse lessons and question banks, filter by track/topic/difficulty, track progress, bookmark and mark questions for revision. |
 | Python and PySpark Labs | Practice coding tasks in dedicated labs. Code runs through separate isolated runner services when they are configured and available. Spark uses local mode on a dedicated worker; it is not a distributed cluster. |
 | Dataset question generation | Upload CSV, JSON, JSONL, Parquet, or supported PostgreSQL SQL scripts; inspect tables and generate SQL, Python, or PySpark challenges grounded in the selected dataset. Generated coding questions are validated by their isolated runner before being saved. |
@@ -28,7 +28,7 @@ Browser
               ├── PostgreSQL: SQL workspaces and SQL execution
               ├── Python runner: isolated Python jobs
               ├── Spark runner: isolated PySpark jobs
-              └── OpenAI API: optional AI features
+              └── Google Gemini API: optional AI features
 ```
 
 The API does not execute learner Python or Spark code in its own process. Runner services execute submissions in bounded, disposable containers. The Spark controller needs Docker access and must run on a Docker-compatible host, not on Cloudflare Workers or the ordinary Render API service. Runner availability is independent of API availability.

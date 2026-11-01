@@ -18,7 +18,7 @@ The application is a data-engineering learning and interview platform that has g
 | Platform records | MongoDB | Users/sessions, learning questions and progress, generated-question jobs, notes, interviews, and other product records. |
 | SQL execution | PostgreSQL | Practice schemas, tables, SQL challenge execution, snapshots, and compatibility/provisioning data. |
 | Code execution | Python and Spark worker services | Authenticated requests to separate controllers, which run disposable constrained containers. |
-| AI | OpenAI API (optional) | Question generation, tutoring, study content, and interview feedback. |
+| AI | Google Gemini API (optional) | Question generation, tutoring, study content, transcription, and interview feedback. |
 
 Production origins and deployment details are in [DEPLOYMENT.md](../DEPLOYMENT.md). Local setup is in [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md).
 
