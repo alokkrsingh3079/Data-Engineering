@@ -6,7 +6,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { ArrowDown, ArrowLeft, ArrowUp, Check, Code2, Copy, Image, Mic, Plus, Save, Sparkles, Trash2, X } from "lucide-react";
 import type { Note } from "./NotesStudio";
 import { renderInlineNoteMarkdown } from "./note-markdown";
-import HybridNoteEditor, { type HybridNoteEditorHandle } from "./HybridNoteEditor";
+import HybridNoteEditor, { hybridNoteColorNames, type HybridNoteEditorHandle } from "./HybridNoteEditor";
 import { noteCodeTemplate, preferredNoteCodeLanguage, type NoteCodeLanguage } from "./note-code";
 import "./hybrid-notes-builder.css";
 
@@ -35,7 +35,6 @@ const MAX_VOICE_AUDIO_BYTES = 5 * 1024 * 1024;
 const MAX_NOTE_CHARS = 5_000_000;
 const MAX_IMAGE_BYTES = 900 * 1024;
 const MAX_IMAGE_FILE_BYTES = 15 * 1024 * 1024;
-const noteColors = ["red", "orange", "amber", "yellow", "lime", "green", "teal", "cyan", "blue", "indigo", "violet", "purple", "pink"] as const;
 const subjects = ["SQL", "Python", "PySpark", "Data Engineering", "ETL Testing", "Databricks", "Azure", "Snowflake", "Data Warehousing", "Interview Preparation", "Azure Data Factory", "ETL & Data Warehousing", "Data Engineering System Design", "Data Engineering Concepts"];
 const languages: Language[] = ["plaintext", "sql", "python", "pyspark", "json"];
 const actions: { value: AssistAction; label: string }[] = [
@@ -707,7 +706,7 @@ export default function HybridNotesBuilder({ note, onClose, onSaved }: { note?: 
           {section.kind === "code" ? <div className="hybridCodeEditor"><label>Language<select value={section.language} onChange={(event) => updateSection(section.id, { language: event.target.value as Language })}>{languages.map((language) => <option key={language}>{language}</option>)}</select></label><CodeMirror value={section.content} onChange={(value) => updateSection(section.id, { content: value })} extensions={codeExtensions(section.language)} theme={oneDark} basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }} /></div> : <>
             {section.id === activeSectionId && <div className="hybridFormatToolbar" aria-label="Formatting toolbar" onMouseDown={(event) => { if ((event.target as HTMLElement).closest("button")) event.preventDefault(); }}>
               <button type="button" title="Heading 1" onClick={() => applyFormatting("h1")}>H1</button><button type="button" title="Heading 2" onClick={() => applyFormatting("h2")}>H2</button><button type="button" title="Heading 3" onClick={() => applyFormatting("h3")}>H3</button><button type="button" title="Bold" onClick={() => applyFormatting("bold")}><strong>B</strong></button><button type="button" title="Italic" onClick={() => applyFormatting("italic")}><em>I</em></button><button type="button" title="Inline code" onClick={() => applyFormatting("inlineCode")}>{"</>"}</button><button type="button" title="Bulleted list" onClick={() => applyFormatting("unorderedList")}>• List</button><button type="button" title="Numbered step" onClick={() => applyFormatting("orderedList")}>1. List</button><button type="button" title="Insert table" onClick={() => applyFormatting("table")}>Table</button><button type="button" title="Insert warning callout" onClick={() => applyFormatting("warning")}>Warning</button><label className="hybridCodeTemplateLanguage">Code<select aria-label="Code snippet language" value={codeTemplateLanguage} onChange={(event) => setCodeTemplateLanguage(event.target.value as NoteCodeLanguage)}>{languages.map((language) => <option key={language} value={language}>{language}</option>)}</select></label><button type="button" className="hybridCodeTemplateButton" title={`Insert a ${codeTemplateLanguage} code template in this section`} onClick={insertCodeTemplate}><Code2 size={13} />Code snippet</button>
-              <span className="hybridColorPalette" role="group" aria-label="Text color">{noteColors.map((color) => <button type="button" key={color} className={`hybridColorSwatch ${color}`} title={`Apply ${color} text`} aria-label={`Apply ${color} text`} onClick={() => applyFormatting("color", color)} />)}</span>
+              <span className="hybridColorPalette" role="group" aria-label="Text color">{hybridNoteColorNames.map((color) => <button type="button" key={color} className={`hybridColorSwatch ${color}`} title={`Apply ${color} text`} aria-label={`Apply ${color} text`} onClick={() => applyFormatting("color", color)} />)}</span>
               <button type="button" className="hybridImageButton" title="Insert image" disabled={imageBusy} onClick={() => imageInputRef.current?.click()}><Image size={13} />{imageBusy ? "Adding…" : "Image"}</button>
               <input ref={imageInputRef} className="hybridImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="Choose an image for this note" onChange={(event) => { const file = event.target.files?.[0]; if (file) void addImage(file); }} />
             </div>}

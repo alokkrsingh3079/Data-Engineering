@@ -15,6 +15,7 @@ const colors: Record<string, string> = {
   purple: "#ae58c6",
   pink: "#df5c9b",
 };
+export const hybridNoteColorNames = Object.keys(colors);
 
 const imagePattern = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
 
@@ -162,8 +163,8 @@ type Props = {
   content: string;
   title: string;
   onChange: (content: string) => void;
-  onFocus: () => void;
-  onSelectionChange: (selectedText: string) => void;
+  onFocus?: () => void;
+  onSelectionChange?: (selectedText: string) => void;
 };
 
 const HybridNoteEditor = forwardRef<HybridNoteEditorHandle, Props>(function HybridNoteEditor(
@@ -199,7 +200,7 @@ const HybridNoteEditor = forwardRef<HybridNoteEditorHandle, Props>(function Hybr
     const range = selection.getRangeAt(0);
     if (!editor.contains(range.commonAncestorContainer)) return;
     savedRange.current = range.cloneRange();
-    onSelectionChange(selection.toString());
+    onSelectionChange?.(selection.toString());
   }
 
   function restoreSelection() {
@@ -229,20 +230,53 @@ const HybridNoteEditor = forwardRef<HybridNoteEditorHandle, Props>(function Hybr
       const selection = window.getSelection();
       if (format === "color") {
         const color = value || "blue";
-        const wrapper = document.createElement("span");
-        wrapper.dataset.noteColor = color;
-        wrapper.style.color = colors[color] || colors.blue;
+        const editor = editorRef.current;
+        if (!editor) return;
         if (range.collapsed) {
+          const wrapper = document.createElement("span");
+          wrapper.dataset.noteColor = color;
+          wrapper.style.color = colors[color] || colors.blue;
           wrapper.textContent = "colored text";
           range.insertNode(wrapper);
           range.selectNodeContents(wrapper);
         } else {
-          try { range.surroundContents(wrapper); }
-          catch {
-            wrapper.append(range.extractContents());
-            range.insertNode(wrapper);
+          const startContainer = range.startContainer;
+          const startOffset = range.startOffset;
+          const endContainer = range.endContainer;
+          const endOffset = range.endOffset;
+          const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+          const textNodes: Text[] = [];
+          while (walker.nextNode()) {
+            const node = walker.currentNode as Text;
+            if (node.textContent && range.intersectsNode(node)) textNodes.push(node);
           }
-          range.selectNodeContents(wrapper);
+          const wrappers: HTMLSpanElement[] = [];
+          for (const node of textNodes.reverse()) {
+            const start = node === startContainer ? startOffset : 0;
+            const end = node === endContainer ? endOffset : node.length;
+            if (start >= end) continue;
+            let selectedNode = node;
+            if (end < selectedNode.length) selectedNode.splitText(end);
+            if (start > 0) selectedNode = selectedNode.splitText(start);
+            const existingColor = selectedNode.parentElement?.closest("span[data-note-color]");
+            if (existingColor instanceof HTMLSpanElement && editor.contains(existingColor)) {
+              existingColor.dataset.noteColor = color;
+              existingColor.style.color = colors[color] || colors.blue;
+              wrappers.push(existingColor);
+            } else {
+              const wrapper = document.createElement("span");
+              wrapper.dataset.noteColor = color;
+              wrapper.style.color = colors[color] || colors.blue;
+              selectedNode.parentNode?.insertBefore(wrapper, selectedNode);
+              wrapper.appendChild(selectedNode);
+              wrappers.push(wrapper);
+            }
+          }
+          if (wrappers.length) {
+            const ordered = wrappers.reverse();
+            range.setStartBefore(ordered[0]);
+            range.setEndAfter(ordered[ordered.length - 1]);
+          }
         }
         selection?.removeAllRanges();
         selection?.addRange(range);
