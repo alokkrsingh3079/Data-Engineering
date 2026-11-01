@@ -207,7 +207,43 @@ app.get('/api/sql-learning/modules/:moduleId',async(req,res)=>{try{const module=
 app.put('/api/sql-learning/topics/:topicId/status',async(req,res)=>{const parsed=z.object({status:z.enum(['not_started','in_progress','completed'])}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'Choose a valid topic status'});try{const updated=await setSqlLearningTopicStatus(String((req as any).user.id),req.params.topicId,parsed.data.status);if(!updated)return res.status(404).json({error:'SQL Learning topic not found'});res.json({ok:true,status:parsed.data.status})}catch(error){console.error('[SQL Learning] Topic progress could not be saved:',error);res.status(503).json({error:'Topic progress could not be saved'})}});
 app.get('/api/sql-learning/topics/:topicId',async(req,res)=>{try{const topic=await getSqlLearningTopic(String((req as any).user.id),req.params.topicId,req.query.custom==='true');if(!topic)return res.status(404).json({error:'SQL Learning topic not found'});res.json(topic)}catch(error){console.error('[SQL Learning] Topic unavailable:',error);res.status(503).json({error:error instanceof Error?error.message:'SQL Learning topic is temporarily unavailable'})}});
 app.post('/api/sql-learning/topics/:topicId/generate',async(req,res)=>{try{const result=await generateSqlLearningTopicContent(String((req as any).user.id),req.params.topicId,req.query.custom==='true');if(result.status==='not_found')return res.status(404).json({error:'SQL Learning topic not found'});res.status(201).json({content:result.content})}catch(error){console.error('[SQL Learning] Topic content generation failed:',error);res.status(503).json({error:error instanceof Error?error.message:'Topic content could not be generated and validated'})}});
-app.post('/api/sql-learning/topics/:topicId/tests/:testNumber/generate',async(req,res)=>{const testNumber=z.coerce.number().int().min(1).max(5).safeParse(req.params.testNumber);if(!testNumber.success)return res.status(400).json({error:'Test number must be between 1 and 5'});try{const result=await generateSqlLearningPracticeTest(String((req as any).user.id),req.params.topicId,testNumber.data,req.query.custom==='true');if(result.status==='not_found')return res.status(404).json({error:'SQL Learning topic not found'});res.status(201).json({test:{id:result.test?.id,testNumber:result.test?.test_number,questionCount:result.test?.questions.length,status:result.test?.status}})}catch(error){console.error('[SQL Learning] Practice test generation failed:',error);res.status(503).json({error:error instanceof Error?error.message:'Practice test could not be generated and validated. No incomplete test was published.'})}});
+async function runSqlLearningTestGeneration(jobId:string,userId:string,topicId:string,testNumber:number,useCustom:boolean){
+ const jobs=mongoCollection('sql_learning_test_generation_jobs');
+ const update=async(fields:Record<string,unknown>)=>jobs.updateOne({_id:jobId,user_id:userId},{$set:{...fields,updated_at:new Date()}});
+ try{
+  await update({stage:'generating'});
+  const result=await generateSqlLearningPracticeTest(userId,topicId,testNumber,useCustom);
+  if(result.status==='not_found'||!result.test)throw new Error('SQL Learning topic or practice test was not found.');
+  await update({status:'completed',stage:'completed',test:{id:result.test.id,testNumber:result.test.test_number,questionCount:result.test.questions.length},error:null});
+ }catch(error){
+  const message=error instanceof Error?error.message:'Practice test could not be generated and validated. No incomplete test was published.';
+  console.error('[SQL Learning] Practice test generation failed:',error);
+  try{await update({status:'failed',stage:'failed',error:message})}
+  catch(progressError){console.error('[SQL Learning] Practice-test generation status update failed:',progressError)}
+ }
+}
+app.post('/api/sql-learning/topics/:topicId/tests/:testNumber/generate',async(req,res)=>{
+ const testNumber=z.coerce.number().int().min(1).max(5).safeParse(req.params.testNumber);
+ if(!testNumber.success)return res.status(400).json({error:'Test number must be between 1 and 5'});
+ const userId=String((req as any).user.id),useCustom=req.query.custom==='true',jobs=mongoCollection('sql_learning_test_generation_jobs');
+ try{
+  const existing=await jobs.findOne({user_id:userId,topic_id:req.params.topicId,test_number:testNumber.data,use_custom:useCustom,status:'running'},{projection:{_id:1}});
+  if(existing)return res.status(202).json({jobId:existing._id,status:'running'});
+  const jobId=crypto.randomUUID(),now=new Date();
+  await jobs.insertOne({_id:jobId,user_id:userId,topic_id:req.params.topicId,test_number:testNumber.data,use_custom:useCustom,status:'running',stage:'queued',test:null,error:null,created_at:now,updated_at:now});
+  void runSqlLearningTestGeneration(jobId,userId,req.params.topicId,testNumber.data,useCustom);
+  res.status(202).json({jobId,status:'running'});
+ }catch(error){res.status(503).json({error:error instanceof Error?error.message:'Practice test generation could not be started.'})}
+});
+app.get('/api/sql-learning/test-generation-jobs/:jobId',async(req,res)=>{
+ const jobId=z.string().uuid().safeParse(req.params.jobId);
+ if(!jobId.success)return res.status(400).json({error:'Invalid test-generation job.'});
+ try{
+  const job=await mongoCollection('sql_learning_test_generation_jobs').findOne({_id:jobId.data,user_id:String((req as any).user.id)},{projection:{_id:1,status:1,stage:1,test:1,error:1,updated_at:1}});
+  if(!job)return res.status(404).json({error:'Practice-test generation job not found.'});
+  res.json({jobId:job._id,status:job.status,stage:job.stage,test:job.test,error:job.error,updatedAt:job.updated_at});
+ }catch{res.status(503).json({error:'Practice-test generation progress is unavailable.'})}
+});
 app.get('/api/sql-learning/tests/:testId',async(req,res)=>{try{const test=await getSqlLearningPracticeTest(String((req as any).user.id),req.params.testId);if(!test)return res.status(404).json({error:'SQL Learning test not found'});res.json(test)}catch(error){console.error('[SQL Learning] Practice test unavailable:',error);res.status(503).json({error:'Practice test is temporarily unavailable'})}});
 app.post('/api/sql-learning/tests/:testId/interview/start',async(req,res)=>{try{const result=await startSqlLearningMockInterview(String((req as any).user.id),req.params.testId);if(!result)return res.status(404).json({error:'SQL mock interview not found'});res.json(result)}catch(error){console.error('[SQL Learning] Mock interview could not start:',error);res.status(503).json({error:'SQL mock interview timer could not start'})}});
 app.get('/api/sql-learning/tests/:testId/questions/:questionId/solution',async(req,res)=>{try{const solution=await getSqlLearningPracticeSolution(String((req as any).user.id),req.params.testId,req.params.questionId);if(!solution)return res.status(404).json({error:'SQL Learning question not found'});res.json(solution)}catch(error){console.error('[SQL Learning] Practice solution unavailable:',error);res.status(503).json({error:'Practice solution is temporarily unavailable'})}});
@@ -451,4 +487,4 @@ app.use((error:any,_req:any,res:any,next:any)=>{
  next(error);
 });
 
-initDb().then(validateAuthConfig).then(seedCurriculum).then(seedSqlLearningCurriculum).then(seedLearningQuestions).then(migrateLegacyAuthData).then(seedAdmin).then(ensureDemoDatabase).then(seedStarterQuestions).then(()=>migrateLegacyQuestions()).then(assignLegacyWorkspacesToAdmin).then(migrateLegacyLearningData).then(migrateLegacyWorkspaces).then(migrateLegacyRecords).then(async()=>{await mongoCollection('question_generation_jobs').updateMany({status:'running'},{$set:{status:'failed',stage:'failed',currentTitle:null,error:'Generation was interrupted by a server restart. Retry to generate a complete set.',updated_at:new Date()}});const demo=(await pool.query('SELECT * FROM app_databases WHERE slug=$1',['demo-ecommerce'])).rows[0];if(demo&&!await getInitialSnapshot(String(demo.id)))await snapshotDatabase(String(demo.id),'Initial baseline');app.listen(port,()=>console.log(`SQL Practice backend on http://localhost:${port}`))}).catch(e=>{console.error(e);process.exit(1)});
+initDb().then(validateAuthConfig).then(seedCurriculum).then(seedSqlLearningCurriculum).then(seedLearningQuestions).then(migrateLegacyAuthData).then(seedAdmin).then(ensureDemoDatabase).then(seedStarterQuestions).then(()=>migrateLegacyQuestions()).then(assignLegacyWorkspacesToAdmin).then(migrateLegacyLearningData).then(migrateLegacyWorkspaces).then(migrateLegacyRecords).then(async()=>{await mongoCollection('question_generation_jobs').updateMany({status:'running'},{$set:{status:'failed',stage:'failed',currentTitle:null,error:'Generation was interrupted by a server restart. Retry to generate a complete set.',updated_at:new Date()}});await mongoCollection('sql_learning_test_generation_jobs').updateMany({status:'running'},{$set:{status:'failed',stage:'failed',error:'Practice-test generation was interrupted by a server restart. Retry to generate the test.',updated_at:new Date()}});const demo=(await pool.query('SELECT * FROM app_databases WHERE slug=$1',['demo-ecommerce'])).rows[0];if(demo&&!await getInitialSnapshot(String(demo.id)))await snapshotDatabase(String(demo.id),'Initial baseline');app.listen(port,()=>console.log(`SQL Practice backend on http://localhost:${port}`))}).catch(e=>{console.error(e);process.exit(1)});

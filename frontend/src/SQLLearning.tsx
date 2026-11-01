@@ -230,7 +230,23 @@ export default function SQLLearning() {
     setError("");
     try {
       const response = await fetch(curriculumUrl(`${API}/api/sql-learning/topics/${encodeURIComponent(activeTopic.topic.id)}/tests/${testNumber}/generate`, customMode), { method: "POST", credentials: "include" });
-      await readResponse<{ test: { id: string; testNumber: number; questionCount: number; status: string } }>(response);
+      const job = await readResponse<{ jobId: string; status: string }>(response);
+      if (!job.jobId) throw new Error("Practice-test generation did not return a job ID.");
+      let consecutivePollErrors = 0;
+      while (true) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        try {
+          const progressResponse = await fetch(`${API}/api/sql-learning/test-generation-jobs/${encodeURIComponent(job.jobId)}`, { credentials: "include", cache: "no-store" });
+          const progress = await readResponse<{ status: string; error?: string }>(progressResponse);
+          consecutivePollErrors = 0;
+          if (progress.status === "failed") throw new Error(progress.error || "Practice test could not be generated.");
+          if (progress.status === "completed") break;
+        } catch (cause) {
+          if (cause instanceof Error && cause.message !== "Failed to fetch" && !(cause instanceof TypeError)) throw cause;
+          consecutivePollErrors += 1;
+          if (consecutivePollErrors >= 12) throw new Error("Could not refresh practice-test generation. The job may still be running; retry to reconnect.");
+        }
+      }
       await openTopic(activeTopic.topic.id);
       await openPracticeTest(activeTopic.topic.id, testNumber);
     } catch (cause) {
