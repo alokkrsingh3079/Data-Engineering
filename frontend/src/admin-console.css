@@ -28,6 +28,93 @@
   min-height: 34px;
 }
 
+.adminSqlLearning {
+  display: grid;
+  gap: 12px;
+}
+
+.adminSqlLearning h1,
+.adminSqlLearning h2 {
+  margin: 8px 0 0;
+  color: #e3f0f9;
+}
+
+.adminSqlLearning h2 {
+  margin-top: 20px;
+  font-size: 17px;
+}
+
+.adminSqlLearning>p,
+.adminSqlLearning .opsCard p {
+  color: #91a7ba;
+  line-height: 1.55;
+}
+
+.adminSqlLearningField {
+  display: grid;
+  gap: 6px;
+  color: #a7bdcc;
+  font-size: 12px;
+}
+
+.adminSqlLearningField textarea,
+.adminSqlLearningField input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid #29445b;
+  border-radius: 6px;
+  background: #091724;
+  color: #d7e8f2;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.adminSqlLearningField textarea {
+  min-height: 220px;
+  resize: vertical;
+  tab-size: 2;
+}
+
+.adminSqlLearningActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.adminSqlLearning button {
+  padding: 8px 11px;
+  border: 1px solid #32627a;
+  border-radius: 5px;
+  background: #10283b;
+  color: #c4eaf5;
+  cursor: pointer;
+}
+
+.adminSqlLearning button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.adminSqlLearningReport {
+  padding: 10px;
+  border: 1px solid #326b53;
+  border-radius: 5px;
+  background: #10271f;
+  color: #aee4c5;
+  overflow-wrap: anywhere;
+}
+
+.adminSqlLearningReport.error {
+  border-color: #784443;
+  background: #301c22;
+  color: #f0b5b5;
+}
+
+.adminTableWrap {
+  max-width: 100%;
+  overflow: auto;
+}
+
 @media (max-width: 540px) {
   .adminTop {
     height: auto;

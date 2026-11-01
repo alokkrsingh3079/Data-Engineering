@@ -9,7 +9,9 @@ import {
   generateValidatedSqlLearningQuestions,
   summarizeSqlLearningTopicTests,
   sqlLearningResultsMatch,
-  summarizeSqlLearningTestAttempts
+  summarizeSqlLearningTestAttempts,
+  summarizeSqlLearningActivity,
+  validateSqlLearningCurriculum
 } from "../src/sql-learning.ts";
 
 test("SQL Learning seeds all 24 modules and all listed topics with stable unique IDs", () => {
@@ -20,6 +22,7 @@ test("SQL Learning seeds all 24 modules and all listed topics with stable unique
   const topicIds = sqlLearningModules.flatMap((module) => module.topics.map((topic) => topic.id));
   assert.equal(new Set(moduleIds).size, moduleIds.length);
   assert.equal(new Set(topicIds).size, topicIds.length);
+  assert.deepEqual(validateSqlLearningCurriculum(sqlLearningModules).errors, []);
   assert.ok(sqlLearningModules.every((module) => module.topics.length > 0));
   assert.ok(sqlLearningModules.every((module) => module.topics.every((topic, index) => topic.order === index + 1 && topic.title.trim())));
   assert.equal(sqlLearningModules[2].topics.find((topic) => topic.title === "TRIM().")?.id, "sql-03-trim");
@@ -183,4 +186,33 @@ test("SQL Learning summarizes the latest answer per question without losing skip
     accuracy: 50,
     completed: false
   });
+
+});
+
+test("SQL Learning streak counts distinct consecutive UTC days and accepts a missed current day", () => {
+  const today = new Date("2026-11-01T10:00:00.000Z");
+  assert.deepEqual(summarizeSqlLearningActivity(["2026-10-30", "2026-10-31", "2026-11-01", "2026-11-01"], today), {
+    currentStreak: 3,
+    longestStreak: 3,
+    activeDays: 3
+  });
+  assert.equal(summarizeSqlLearningActivity(["2026-10-31"], today).currentStreak, 1);
+  assert.equal(summarizeSqlLearningActivity(["2026-10-29"], today).currentStreak, 0);
+});
+
+test("SQL Learning curriculum validation rejects duplicate ids, orders, and malformed topics", () => {
+  const valid = [
+    { id: "module-a", title: "Module A", order: 1, topics: [{ id: "topic-a", title: "Topic A", order: 1, difficulty: "beginner" }] },
+    { id: "module-b", title: "Module B", order: 2, topics: [{ id: "topic-b", title: "Topic B", order: 1 }] }
+  ];
+  assert.deepEqual(validateSqlLearningCurriculum(valid).errors, []);
+  assert.equal(validateSqlLearningCurriculum(valid).modules.length, 2);
+  const invalid = structuredClone(valid);
+  invalid[1].topics[0].id = "topic-a";
+  invalid[1].order = 1;
+  const result = validateSqlLearningCurriculum(invalid);
+  assert.equal(result.modules, null);
+  assert.ok(result.errors.some((error) => /unique valid id/.test(error)));
+  assert.ok(result.errors.some((error) => /unique positive order/.test(error)));
+  assert.equal(validateSqlLearningCurriculum([]).modules, null);
 });

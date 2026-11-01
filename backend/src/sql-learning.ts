@@ -199,6 +199,31 @@ interface SqlLearningTest extends Document {
   created_at: Date;
 }
 
+type SqlLearningPlannerTask = {
+  id: string;
+  topicId: string;
+  title: string;
+  targetDate: string | null;
+  status: "planned" | "completed";
+};
+
+type SqlLearningPlanner = {
+  dailyGoalMinutes: number;
+  weeklyStudyDaysGoal: number;
+  tasks: SqlLearningPlannerTask[];
+};
+
+type SqlLearningQuestionDraft = {
+  title: string;
+  difficulty: "beginner" | "intermediate" | "advanced";
+  context: string;
+  task: string;
+  required_output: string;
+  reference_sql: string;
+  hint: string;
+  explanation: string;
+};
+
 interface RevisionItem extends Document {
   user_id: string;
   topic_id: string;
@@ -282,6 +307,87 @@ export function summarizeSqlLearningTestAttempts(
   };
 }
 
+function utcDay(value: unknown): string | null {
+  const date = value instanceof Date ? value : typeof value === "string" ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0, 10) : null;
+}
+
+export function summarizeSqlLearningActivity(activityDays: string[], today = new Date()) {
+  const days = [...new Set(activityDays.filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day)))].sort();
+  const daySet = new Set(days);
+  const todayKey = today.toISOString().slice(0, 10);
+  const yesterday = new Date(today);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  let currentStreak = 0;
+  const anchor = daySet.has(todayKey) ? new Date(todayKey) : daySet.has(yesterday.toISOString().slice(0, 10)) ? yesterday : null;
+  if (anchor) {
+    const cursor = new Date(anchor);
+    while (daySet.has(cursor.toISOString().slice(0, 10))) {
+      currentStreak += 1;
+      cursor.setUTCDate(cursor.getUTCDate() - 1);
+    }
+  }
+  let longestStreak = 0;
+  let run = 0;
+  let previous: Date | null = null;
+  for (const day of days) {
+    const current = new Date(`${day}T00:00:00.000Z`);
+    const consecutive = previous !== null && current.getTime() - previous.getTime() === 86_400_000;
+    run = consecutive ? run + 1 : 1;
+    longestStreak = Math.max(longestStreak, run);
+    previous = current;
+  }
+  return { currentStreak, longestStreak, activeDays: days.length };
+}
+
+export function validateSqlLearningCurriculum(value: unknown): { modules: CurriculumModule[] | null; errors: string[] } {
+  const errors: string[] = [];
+  if (!Array.isArray(value) || value.length < 1 || value.length > 100) {
+    return { modules: null, errors: ["Curriculum must contain between 1 and 100 modules."] };
+  }
+  const moduleIds = new Set<string>();
+  const topicIds = new Set<string>();
+  const moduleOrders = new Set<number>();
+  let topicCount = 0;
+  for (const [moduleIndex, candidate] of value.entries()) {
+    const module = candidate as Partial<CurriculumModule> | null;
+    if (!module || typeof module !== "object" || Array.isArray(module)) {
+      errors.push(`Module ${moduleIndex + 1} must be an object.`);
+      continue;
+    }
+    if (typeof module.id !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/.test(module.id) || moduleIds.has(module.id)) {
+      errors.push(`Module ${moduleIndex + 1} needs a unique valid id.`);
+    } else moduleIds.add(module.id);
+    if (typeof module.title !== "string" || !module.title.trim() || module.title.length > 160) errors.push(`Module ${moduleIndex + 1} needs a title of 1–160 characters.`);
+    if (!Number.isSafeInteger(module.order) || Number(module.order) < 1 || moduleOrders.has(Number(module.order))) {
+      errors.push(`Module ${moduleIndex + 1} needs a unique positive order.`);
+    } else moduleOrders.add(Number(module.order));
+    if (!Array.isArray(module.topics) || module.topics.length > 2000) {
+      errors.push(`Module ${moduleIndex + 1} needs a valid topics array.`);
+      continue;
+    }
+    const topicOrders = new Set<number>();
+    for (const [topicIndex, topicCandidate] of module.topics.entries()) {
+      const topic = topicCandidate as Partial<SqlLearningTopic> | null;
+      topicCount += 1;
+      if (!topic || typeof topic !== "object" || Array.isArray(topic)) {
+        errors.push(`Module ${moduleIndex + 1}, topic ${topicIndex + 1} must be an object.`);
+        continue;
+      }
+      if (typeof topic.id !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/.test(topic.id) || topicIds.has(topic.id)) {
+        errors.push(`Module ${moduleIndex + 1}, topic ${topicIndex + 1} needs a unique valid id.`);
+      } else topicIds.add(topic.id);
+      if (typeof topic.title !== "string" || !topic.title.trim() || topic.title.length > 200) errors.push(`Module ${moduleIndex + 1}, topic ${topicIndex + 1} needs a title of 1–200 characters.`);
+      if (!Number.isSafeInteger(topic.order) || Number(topic.order) < 1 || topicOrders.has(Number(topic.order))) {
+        errors.push(`Module ${moduleIndex + 1}, topic ${topicIndex + 1} needs a unique positive order.`);
+      } else topicOrders.add(Number(topic.order));
+      if (topic.difficulty !== undefined && !["beginner", "intermediate", "advanced"].includes(topic.difficulty)) errors.push(`Module ${moduleIndex + 1}, topic ${topicIndex + 1} has an invalid difficulty.`);
+    }
+  }
+  if (topicCount > 3000) errors.push("Curriculum cannot exceed 3,000 topics.");
+  return errors.length ? { modules: null, errors } : { modules: value as CurriculumModule[], errors: [] };
+}
+
 export function hasSqlLearningTestDifficultyDistribution(
   questions: { difficulty: "beginner" | "intermediate" | "advanced" }[]
 ) {
@@ -324,14 +430,203 @@ export async function seedSqlLearningCurriculum(): Promise<void> {
 }
 
 async function getUserCurriculum(userId: string, includeCustom = true): Promise<CurriculumModule[]> {
-  if (!includeCustom) return sqlLearningModules.map((module) => ({ ...module, topics: module.topics.map((topic) => ({ ...topic })) }));
+  const defaultCurriculum = await getDefaultSqlLearningCurriculum();
+  if (!includeCustom) return defaultCurriculum;
   const personal = await mongoCollection("sql_learning_custom_curricula").findOne({ _id: userId });
   const modules = personal && Array.isArray(personal.modules)
     ? personal.modules as CurriculumModule[]
-    : sqlLearningModules.map((module) => ({ ...module, topics: module.topics.map((topic) => ({ ...topic })) }));
+    : defaultCurriculum;
   return modules
     .map((module) => ({ ...module, topics: [...module.topics].sort((left, right) => left.order - right.order) }))
     .sort((left, right) => left.order - right.order);
+}
+
+async function getDefaultSqlLearningCurriculum(): Promise<CurriculumModule[]> {
+  const saved = await mongoCollection("sql_learning_admin_curriculum").findOne({ _id: "official" }, { projection: { modules: 1 } });
+  const modules = saved && Array.isArray(saved.modules) ? saved.modules as CurriculumModule[] : sqlLearningModules;
+  return modules
+    .map((module) => ({ ...module, topics: [...module.topics].sort((left, right) => left.order - right.order) }))
+    .sort((left, right) => left.order - right.order);
+}
+
+export async function getSqlLearningAdminCurriculum() {
+  const saved = await mongoCollection("sql_learning_admin_curriculum").findOne({ _id: "official" }, { projection: { updated_at: 1 } });
+  const modules = await getDefaultSqlLearningCurriculum();
+  return {
+    modules,
+    updatedAt: saved?.updated_at || null,
+    moduleCount: modules.length,
+    topicCount: modules.reduce((count, module) => count + module.topics.length, 0)
+  };
+}
+
+export async function saveSqlLearningAdminCurriculum(value: unknown) {
+  const validated = validateSqlLearningCurriculum(value);
+  if (!validated.modules) throw new Error(validated.errors.join(" "));
+  const now = new Date();
+  await mongoCollection("sql_learning_admin_curriculum").updateOne(
+    { _id: "official" },
+    { $set: { modules: validated.modules, updated_at: now }, $setOnInsert: { created_at: now } },
+    { upsert: true }
+  );
+  return {
+    modules: validated.modules,
+    updatedAt: now,
+    moduleCount: validated.modules.length,
+    topicCount: validated.modules.reduce((count, module) => count + module.topics.length, 0)
+  };
+}
+
+export async function getSqlLearningPlanner(userId: string): Promise<SqlLearningPlanner> {
+  const saved = await mongoCollection("sql_learning_planners").findOne({ _id: userId }, { projection: { daily_goal_minutes: 1, weekly_study_days_goal: 1, tasks: 1 } });
+  return {
+    dailyGoalMinutes: saved && Number.isSafeInteger(saved.daily_goal_minutes) ? saved.daily_goal_minutes : 30,
+    weeklyStudyDaysGoal: saved && Number.isSafeInteger(saved.weekly_study_days_goal) ? saved.weekly_study_days_goal : 5,
+    tasks: Array.isArray(saved?.tasks) ? saved.tasks as SqlLearningPlannerTask[] : []
+  };
+}
+
+export async function saveSqlLearningPlanner(userId: string, input: {
+  dailyGoalMinutes: number;
+  weeklyStudyDaysGoal: number;
+  tasks: { id?: string; topicId: string; targetDate: string | null; status: "planned" | "completed" }[];
+}) {
+  const curriculum = await getUserCurriculum(userId);
+  const topics = new Map(curriculum.flatMap((module) => module.topics.map((topic) => [topic.id, topic] as const)));
+  const ids = new Set<string>();
+  const tasks: SqlLearningPlannerTask[] = input.tasks.map((task) => {
+    const topic = topics.get(task.topicId);
+    if (!topic) throw new Error(`Unknown SQL Learning topic: ${task.topicId}`);
+    const id = task.id || crypto.randomUUID();
+    if (ids.has(id)) throw new Error("Planner task ids must be unique.");
+    ids.add(id);
+    if (task.targetDate !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(task.targetDate) || utcDay(task.targetDate) !== task.targetDate)) {
+      throw new Error("Planner dates must use a valid YYYY-MM-DD date.");
+    }
+    return { id, topicId: task.topicId, title: topic.title, targetDate: task.targetDate, status: task.status };
+  });
+  const now = new Date();
+  await mongoCollection("sql_learning_planners").updateOne(
+    { _id: userId },
+    {
+      $set: {
+        user_id: userId,
+        daily_goal_minutes: input.dailyGoalMinutes,
+        weekly_study_days_goal: input.weeklyStudyDaysGoal,
+        tasks,
+        updated_at: now
+      },
+      $setOnInsert: { created_at: now }
+    },
+    { upsert: true }
+  );
+  return { dailyGoalMinutes: input.dailyGoalMinutes, weeklyStudyDaysGoal: input.weeklyStudyDaysGoal, tasks };
+}
+
+export async function getSqlLearningAnalytics(userId: string) {
+  const now = new Date();
+  const since = new Date(now.getTime() - 365 * 86_400_000);
+  const [curriculum, progress, scoreRows, attemptDays, recentRevisions] = await Promise.all([
+    getUserCurriculum(userId),
+    mongoCollection<SqlLearningTopicProgress>("sql_learning_topic_progress")
+      .find({ user_id: userId }, { projection: { topic_id: 1, status: 1, last_studied_at: 1 } })
+      .toArray(),
+    mongoCollection("sql_learning_test_attempts").aggregate<{ answered: number; correct: number }>([
+      { $match: { user_id: userId } },
+      { $sort: { test_id: 1, question_id: 1, created_at: -1 } },
+      { $group: { _id: { test_id: "$test_id", question_id: "$question_id" }, correct: { $first: "$correct" } } },
+      { $group: { _id: null, answered: { $sum: 1 }, correct: { $sum: { $cond: ["$correct", 1, 0] } } } }
+    ]).toArray(),
+    mongoCollection("sql_learning_test_attempts").aggregate<{ _id: string; count: number }>([
+      { $match: { user_id: userId } },
+      { $project: { day: { $dateToString: { format: "%Y-%m-%d", date: "$created_at", timezone: "UTC" } } } },
+      { $group: { _id: "$day", count: { $sum: 1 } } }
+    ]).toArray(),
+    mongoCollection("sql_learning_revision_sessions").aggregate<{ _id: string; count: number }>([
+      { $match: { user_id: userId, status: "completed" } },
+      { $project: { day: { $dateToString: { format: "%Y-%m-%d", date: "$completed_at", timezone: "UTC" } } } },
+      { $group: { _id: "$day", count: { $sum: 1 } } }
+    ]).toArray()
+  ]);
+  const progressByTopic = new Map(progress.map((item) => [item.topic_id, item.status]));
+  const modules = curriculum.map((module) => {
+    const completed = module.topics.filter((topic) => progressByTopic.get(topic.id) === "completed").length;
+    return {
+      moduleId: module.id,
+      title: module.title,
+      totalTopics: module.topics.length,
+      completedTopics: completed,
+      completionPercent: module.topics.length ? Math.round(completed / module.topics.length * 100) : 0
+    };
+  });
+  const totalTopics = modules.reduce((total, module) => total + module.totalTopics, 0);
+  const completedTopics = modules.reduce((total, module) => total + module.completedTopics, 0);
+  const score = scoreRows[0] || { answered: 0, correct: 0 };
+  const countsByDay = new Map<string, number>();
+  const activityDays = new Set<string>();
+  for (const { _id, count } of [...attemptDays, ...recentRevisions]) {
+    if (typeof _id !== "string") continue;
+    activityDays.add(_id);
+    if (_id >= since.toISOString().slice(0, 10)) countsByDay.set(_id, (countsByDay.get(_id) || 0) + count);
+  }
+  for (const item of progress) {
+    const day = utcDay(item.last_studied_at);
+    if (day) activityDays.add(day);
+    if (day && day >= since.toISOString().slice(0, 10)) countsByDay.set(day, (countsByDay.get(day) || 0) + 1);
+  }
+  const recentStart = new Date(now);
+  recentStart.setUTCDate(recentStart.getUTCDate() - 29);
+  const firstDay = recentStart.toISOString().slice(0, 10);
+  const dailyActivity = Array.from({ length: 30 }, (_, index) => {
+    const date = new Date(`${firstDay}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + index);
+    const day = date.toISOString().slice(0, 10);
+    return { date: day, activityCount: countsByDay.get(day) || 0 };
+  });
+  const streak = summarizeSqlLearningActivity([...activityDays], now);
+  return {
+    totalModules: modules.length,
+    totalTopics,
+    completedTopics,
+    completionPercent: totalTopics ? Math.round(completedTopics / totalTopics * 100) : 0,
+    accuracy: score.answered ? Math.round(score.correct / score.answered * 100) : null,
+    questionsAnswered: score.answered,
+    correctAnswers: score.correct,
+    ...streak,
+    activeDaysLast30: dailyActivity.filter((day) => day.activityCount > 0).length,
+    activeDaysLast7: dailyActivity.slice(-7).filter((day) => day.activityCount > 0).length,
+    dailyActivity,
+    modules
+  };
+}
+
+export async function validateSqlLearningQuestionBatch(userId: string, databaseId: string, questions: SqlLearningQuestionDraft[]) {
+  if (![15, 30].includes(questions.length) || !hasSqlLearningDifficultyDistribution(questions, questions.length as 15 | 30)) {
+    throw new Error("Question batches must contain 15 or 30 questions split evenly across beginner, intermediate, and advanced.");
+  }
+  const seen = new Set<string>();
+  for (const question of questions) {
+    const normalizedTitle = question.title.trim().toLowerCase();
+    if (!normalizedTitle || seen.has(normalizedTitle)) throw new Error("Question titles must be non-empty and unique.");
+    seen.add(normalizedTitle);
+    if ([question.context, question.task, question.required_output, question.reference_sql, question.hint, question.explanation].some((field) => !field.trim())) {
+      throw new Error("Every question must include context, task, output, SQL, hint, and explanation.");
+    }
+  }
+  const validated = [];
+  for (const [index, question] of questions.entries()) {
+    const result = await runSqlLearningQuery(userId, databaseId, question.reference_sql);
+    if (result.status === "not_found") throw new Error("SQL Lab workspace not found or not owned by the administrator.");
+    validated.push({
+      index: index + 1,
+      title: question.title,
+      difficulty: question.difficulty,
+      columns: result.result.columns,
+      rowCount: result.result.rowCount,
+      executionMs: result.result.executionMs
+    });
+  }
+  return { valid: true as const, questionCount: validated.length, validated };
 }
 
 function checklistSummary(checklist: Partial<SqlLearningChecklist> = {}) {
@@ -392,7 +687,8 @@ export async function getSqlLearningDashboard(userId: string, useCustom = false)
       completedTopics,
       inProgressTopics,
       remainingTopics: topicCount - completedTopics,
-      completionPercent: topicCount ? Math.round(completedTopics / topicCount * 100) : 0
+      completionPercent: topicCount ? Math.round(completedTopics / topicCount * 100) : 0,
+      topics: module.topics.map((topic) => ({ id: topic.id, title: topic.title, order: topic.order }))
     };
   });
   const totalTopics = dashboardModules.reduce((count, module) => count + module.topicCount, 0);
@@ -1269,7 +1565,7 @@ export async function createSqlLearningCustomCurriculum(userId: string) {
   const collection = mongoCollection("sql_learning_custom_curricula");
   let personal = await collection.findOne({ _id: userId });
   if (!personal) {
-    const modules = JSON.parse(JSON.stringify(await mongoCollection<SqlLearningModule>("sql_learning_modules").find().sort({ order: 1 }).toArray()));
+    const modules = JSON.parse(JSON.stringify(await getDefaultSqlLearningCurriculum()));
     await collection.insertOne({ _id: userId, user_id: userId, modules, created_at: new Date(), updated_at: new Date() });
     personal = await collection.findOne({ _id: userId });
   }

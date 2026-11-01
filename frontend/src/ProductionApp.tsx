@@ -127,6 +127,13 @@ export function AdminApp() {
     [audit, setAudit] = useState<any[]>([]),
     [tab, setTab] = useState("overview"),
     [msg, setMsg] = useState("");
+  const [sqlCurriculumText, setSqlCurriculumText] = useState("");
+  const [sqlCurriculumStats, setSqlCurriculumStats] = useState<{ moduleCount: number; topicCount: number; updatedAt?: string | null } | null>(null);
+  const [sqlCurriculumReport, setSqlCurriculumReport] = useState("");
+  const [sqlQuestionWorkspaceId, setSqlQuestionWorkspaceId] = useState("");
+  const [sqlQuestionBatchText, setSqlQuestionBatchText] = useState("");
+  const [sqlQuestionReport, setSqlQuestionReport] = useState<any>(null);
+  const [sqlAdminBusy, setSqlAdminBusy] = useState(false);
   async function load() {
     const h = {};
     const [m, u, q, a] = await Promise.all([
@@ -158,6 +165,90 @@ export function AdminApp() {
     setMsg(r.ok ? "Review saved" : "Review failed");
     load();
   }
+  async function loadSqlLearningCurriculum() {
+    setSqlAdminBusy(true);
+    setMsg("");
+    try {
+      const response = await fetch(API + "/api/admin/sql-learning/curriculum", { credentials: "include" });
+      if (response.status === 401 || response.status === 403) {
+        location.href = "/login";
+        return;
+      }
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Curriculum could not be loaded.");
+      setSqlCurriculumText(JSON.stringify(data.modules, null, 2));
+      setSqlCurriculumStats(data);
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : "SQL Learning curriculum could not be loaded.");
+    } finally {
+      setSqlAdminBusy(false);
+    }
+  }
+  async function validateSqlLearningCurriculum() {
+    setSqlAdminBusy(true);
+    setSqlCurriculumReport("");
+    try {
+      const modules = JSON.parse(sqlCurriculumText);
+      const response = await fetch(API + "/api/admin/sql-learning/curriculum/validate", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modules })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.errors?.join(" ") || data?.error || "Curriculum validation failed.");
+      setSqlCurriculumReport(`Valid curriculum: ${data.moduleCount} modules, ${data.topicCount} topics.`);
+    } catch (error) {
+      setSqlCurriculumReport(error instanceof Error ? error.message : "Curriculum validation failed.");
+    } finally {
+      setSqlAdminBusy(false);
+    }
+  }
+  async function publishSqlLearningCurriculum() {
+    setSqlAdminBusy(true);
+    setMsg("");
+    setSqlCurriculumReport("");
+    try {
+      const modules = JSON.parse(sqlCurriculumText);
+      const response = await fetch(API + "/api/admin/sql-learning/curriculum", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modules })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Curriculum could not be published.");
+      setSqlCurriculumText(JSON.stringify(data.modules, null, 2));
+      setSqlCurriculumStats(data);
+      setMsg(`Official SQL Learning curriculum published: ${data.moduleCount} modules, ${data.topicCount} topics.`);
+    } catch (error) {
+      setSqlCurriculumReport(error instanceof Error ? error.message : "Curriculum could not be published.");
+    } finally {
+      setSqlAdminBusy(false);
+    }
+  }
+  async function validateSqlLearningQuestions() {
+    setSqlAdminBusy(true);
+    setSqlQuestionReport(null);
+    setMsg("");
+    try {
+      const questions = JSON.parse(sqlQuestionBatchText);
+      const response = await fetch(API + "/api/admin/sql-learning/validate-questions", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ databaseId: sqlQuestionWorkspaceId, questions })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Question validation failed.");
+      setSqlQuestionReport(data);
+      setMsg(`Validated ${data.questionCount} questions against the selected PostgreSQL workspace.`);
+    } catch (error) {
+      setSqlQuestionReport({ error: error instanceof Error ? error.message : "Question validation failed." });
+    } finally {
+      setSqlAdminBusy(false);
+    }
+  }
   return (
     <div className="adminPage">
       <header className="adminTop">
@@ -186,11 +277,15 @@ export function AdminApp() {
             ["overview", BarChart3, "Overview"],
             ["users", Users, "Users"],
             ["questions", BookOpen, "Questions"],
+            ["sql-learning", BookOpen, "SQL Learning"],
             ["audit", ClipboardList, "Audit log"],
           ].map(([k, I, l]: any) => (
             <button
               className={tab === k ? "active" : ""}
-              onClick={() => setTab(k)}
+              onClick={() => {
+                setTab(k);
+                if (k === "sql-learning") void loadSqlLearningCurriculum();
+              }}
               key={k}
             >
               <I size={16} />
@@ -297,6 +392,34 @@ export function AdminApp() {
                 </tbody>
               </table>
             </>
+          )}
+          {tab === "sql-learning" && (
+            <section className="adminSqlLearning">
+              <h1>SQL Learning administration</h1>
+              <p>Manage the official curriculum and validate assessment batches with the read-only PostgreSQL practice runner. Curriculum edits preserve learner progress because progress is keyed by topic id.</p>
+              <article className="opsCard">
+                <div>
+                  <b>Official curriculum</b>
+                  <p>{sqlCurriculumStats ? `${sqlCurriculumStats.moduleCount} modules · ${sqlCurriculumStats.topicCount} topics${sqlCurriculumStats.updatedAt ? ` · updated ${new Date(sqlCurriculumStats.updatedAt).toLocaleString()}` : " · using the shipped curriculum"}` : "Load the official curriculum before editing."}</p>
+                </div>
+                <button disabled={sqlAdminBusy} onClick={() => void loadSqlLearningCurriculum()}>Reload curriculum</button>
+              </article>
+              <label className="adminSqlLearningField">Curriculum JSON<textarea value={sqlCurriculumText} onChange={(event) => setSqlCurriculumText(event.target.value)} rows={18} spellCheck={false} aria-label="Official SQL Learning curriculum JSON" /></label>
+              <div className="adminSqlLearningActions">
+                <button disabled={sqlAdminBusy || !sqlCurriculumText.trim()} onClick={() => void validateSqlLearningCurriculum()}>Validate curriculum</button>
+                <button disabled={sqlAdminBusy || !sqlCurriculumText.trim()} onClick={() => void publishSqlLearningCurriculum()}>Publish official curriculum</button>
+              </div>
+              {sqlCurriculumReport && <p className="adminSqlLearningReport" role="status">{sqlCurriculumReport}</p>}
+              <h2>Assessment question validation</h2>
+              <p>Paste a 15-question practice-test or 30-question assessment batch. Every reference query is executed in the selected workspace before the batch is marked valid.</p>
+              <label className="adminSqlLearningField">Your SQL Lab workspace ID<input value={sqlQuestionWorkspaceId} onChange={(event) => setSqlQuestionWorkspaceId(event.target.value)} placeholder="Workspace UUID" /></label>
+              <label className="adminSqlLearningField">Question batch JSON<textarea value={sqlQuestionBatchText} onChange={(event) => setSqlQuestionBatchText(event.target.value)} rows={12} spellCheck={false} placeholder='[{"title":"...","difficulty":"beginner","context":"...","task":"...","required_output":"...","reference_sql":"SELECT ...","hint":"...","explanation":"..."}]' /></label>
+              <button disabled={sqlAdminBusy || !sqlQuestionWorkspaceId.trim() || !sqlQuestionBatchText.trim()} onClick={() => void validateSqlLearningQuestions()}>{sqlAdminBusy ? "Validating…" : "Validate and execute question batch"}</button>
+              {sqlQuestionReport?.error && <p className="adminSqlLearningReport error" role="alert">{sqlQuestionReport.error}</p>}
+              {sqlQuestionReport?.validated && <div className="adminTableWrap"><table className="adminTable"><thead><tr><th>#</th><th>Title</th><th>Difficulty</th><th>Output columns</th><th>Rows</th><th>Execution</th></tr></thead><tbody>
+                {sqlQuestionReport.validated.map((question: any) => <tr key={question.index}><td>{question.index}</td><td>{question.title}</td><td>{question.difficulty}</td><td>{question.columns.join(", ") || "No columns"}</td><td>{question.rowCount}</td><td>{question.executionMs} ms</td></tr>)}
+              </tbody></table></div>}
+            </section>
           )}
           {tab === "audit" && (
             <>

@@ -114,6 +114,40 @@
 .sqlSchemaRelationships{margin-top:12px;padding:10px;border:1px solid #233d52;border-radius:6px;background:#091724}
 .sqlSchemaRelationships>strong{color:#c4d9e5;font-size:10px}
 .sqlSchemaRelationships ul{margin-top:8px}
+.sqlProgressPlanner{padding:16px;border:1px solid #1e3c55;border-radius:8px;background:#0b1927}
+.sqlProgressMetrics{margin:14px 0}
+.sqlAnalyticsActivity,.sqlAnalyticsModules,.sqlPlanner{margin-top:14px;padding:14px;border:1px solid #203c53;border-radius:7px;background:#0e1e2d}
+.sqlAnalyticsActivity h3,.sqlAnalyticsModules h3,.sqlPlanner h3{margin:0 0 11px;color:#d9eaf4;font-size:14px}
+.sqlAnalyticsActivity h3 small{margin-left:8px;color:#829daf;font-size:10px;font-weight:400}
+.sqlActivityGrid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:5px}
+.sqlActivityGrid>span,.sqlActivityLegend i{aspect-ratio:1;border:1px solid #254158;border-radius:3px;background:#102234}
+.sqlActivityGrid>span.level-1,.sqlActivityLegend i.level-1{border-color:#286052;background:#164436}
+.sqlActivityGrid>span.level-2,.sqlActivityLegend i.level-2{border-color:#31826a;background:#1a624a}
+.sqlActivityGrid>span.level-3,.sqlActivityLegend i.level-3{border-color:#3ca181;background:#288363}
+.sqlActivityGrid>span.level-4,.sqlActivityLegend i.level-4{border-color:#63c69e;background:#43a77d}
+.sqlActivityLegend{display:flex;align-items:center;justify-content:flex-end;gap:5px;margin-top:8px;color:#819bad;font-size:9px}
+.sqlActivityLegend i{width:11px}
+.sqlAnalyticsModules>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.sqlAnalyticsModules article{display:grid;gap:7px;padding:10px;border:1px solid #233d52;border-radius:6px;background:#091724}
+.sqlAnalyticsModules article>div:first-child{display:flex;justify-content:space-between;gap:8px}
+.sqlAnalyticsModules strong{color:#c9dce8;font-size:10px}
+.sqlAnalyticsModules small{color:#819bad;font-size:9px;white-space:nowrap}
+.sqlPlannerHeading p,.sqlPlannerCompleted{margin:0 0 10px;color:#91aabd;font-size:11px;line-height:1.5}
+.sqlPlannerGoals,.sqlPlannerAdd{display:flex;align-items:flex-end;flex-wrap:wrap;gap:9px;margin:12px 0}
+.sqlPlannerGoals label,.sqlPlannerAdd label{display:grid;gap:5px;color:#91aabd;font-size:10px}
+.sqlPlannerGoals input,.sqlPlannerAdd input,.sqlPlannerAdd select{min-width:160px;padding:8px;border:1px solid #29445b;border-radius:5px;background:#091724;color:#d4e4ee;font:inherit}
+.sqlPlannerGoals button,.sqlPlannerAdd button,.sqlPlannerTasks article>button{padding:8px 10px;border:1px solid #2a5974;border-radius:5px;background:#102a40;color:#c4eaf5;cursor:pointer}
+.sqlPlannerGoals button:disabled,.sqlPlannerAdd button:disabled,.sqlPlannerTasks button:disabled{opacity:.55;cursor:not-allowed}
+.sqlPlannerTasks{display:grid;gap:7px}
+.sqlPlannerTasks article{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid #233d52;border-radius:6px;background:#091724}
+.sqlPlannerTasks article>label{display:flex;align-items:flex-start;gap:9px}
+.sqlPlannerTasks article>label>input{margin-top:3px}
+.sqlPlannerTasks article span{display:grid;gap:4px}
+.sqlPlannerTasks strong{color:#c9dce8;font-size:11px}
+.sqlPlannerTasks small{color:#819bad;font-size:10px}
+.sqlPlannerTasks article>button{padding:5px 8px;font-size:10px}
+.sqlPlannerMessage{margin:8px 0;color:#9be0c1;font-size:11px}
+.sqlPlannerCompleted{margin-top:10px}
 .sqlTestCards article>span{color:#62c7df;font-weight:700;letter-spacing:.1em}
 .sqlPracticeTests>div:first-child{margin-bottom:14px}
 .sqlTestCards button{justify-content:center}
@@ -155,6 +189,7 @@
 .sqlTopicTitle svg{color:#6c94a9}
 @media(max-width:650px){.sqlTopicDetailHeading,.sqlExampleHeading,.sqlTestHeading{align-items:flex-start;flex-direction:column}.sqlTopicDetailHeading>a{align-self:flex-start}.sqlLessonColumns{grid-template-columns:1fr}.sqlLearningNotice{flex-wrap:wrap}.sqlLearningNotice p{flex:1 1 calc(100% - 35px)}.sqlLearningNotice>button{margin-left:26px}}
 @media(max-width:650px){.sqlRevisionAnalyticsMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.sqlAnalyticsModules>div{grid-template-columns:1fr}.sqlPlannerGoals,.sqlPlannerAdd{align-items:stretch;flex-direction:column}.sqlPlannerGoals label,.sqlPlannerAdd label,.sqlPlannerGoals input,.sqlPlannerAdd input,.sqlPlannerAdd select{width:100%;box-sizing:border-box}.sqlPlannerTasks article{align-items:flex-start}.sqlProgressPlanner .sqlLearningMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .sqlLearningHeaderActions,.sqlCurriculumActions,.sqlModuleActions,.sqlTopicFilters,.sqlAddTopicForm,.sqlRevisionSchedule,.sqlTopicActions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .sqlLearningHeaderActions{justify-content:flex-end}
 .sqlLearningHeaderActions button,.sqlCurriculumActions button,.sqlModuleActions button,.sqlAddTopicForm button,.sqlRevisionSchedule button,.sqlTopicActions button,.sqlChecklistHeading button,.sqlCustomLessonEditor button,.sqlPersonalNotes button,.sqlTopicTutor button,.sqlCustomModuleTitle button,.sqlTopicProgress>button{padding:8px 10px;border:1px solid #2a5974;border-radius:5px;background:#102a40;color:#c4eaf5;cursor:pointer}

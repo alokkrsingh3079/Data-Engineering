@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Clock3, Eye, Layers3, Lightbulb, Play, Search, Send, Sparkles } from "lucide-react";
@@ -35,6 +35,7 @@ type DashboardModule = {
   remainingTopics: number;
   completionPercent: number;
   archived?: boolean;
+  topics?: { id: string; title: string; order: number }[];
 };
 type Dashboard = {
   totalModules: number;
@@ -77,6 +78,9 @@ type SchemaColumn = { column_name: string; data_type: string; is_nullable?: "YES
 type SchemaRelationship = { constraint_name: string; table_name: string; column_name: string; foreign_table_name: string; foreign_column_name: string };
 type TopicDetail = { module: { id: string; title: string; order: number }; topic: Topic; progress: { checklist: Record<ChecklistKey, boolean>; theoryPercent: number; examplesPercent: number; practicePercent: number; overallPercent: number; status: TopicStatus; firstStudiedAt: string | null; firstCompletedAt: string | null; lastStudiedAt: string | null }; revision: { status: string; priority: string; reason: string; notes: string; nextRevisionAt: string | null; revisionCount: number } | null; personalNote: string; bookmarked: boolean; practiceDatabaseId: string | null; practiceDatabaseName: string | null; schema: { schemaName: string; tables: { name: string; columns: SchemaColumn[] }[]; relationships: SchemaRelationship[] } | null; samples: { name: string; schemaColumns: SchemaColumn[]; preview: SqlResult }[]; content: LessonContent | null; tests: { id: string; testNumber: number; questionCount: number; status: string }[] };
 type RevisionCenterData = { intervals: number[]; totalTopics: number; highPriority: number; mediumPriority: number; lowPriority: number; completedSessions: number; masteredTopics: number; weakTopics: number; dueTopics: number; analytics: { sessionsAnalyzed: number; averageScoreImprovement: number | null; improvedSessions: number; declinedSessions: number }; recommendations: { topicId: string; topicTitle: string; moduleTitle: string; reason: string; priority: string; lastScore: number | null; nextRevisionAt: string | null }[]; recentSessions: { topicId: string; topicTitle: string; completedAt: string; scoreBefore: number | null; scoreAfter: number | null; accuracyImprovement: number | null }[]; revisions: { topicId: string; topicTitle: string; moduleId: string; moduleTitle: string; status: string; priority: string; reason: string; notes: string; revisionCount: number; nextRevisionAt: string | null; lastScore: number | null }[] };
+type SqlLearningAnalytics = { totalModules: number; totalTopics: number; completedTopics: number; completionPercent: number; accuracy: number | null; questionsAnswered: number; correctAnswers: number; currentStreak: number; longestStreak: number; activeDays: number; activeDaysLast30: number; activeDaysLast7: number; dailyActivity: { date: string; activityCount: number }[]; modules: { moduleId: string; title: string; totalTopics: number; completedTopics: number; completionPercent: number }[] };
+type PlannerTask = { id: string; topicId: string; title: string; targetDate: string | null; status: "planned" | "completed" };
+type PlannerData = { dailyGoalMinutes: number; weeklyStudyDaysGoal: number; tasks: PlannerTask[] };
 
 const API = "";
 const statusLabels: Record<TopicStatus, string> = {
@@ -103,8 +107,10 @@ export default function SQLLearning() {
   const [activeModule, setActiveModule] = useState<LearningModule | null>(null);
   const [activeTopic, setActiveTopic] = useState<TopicDetail | null>(null);
   const [activeTest, setActiveTest] = useState<PracticeTest | null>(null);
-  const [activePage, setActivePage] = useState<"curriculum" | "revisions">("curriculum");
+  const [activePage, setActivePage] = useState<"curriculum" | "revisions" | "analytics">("curriculum");
   const [revisionData, setRevisionData] = useState<RevisionCenterData | null>(null);
+  const [analyticsData, setAnalyticsData] = useState<SqlLearningAnalytics | null>(null);
+  const [plannerData, setPlannerData] = useState<PlannerData | null>(null);
   const [revisionFilter, setRevisionFilter] = useState("all");
   const [revisionIntervalsDraft, setRevisionIntervalsDraft] = useState("1, 3, 7, 14, 30");
   const [revisionSessionId, setRevisionSessionId] = useState("");
@@ -392,6 +398,42 @@ export default function SQLLearning() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Revision center could not be loaded.");
     }
+  }
+
+  async function loadLearningPlanner() {
+    try {
+      const [analyticsResponse, plannerResponse] = await Promise.all([
+        fetch(`${API}/api/sql-learning/analytics`, { credentials: "include" }),
+        fetch(`${API}/api/sql-learning/planner`, { credentials: "include" })
+      ]);
+      const [analytics, planner] = await Promise.all([
+        readResponse<SqlLearningAnalytics>(analyticsResponse),
+        readResponse<PlannerData>(plannerResponse)
+      ]);
+      setAnalyticsData(analytics);
+      setPlannerData(planner);
+      setActivePage("analytics");
+      setActiveModule(null);
+      setActiveTopic(null);
+      setActiveTest(null);
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Learning analytics could not be loaded.");
+    }
+  }
+
+  async function saveLearningPlanner(planner: Omit<PlannerData, "tasks"> & {
+    tasks: { id?: string; topicId: string; targetDate: string | null; status: "planned" | "completed" }[];
+  }): Promise<PlannerData> {
+    const response = await fetch(`${API}/api/sql-learning/planner`, {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(planner)
+    });
+    const saved = await readResponse<PlannerData>(response);
+    setPlannerData(saved);
+    return saved;
   }
 
   async function saveRevisionIntervals() {
@@ -798,6 +840,7 @@ export default function SQLLearning() {
           <p>Work through the 24-module PostgreSQL-first SQL curriculum and track your own progress.</p>
         </div>
         <div className="sqlLearningHeaderActions">
+          <button type="button" onClick={() => void loadLearningPlanner()}>Progress &amp; planner</button>
           <button type="button" onClick={() => void loadRevisionCenter()}>Revision Center</button>
           <button type="button" onClick={() => { setActivePage("curriculum"); setActiveModule(null); setActiveTopic(null); }}>Curriculum</button>
           <a href="/sql"><Layers3 size={15} /> Open SQL Lab <ArrowRight size={14} /></a>
@@ -806,7 +849,12 @@ export default function SQLLearning() {
 
       {error && <p className="sqlLearningError" role="alert">{error}</p>}
 
-      {activePage === "revisions" ? <>
+      {activePage === "analytics" ? <SqlLearningProgressPage
+        analytics={analyticsData}
+        planner={plannerData}
+        topics={(dashboard?.modules || []).flatMap((module) => (module.topics || []).map((topic) => ({ ...topic, moduleTitle: module.title })))}
+        onSave={saveLearningPlanner}
+      /> : activePage === "revisions" ? <>
         <section className="sqlRevisionCenter">
           <div className="sqlModulesHeading"><div><h2>Revision Center</h2><p>Review saved topics and retain each completed revision session.</p></div></div>
           <section className="sqlLearningMetrics sqlRevisionMetrics">
@@ -1069,6 +1117,111 @@ export default function SQLLearning() {
       </>}
     </main>
   </div>;
+}
+
+function SqlLearningProgressPage({ analytics, planner, topics, onSave }: {
+  analytics: SqlLearningAnalytics | null;
+  planner: PlannerData | null;
+  topics: { id: string; title: string; order: number; moduleTitle: string }[];
+  onSave: (planner: { dailyGoalMinutes: number; weeklyStudyDaysGoal: number; tasks: { id?: string; topicId: string; targetDate: string | null; status: "planned" | "completed" }[] }) => Promise<PlannerData>;
+}) {
+  const [dailyGoalMinutes, setDailyGoalMinutes] = useState(30);
+  const [weeklyStudyDaysGoal, setWeeklyStudyDaysGoal] = useState(5);
+  const [tasks, setTasks] = useState<PlannerTask[]>([]);
+  const [topicId, setTopicId] = useState("");
+  const [targetDate, setTargetDate] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!planner) return;
+    setDailyGoalMinutes(planner.dailyGoalMinutes);
+    setWeeklyStudyDaysGoal(planner.weeklyStudyDaysGoal);
+    setTasks(planner.tasks);
+  }, [planner]);
+
+  async function persist(nextTasks = tasks) {
+    setSaving(true);
+    setMessage("");
+    try {
+      const saved = await onSave({
+        dailyGoalMinutes,
+        weeklyStudyDaysGoal,
+        tasks: nextTasks.map(({ id, topicId: plannedTopicId, targetDate: plannedDate, status }) => ({
+          id,
+          topicId: plannedTopicId,
+          targetDate: plannedDate,
+          status
+        }))
+      });
+      setTasks(saved.tasks);
+      setMessage("Planner saved.");
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Planner could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function addTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!topicId) return;
+    const next = [...tasks, { topicId, title: topics.find((topic) => topic.id === topicId)?.title || "SQL topic", targetDate: targetDate || null, status: "planned" as const, id: crypto.randomUUID() }];
+    setTasks(next);
+    void persist(next);
+    setTargetDate("");
+  }
+
+  const topicModules = new Map(topics.map((topic) => [topic.id, topic.moduleTitle]));
+  const dueTasks = tasks.filter((task) => task.status === "planned").sort((left, right) => (left.targetDate || "9999").localeCompare(right.targetDate || "9999"));
+  const todayKey = new Date().toISOString().slice(0, 10);
+  return <section className="sqlProgressPlanner">
+    <div className="sqlModulesHeading"><div><h2>Progress, analytics &amp; learning planner</h2><p>Review saved SQL Learning activity and plan the next study sessions.</p></div></div>
+    {!analytics || !planner ? <p className="sqlLearningLoading">Loading your learning record…</p> : <>
+      <div className="sqlLearningMetrics sqlProgressMetrics">
+        <article><span>CURRICULUM COMPLETE</span><strong>{analytics.completionPercent}%</strong><small>{analytics.completedTopics} of {analytics.totalTopics} topics</small></article>
+        <article><span>ANSWER ACCURACY</span><strong>{analytics.accuracy === null ? "—" : `${analytics.accuracy}%`}</strong><small>{analytics.correctAnswers} correct of {analytics.questionsAnswered} latest answers</small></article>
+        <article><span>LEARNING STREAK</span><strong>{analytics.currentStreak} days</strong><small>Longest: {analytics.longestStreak} days</small></article>
+        <article><span>ACTIVE DAYS</span><strong>{analytics.activeDaysLast30} / 30</strong><small>{analytics.activeDays} tracked days all time</small></article>
+      </div>
+      <section className="sqlAnalyticsActivity">
+        <h3>Daily activity <small>Last 30 days · UTC</small></h3>
+        <div className="sqlActivityGrid" role="list" aria-label="Daily SQL Learning activity for the last 30 days">
+          {analytics.dailyActivity.map((day) => <span role="listitem" key={day.date} title={`${day.date}: ${day.activityCount} learning activities`} aria-label={`${day.date}: ${day.activityCount} activities`} className={day.activityCount ? `level-${Math.min(4, day.activityCount)}` : ""} />)}
+        </div>
+        <div className="sqlActivityLegend"><span>Less</span>{[0, 1, 2, 3, 4].map((level) => <i key={level} className={level ? `level-${level}` : ""} />)}<span>More</span></div>
+      </section>
+      <section className="sqlAnalyticsModules">
+        <h3>Module completion</h3>
+        <div>{analytics.modules.map((module) => <article key={module.moduleId}>
+          <div><strong>{module.title}</strong><small>{module.completedTopics}/{module.totalTopics} topics · {module.completionPercent}%</small></div>
+          <div className="sqlProgressTrack" role="progressbar" aria-label={`${module.title} completion`} aria-valuenow={module.completionPercent} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${module.completionPercent}%` }} /></div>
+        </article>)}</div>
+      </section>
+      <section className="sqlPlanner">
+        <div className="sqlPlannerHeading"><div><h3>Learning planner</h3><p>Set a realistic goal and schedule topics. Planner entries are private to your account.</p></div></div>
+        <div className="sqlPlannerGoals">
+          <label>Daily goal (minutes)<input type="number" min={5} max={480} value={dailyGoalMinutes} onChange={(event) => setDailyGoalMinutes(Number(event.target.value))} /></label>
+          <label>Study days per week<input type="number" min={1} max={7} value={weeklyStudyDaysGoal} onChange={(event) => setWeeklyStudyDaysGoal(Number(event.target.value))} /></label>
+          <button type="button" disabled={saving || dailyGoalMinutes < 5 || dailyGoalMinutes > 480 || weeklyStudyDaysGoal < 1 || weeklyStudyDaysGoal > 7} onClick={() => void persist()}>Save goals</button>
+          <small>{analytics.activeDaysLast7} of {weeklyStudyDaysGoal} weekly study days active</small>
+        </div>
+        <form className="sqlPlannerAdd" onSubmit={addTask}>
+          <label>Topic<select value={topicId} onChange={(event) => setTopicId(event.target.value)} required><option value="">Select a topic</option>{topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.moduleTitle} · {topic.title}</option>)}</select></label>
+          <label>Target date<input type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} /></label>
+          <button type="submit" disabled={saving || !topicId}>Add to plan</button>
+        </form>
+        {message && <p className="sqlPlannerMessage" role="status">{message}</p>}
+        {!dueTasks.length ? <p className="sqlLearningEmpty">Your plan is clear. Add a topic when you’re ready to schedule study time.</p> : <div className="sqlPlannerTasks">
+          {dueTasks.map((task) => <article key={task.id}>
+            <label><input type="checkbox" checked={false} disabled={saving} onChange={() => void persist(tasks.map((item) => item.id === task.id ? { ...item, status: "completed" } : item))} /><span><strong>{task.title}</strong><small>{topicModules.get(task.topicId) || "SQL Learning"}{task.targetDate ? ` · Due ${task.targetDate}` : " · No target date"}{task.targetDate && task.targetDate < todayKey ? " · Overdue" : ""}</small></span></label>
+            <button type="button" disabled={saving} onClick={() => void persist(tasks.filter((item) => item.id !== task.id))}>Remove</button>
+          </article>)}
+        </div>}
+        {!!tasks.filter((task) => task.status === "completed").length && <p className="sqlPlannerCompleted">{tasks.filter((task) => task.status === "completed").length} planned topics completed</p>}
+      </section>
+    </>}
+  </section>;
 }
 
 function SqlPracticeWorkspaceContext({ topic }: { topic: TopicDetail }) {
