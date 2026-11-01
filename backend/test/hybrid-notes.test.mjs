@@ -66,8 +66,24 @@ test('note reader outlines sections without listing their subsections', () => {
     'What is a DataFrame?',
   ]);
   assert.deepEqual(noteHeadings('# Overview\n### Details').map(({ title }) => title), [
-    'Overview',
     'Details',
+  ]);
+  assert.deepEqual(noteHeadings([
+    '# Notes',
+    '## 1. **Volume**: Amount of generated data.',
+    '## 2. **Velocity**: Speed of data processing.',
+    '## 3. **Variety**: Data types.',
+    '## The 3 Vs of Big Data',
+    '### Examples',
+    '## What is Hadoop?',
+    '### Origin of Hadoop',
+    '#### History details',
+    '```sql',
+    '# Not a note heading',
+    '```',
+  ].join('\n')).map(({ title }) => title), [
+    'The 3 Vs of Big Data',
+    'What is Hadoop?',
   ]);
 });
 
@@ -80,6 +96,9 @@ test('hybrid note prompt scopes generation to one user-selected section and warn
   assert.match(hybridNoteAssistSystemPrompt, /do not create a SparkSession unless the user explicitly requests a standalone application/);
   assert.match(hybridNoteAssistSystemPrompt, /Illustrative expected output \(not executed\)/);
   assert.match(hybridNoteAssistSystemPrompt, /Do not invent citations or claim code was executed/);
+  assert.match(hybridNoteAssistSystemPrompt, /never use H1 or H2 within the section/);
+  assert.match(aiSource, /major table-of-contents sections use H2, and supporting details use H3 or deeper/);
+  assert.match(aiSource, /Keep numbered list items and bold lead-in labels as list items or paragraphs, never headings/);
 });
 
 test('hybrid voice transcription accepts valid bounded audio JSON and rejects mismatched or oversized payloads', () => {

@@ -500,9 +500,9 @@ export default function NotesStudio() {
         while (lineIndex < lines.length) {
           const line = lines[lineIndex].trim();
           if (!line) { lineIndex++; continue; }
-          const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+          const heading = /^(#{1,6})\s+(.+)$/.exec(line);
           if (heading) {
-            const Tag = `h${heading[1].length}` as "h1" | "h2" | "h3";
+            const Tag = `h${heading[1].length}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
             const id = heading[2].toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
             elements.push(<Tag id={id} key={lineIndex}>{heading[2]}</Tag>);
             lineIndex++;
@@ -540,7 +540,7 @@ export default function NotesStudio() {
           }
           const paragraph = [line];
           lineIndex++;
-          while (lineIndex < lines.length && lines[lineIndex].trim() && !/^(#{1,3})\s+|^[-*]\s|^\d+[.)]\s|^>|^\|.*\|$/.test(lines[lineIndex].trim())) paragraph.push(lines[lineIndex++].trim());
+          while (lineIndex < lines.length && lines[lineIndex].trim() && !/^(#{1,6})\s+|^[-*]\s|^\d+[.)]\s|^>|^\|.*\|$/.test(lines[lineIndex].trim())) paragraph.push(lines[lineIndex++].trim());
           elements.push(<p key={lineIndex}>{renderLine(paragraph.join(" "))}</p>);
         }
         return elements;

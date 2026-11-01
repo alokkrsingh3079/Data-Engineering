@@ -110,9 +110,9 @@ function MarkdownPreview({ content, onCopyError, onCopySuccess }: { content: str
       nodes.push(<div className="hybridPreviewCode" key={`code-${index}`}><div><span>{language}</span><button type="button" aria-label="Copy code" onClick={() => void Promise.resolve().then(() => navigator.clipboard.writeText(code.join("\n"))).then(onCopySuccess).catch(() => onCopyError("Clipboard access was denied. Select and copy the code manually."))}><Copy size={13} />Copy</button></div><CodeMirror value={code.join("\n")} extensions={codeExtensions(languages.includes(language) ? language : "plaintext")} theme={oneDark} editable={false} basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false }} /></div>);
       continue;
     }
-    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
     if (heading) {
-      const Tag = `h${heading[1].length}` as "h1" | "h2" | "h3";
+      const Tag = `h${heading[1].length}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
       nodes.push(<Tag key={`heading-${index}`}>{renderInlineNoteMarkdown(heading[2])}</Tag>);
       index++;
       continue;
@@ -146,7 +146,7 @@ function MarkdownPreview({ content, onCopyError, onCopySuccess }: { content: str
     }
     const paragraph = [line];
     index++;
-    while (index < lines.length && lines[index].trim() && !/^(#{1,3})\s+|^[-*]\s|^\d+[.)]\s|^>|^\|.*\|$|^`{3,}|^~{3,}/.test(lines[index].trim())) paragraph.push(lines[index++].trim());
+    while (index < lines.length && lines[index].trim() && !/^(#{1,6})\s+|^[-*]\s|^\d+[.)]\s|^>|^\|.*\|$|^`{3,}|^~{3,}/.test(lines[index].trim())) paragraph.push(lines[index++].trim());
     nodes.push(<p key={`paragraph-${index}`}>{renderInlineNoteMarkdown(paragraph.join(" "))}</p>);
   }
   return <div className="hybridPreviewContent">{nodes.length ? nodes : <p className="hybridPreviewEmpty">Your note preview will appear here.</p>}</div>;
