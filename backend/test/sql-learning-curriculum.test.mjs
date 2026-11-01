@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { sqlLearningModules } from "../src/sql-learning-curriculum.ts";
 import {
   hideSqlLearningQuestionSolution,
+  getSqlLearningTopicScope,
   hasSqlLearningDifficultyDistribution,
   hasSqlLearningTestDifficultyDistribution,
   isRetryableSqlLearningQueryError,
@@ -26,6 +27,23 @@ test("SQL Learning seeds all 24 modules and all listed topics with stable unique
   assert.ok(sqlLearningModules.every((module) => module.topics.length > 0));
   assert.ok(sqlLearningModules.every((module) => module.topics.every((topic, index) => topic.order === index + 1 && topic.title.trim())));
   assert.equal(sqlLearningModules[2].topics.find((topic) => topic.title === "TRIM().")?.id, "sql-03-trim");
+});
+
+test("SQL Learning topic tests receive only topics in curriculum order as prerequisites", () => {
+  const curriculum = [
+    { id: "module-a", title: "Module A", order: 1, topics: [{ id: "topic-a", title: "SELECT", order: 1 }, { id: "topic-b", title: "WHERE", order: 2 }] },
+    { id: "module-b", title: "Module B", order: 2, topics: [{ id: "topic-c", title: "JOIN", order: 1 }] }
+  ];
+
+  assert.deepEqual(getSqlLearningTopicScope("topic-c", curriculum), {
+    targetTopic: "JOIN",
+    prerequisiteTopics: ["SELECT", "WHERE"]
+  });
+  assert.deepEqual(getSqlLearningTopicScope("topic-a", curriculum), {
+    targetTopic: "SELECT",
+    prerequisiteTopics: []
+  });
+  assert.equal(getSqlLearningTopicScope("missing", curriculum), null);
 });
 
 test("SQL Learning topic summaries use projected counts and tolerate incomplete stored records", () => {

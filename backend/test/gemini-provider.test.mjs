@@ -110,11 +110,16 @@ test('SQL Learning test generation warns against unsafe casts of formatted numer
       module: 'SQL Fundamentals',
       schema: '{"column_name":"amount","data_type":"text"}',
       testNumber: 1,
+      topicScope: { targetTopic: "SELECT", prerequisiteTopics: [] },
       validationFeedback: ['SQL: SELECT amount::numeric. PostgreSQL error (22P02): invalid input syntax for type numeric; query attempted to cast unvalidated text']
     });
     const prompt = requestBody.contents[0].parts[0].text;
     assert.match(prompt, /Treat text-typed columns as text/);
     assert.match(prompt, /CASE and a strict numeric regular expression before casting/);
+    assert.match(prompt, /Current target topic: "SELECT"/);
+    assert.match(prompt, /Previously introduced topics: None/);
+    assert.match(prompt, /Use basic SELECT\/FROM syntax only as needed to make an executable read-only query/);
+    assert.match(prompt, /Do not use any other SQL concept, operator, clause, function, or technique that belongs to a later or unlisted topic/);
     assert.match(prompt, /invalid input syntax for type numeric/);
     assert.equal(requestBody.generationConfig.responseSchema.properties.questions.minItems, 15);
     assert.equal(requestBody.generationConfig.responseSchema.properties.questions.maxItems, 15);

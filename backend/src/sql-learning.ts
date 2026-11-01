@@ -191,6 +191,7 @@ interface SqlLearningTest extends Document {
   topic_id: string;
   module_id: string;
   test_number: number;
+  generation_version?: number;
   assessment_kind?: "topic" | "module" | "interview";
   interview_started_at?: Date;
   database_id: string;
@@ -198,6 +199,8 @@ interface SqlLearningTest extends Document {
   status: "ready";
   created_at: Date;
 }
+
+const SQL_LEARNING_TOPIC_TEST_VERSION = 2;
 
 type SqlLearningPlannerTask = {
   id: string;
@@ -244,6 +247,17 @@ function findCurriculumTopic(topicId: string, curriculum: CurriculumModule[] = s
   for (const module of curriculum) {
     const topic = module.topics.find((item) => item.id === topicId);
     if (topic) return { module, topic };
+  }
+  return null;
+}
+
+export function getSqlLearningTopicScope(topicId: string, curriculum: CurriculumModule[]) {
+  const prerequisiteTopics: string[] = [];
+  for (const module of curriculum) {
+    for (const topic of module.topics) {
+      if (topic.id === topicId) return { targetTopic: topic.title, prerequisiteTopics };
+      prerequisiteTopics.push(topic.title);
+    }
   }
   return null;
 }
@@ -801,7 +815,7 @@ export async function getSqlLearningTopic(userId: string, topicId: string, useCu
           questionCount: number;
           status?: string;
         }>([
-          { $match: { user_id: userId, topic_id: topicId, database_id: workspace.id } },
+          { $match: { user_id: userId, topic_id: topicId, database_id: workspace.id, generation_version: SQL_LEARNING_TOPIC_TEST_VERSION } },
           { $project: { id: 1, test_number: 1, status: 1, questionCount: { $size: { $ifNull: ["$questions", []] } } } },
           { $sort: { test_number: 1 } }
         ]).toArray()
@@ -951,11 +965,14 @@ export async function generateSqlLearningTopicContent(userId: string, topicId: s
 }
 
 export async function generateSqlLearningPracticeTest(userId: string, topicId: string, testNumber: number, useCustom = false) {
-  const found = findCurriculumTopic(topicId, await getUserCurriculum(userId, useCustom));
+  const curriculum = await getUserCurriculum(userId, useCustom);
+  const found = findCurriculumTopic(topicId, curriculum);
   if (!found) return { status: "not_found" as const };
+  const topicScope = getSqlLearningTopicScope(topicId, curriculum);
+  if (!topicScope) return { status: "not_found" as const };
   const workspace = await getPracticeWorkspace(userId);
   const tests = mongoCollection<SqlLearningTest>("sql_learning_tests");
-  const testId = `${userId}:${topicId}:${testNumber}:${workspace.id}`;
+  const testId = `${userId}:${topicId}:${testNumber}:${workspace.id}:v${SQL_LEARNING_TOPIC_TEST_VERSION}`;
   const existing = await tests.findOne({ _id: testId, database_id: String(workspace.id) });
   if (existing) return { status: "ok" as const, test: existing };
 
@@ -966,6 +983,7 @@ export async function generateSqlLearningPracticeTest(userId: string, topicId: s
       module: found.module.title,
       schema: JSON.stringify(schema),
       testNumber,
+      topicScope,
       validationFeedback
     })).questions,
     (questions) => {
@@ -1005,6 +1023,7 @@ export async function generateSqlLearningPracticeTest(userId: string, topicId: s
     topic_id: topicId,
     module_id: found.module.id,
     test_number: testNumber,
+    generation_version: SQL_LEARNING_TOPIC_TEST_VERSION,
     database_id: String(workspace.id),
     questions,
     status: "ready",
