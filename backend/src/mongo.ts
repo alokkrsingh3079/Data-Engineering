@@ -33,6 +33,20 @@ export async function connectMongo(): Promise<Db> {
     if (legacyIndex?.name) await revisionMarks.dropIndex(legacyIndex.name);
   }
 
+  const sqlLearningTests = database.collection("sql_learning_tests");
+  if (await database.listCollections({ name: "sql_learning_tests" }).hasNext()) {
+    const indexes = await sqlLearningTests.indexes();
+    const legacyIndex = indexes.find(index =>
+      index.unique &&
+      index.key?.user_id === 1 &&
+      index.key?.topic_id === 1 &&
+      index.key?.test_number === 1 &&
+      index.key?.database_id === 1 &&
+      index.key?.generation_version === undefined
+    );
+    if (legacyIndex?.name) await sqlLearningTests.dropIndex(legacyIndex.name);
+  }
+
   await Promise.all([
     database.collection("users").createIndex({ email: 1 }, { unique: true }),
     sessions.createIndex({ token_hash: 1 }, { unique: true, name: "sessions_token_hash_unique" }),
@@ -70,7 +84,10 @@ export async function connectMongo(): Promise<Db> {
     database.collection("sql_learning_planners").createIndex({ user_id: 1 }, { unique: true }),
     database.collection("sql_learning_admin_curriculum").createIndex({ updated_at: -1 }),
     database.collection("sql_learning_topic_content").createIndex({ user_id: 1, topic_id: 1, database_id: 1 }, { unique: true }),
-    database.collection("sql_learning_tests").createIndex({ user_id: 1, topic_id: 1, test_number: 1, database_id: 1 }, { unique: true }),
+    sqlLearningTests.createIndex(
+      { user_id: 1, topic_id: 1, test_number: 1, database_id: 1, generation_version: 1 },
+      { unique: true, name: "sql_learning_tests_generation_unique" }
+    ),
     database.collection("sql_learning_test_attempts").createIndex({ user_id: 1, test_id: 1, created_at: -1 }),
     database.collection("sql_learning_test_attempts").createIndex({ user_id: 1, test_id: 1, question_id: 1, created_at: -1 }),
     database.collection("sql_learning_test_attempts").createIndex({ user_id: 1, question_id: 1, created_at: -1 }),

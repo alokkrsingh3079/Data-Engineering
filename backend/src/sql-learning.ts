@@ -22,7 +22,8 @@ export function isRetryableSqlLearningQueryError(error: unknown): boolean {
 
 export function summarizeSqlLearningTopicTests(
   topicId: string,
-  tests: { id?: string; test_number?: number; questionCount?: number; status?: string }[]
+  tests: { id?: string; test_number?: number; questionCount?: number; status?: string }[],
+  attempts: { test_id: string; question_id: string; correct: boolean }[] = []
 ) {
   return Array.from({ length: 5 }, (_, index) => {
     const testNumber = index + 1;
@@ -31,16 +32,20 @@ export function summarizeSqlLearningTopicTests(
     const questionCount = Number.isSafeInteger(savedQuestionCount) && (savedQuestionCount ?? 0) >= 0
       ? savedQuestionCount!
       : 0;
+    const id = saved?.id || `${topicId}-test-${testNumber}`;
+    const result = summarizeSqlLearningTestAttempts(attempts.filter((attempt) => attempt.test_id === id), questionCount);
     return saved ? {
-      id: saved.id || `${topicId}-test-${testNumber}`,
+      id,
       testNumber,
       questionCount,
-      status: saved.status || "not_generated"
+      status: saved.status || "not_generated",
+      result
     } : {
-      id: `${topicId}-test-${testNumber}`,
+      id,
       testNumber,
       questionCount: 0,
-      status: "not_generated"
+      status: "not_generated",
+      result
     };
   });
 }
@@ -200,7 +205,7 @@ interface SqlLearningTest extends Document {
   created_at: Date;
 }
 
-const SQL_LEARNING_TOPIC_TEST_VERSION = 2;
+export const SQL_LEARNING_TOPIC_TEST_VERSION = 2;
 
 type SqlLearningPlannerTask = {
   id: string;
@@ -809,7 +814,7 @@ export async function getSqlLearningTopic(userId: string, topicId: string, useCu
       ? mongoCollection<SqlLearningContent>("sql_learning_topic_content").findOne({ user_id: userId, topic_id: topicId, database_id: workspace.id })
       : Promise.resolve(null),
     workspace
-      ? mongoCollection<SqlLearningTest>("sql_learning_tests").aggregate<{
+        ? mongoCollection<SqlLearningTest>("sql_learning_tests").aggregate<{
           id?: string;
           test_number?: number;
           questionCount: number;
@@ -827,6 +832,17 @@ export async function getSqlLearningTopic(userId: string, topicId: string, useCu
       ? mongoCollection("sql_learning_user_content_overrides").findOne({ user_id: userId, topic_id: topicId, database_id: workspace.id }, { projection: { _id: 0, theory: 1, syntax: 1, examples: 1 } })
       : Promise.resolve(null)
   ]);
+  const testIds = tests.map((test) => test.id).filter((id): id is string => Boolean(id));
+  const testAttempts = testIds.length ? await mongoCollection("sql_learning_test_attempts").aggregate<{
+    test_id: string;
+    question_id: string;
+    correct: boolean;
+  }>([
+    { $match: { user_id: userId, test_id: { $in: testIds } } },
+    { $sort: { created_at: -1 } },
+    { $group: { _id: { test_id: "$test_id", question_id: "$question_id" }, correct: { $first: "$correct" } } },
+    { $project: { _id: 0, test_id: "$_id.test_id", question_id: "$_id.question_id", correct: 1 } }
+  ]).toArray() : [];
   const schema = workspace ? await getPracticeSchema(workspace) : null;
   const tables = workspace ? await listTables(workspace.schema_name) : [];
   const samples = workspace ? await Promise.all(tables.map(async (table) => ({
@@ -872,7 +888,7 @@ export async function getSqlLearningTopic(userId: string, topicId: string, useCu
       examples: contentOverride?.examples || content.examples,
       generatedAt: content.generated_at
     } : null,
-    tests: summarizeSqlLearningTopicTests(topicId, tests)
+    tests: summarizeSqlLearningTopicTests(topicId, tests, testAttempts)
   };
 }
 

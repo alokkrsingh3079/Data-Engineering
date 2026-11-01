@@ -43,6 +43,17 @@ function geminiResponseText(payload:unknown):string {
  return candidates?.[0]?.content?.parts?.map(part=>part.text||'').join('')||'';
 }
 
+function geminiRetryDelay(response:Response,attempt:number):number {
+ const retryAfter=response.headers.get('retry-after');
+ if(retryAfter!==null){
+  const seconds=Number(retryAfter);
+  if(Number.isFinite(seconds)&&seconds>=0)return Math.min(seconds*1000,5000);
+  const retryAt=Date.parse(retryAfter);
+  if(Number.isFinite(retryAt))return Math.min(Math.max(retryAt-Date.now(),0),5000);
+ }
+ return 250*2**attempt;
+}
+
 async function geminiGenerate(options:GeminiRequestOptions):Promise<string> {
  const apiKey=requireGeminiApiKey();
  const controller=new AbortController();
@@ -58,20 +69,26 @@ async function geminiGenerate(options:GeminiRequestOptions):Promise<string> {
    }
   };
   if(options.system)body.systemInstruction={parts:[{text:options.system}]};
-  const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
-   method:'POST',
-   headers:{'Content-Type':'application/json','x-goog-api-key':apiKey},
-   body:JSON.stringify(body),
-   signal:controller.signal
-  });
-  const payload=await response.json() as {error?:{message?:string;status?:string}}|unknown;
-  if(!response.ok){
+  for(let attempt=0;;attempt+=1){
+   const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-goog-api-key':apiKey},
+    body:JSON.stringify(body),
+    signal:controller.signal
+   });
+   const payload=await response.json() as {error?:{message?:string;status?:string}}|unknown;
+   if(response.ok){
+    const text=geminiResponseText(payload);
+    if(!text.trim())throw new Error('Gemini returned no generated content.');
+    return text;
+   }
+   if([500,502,503,504].includes(response.status)&&attempt<2){
+    await new Promise(resolve=>setTimeout(resolve,geminiRetryDelay(response,attempt)));
+    continue;
+   }
    const error=payload&&typeof payload==='object'&&'error'in payload?(payload as {error?:{message?:string}}).error?.message:undefined;
    throw new Error(`Gemini API returned HTTP ${response.status}${error?`: ${error}`:''}`);
   }
-  const text=geminiResponseText(payload);
-  if(!text.trim())throw new Error('Gemini returned no generated content.');
-  return text;
  }catch(error){
   if(controller.signal.aborted&&options.signal?.aborted)throw new Error('AI request was cancelled.');
   if(controller.signal.aborted)throw new Error('Gemini request timed out.');

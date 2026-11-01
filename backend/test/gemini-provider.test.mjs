@@ -94,6 +94,31 @@ test('Gemini provider errors preserve actionable quota status', async () => {
   }
 });
 
+test('Gemini generation retries temporary 503 overload responses', async () => {
+  const originalFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      return new Response(JSON.stringify({ error: { message: 'Model is currently experiencing high demand' } }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    return new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: '{"overview":"Recovered after retry"}' }] } }]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const result = await generateSqlLearningLesson({ topic: 'SELECT', module: 'SQL Fundamentals', schema: '{}' });
+    assert.equal(result.overview, 'Recovered after retry');
+    assert.equal(requestCount, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('SQL Learning test generation warns against unsafe casts of formatted numeric text', async () => {
   const originalFetch = globalThis.fetch;
   let requestBody;

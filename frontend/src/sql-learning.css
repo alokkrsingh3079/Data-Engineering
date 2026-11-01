@@ -149,6 +149,8 @@
 .sqlPlannerMessage{margin:8px 0;color:#9be0c1;font-size:11px}
 .sqlPlannerCompleted{margin-top:10px}
 .sqlTestCards article>span{color:#62c7df;font-weight:700;letter-spacing:.1em}
+.sqlTestCardProgress{color:#f0c77b;font-size:10px;line-height:1.45}
+.sqlTestCardProgress.isComplete{color:#82d8ae}
 .sqlPracticeTests>div:first-child{margin-bottom:14px}
 .sqlTestCards button{justify-content:center}
 .sqlTestHeading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0}

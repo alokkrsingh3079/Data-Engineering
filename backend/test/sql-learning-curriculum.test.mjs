@@ -54,11 +54,47 @@ test("SQL Learning topic summaries use projected counts and tolerate incomplete 
   ]);
 
   assert.equal(summaries.length, 5);
-  assert.deepEqual(summaries[0], { id: "saved-test-1", testNumber: 1, questionCount: 15, status: "ready" });
-  assert.deepEqual(summaries[1], { id: "legacy-test-2", testNumber: 2, questionCount: 0, status: "ready" });
-  assert.deepEqual(summaries[2], { id: "invalid-count-test-3", testNumber: 3, questionCount: 0, status: "ready" });
-  assert.deepEqual(summaries[3], { id: "sql-01-intro-test-4", testNumber: 4, questionCount: 0, status: "not_generated" });
-  assert.deepEqual(summaries[4], { id: "sql-01-intro-test-5", testNumber: 5, questionCount: 0, status: "not_generated" });
+  assert.deepEqual(summaries[0], {
+    id: "saved-test-1", testNumber: 1, questionCount: 15, status: "ready",
+    result: { totalQuestions: 15, answeredQuestions: 0, correctAnswers: 0, incorrectAnswers: 0, skippedQuestions: 15, score: 0, accuracy: 0, completed: false }
+  });
+  assert.deepEqual(summaries[1], {
+    id: "legacy-test-2", testNumber: 2, questionCount: 0, status: "ready",
+    result: { totalQuestions: 0, answeredQuestions: 0, correctAnswers: 0, incorrectAnswers: 0, skippedQuestions: 0, score: 0, accuracy: 0, completed: true }
+  });
+  assert.deepEqual(summaries[2], {
+    id: "invalid-count-test-3", testNumber: 3, questionCount: 0, status: "ready",
+    result: { totalQuestions: 0, answeredQuestions: 0, correctAnswers: 0, incorrectAnswers: 0, skippedQuestions: 0, score: 0, accuracy: 0, completed: true }
+  });
+  assert.deepEqual(summaries[3], {
+    id: "sql-01-intro-test-4", testNumber: 4, questionCount: 0, status: "not_generated",
+    result: { totalQuestions: 0, answeredQuestions: 0, correctAnswers: 0, incorrectAnswers: 0, skippedQuestions: 0, score: 0, accuracy: 0, completed: true }
+  });
+  assert.deepEqual(summaries[4], {
+    id: "sql-01-intro-test-5", testNumber: 5, questionCount: 0, status: "not_generated",
+    result: { totalQuestions: 0, answeredQuestions: 0, correctAnswers: 0, incorrectAnswers: 0, skippedQuestions: 0, score: 0, accuracy: 0, completed: true }
+  });
+});
+
+test("SQL Learning topic test cards summarize each question's latest submission", () => {
+  const summaries = summarizeSqlLearningTopicTests("topic-a", [
+    { id: "test-a", test_number: 1, questionCount: 3, status: "ready" }
+  ], [
+    { test_id: "test-a", question_id: "q1", correct: true },
+    { test_id: "test-a", question_id: "q1", correct: false },
+    { test_id: "test-a", question_id: "q2", correct: false }
+  ]);
+
+  assert.deepEqual(summaries[0].result, {
+    totalQuestions: 3,
+    answeredQuestions: 2,
+    correctAnswers: 1,
+    incorrectAnswers: 1,
+    skippedQuestions: 1,
+    score: 33,
+    accuracy: 50,
+    completed: false
+  });
 });
 
 test("SQL Learning retries PostgreSQL query and type validation errors only", () => {

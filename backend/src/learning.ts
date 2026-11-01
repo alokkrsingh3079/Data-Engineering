@@ -1,5 +1,6 @@
 import { mongoCollection } from "./mongo.js";
 import { pool } from "./db.js";
+import { SQL_LEARNING_TOPIC_TEST_VERSION } from "./sql-learning.js";
 
 export async function migrateLegacyLearningData(): Promise<void> {
   const [attempts, marks] = await Promise.all([
@@ -303,12 +304,35 @@ export async function dailyProgress(userId: string, days = 30, timeZone = "UTC",
     ? await mongoCollection("challenges").find({ database_id: { $in: databaseIds } }, { projection: { id: 1, difficulty: 1 } }).toArray()
     : [];
   const sqlQuestionIds = sqlQuestions.map((question: any) => String(question.id || question._id));
-  const [sqlAttempts, learningAttempts, sqlSolvedIds, learningCompletions] = await Promise.all([
+  const [sqlAttempts, learningAttempts, sqlSolvedIds, learningCompletions, sqlLearningTests] = await Promise.all([
     mongoCollection("attempts").find({ session_id: userId, challenge_id: { $in: sqlQuestionIds }, created_at: { $gte: since } }, { projection: { challenge_id: 1, correct: 1, created_at: 1 } }).toArray(),
     mongoCollection("learning_attempts").find({ user_id: userId, created_at: { $gte: since } }, { projection: { question_id: 1, correct: 1, created_at: 1 } }).toArray(),
     mongoCollection("attempts").distinct("challenge_id", { session_id: userId, challenge_id: { $in: sqlQuestionIds }, correct: true }),
-    mongoCollection("learning_question_progress").find({ user_id: userId, completed: true }, { projection: { question_id: 1 } }).toArray()
+    mongoCollection("learning_question_progress").find({ user_id: userId, completed: true }, { projection: { question_id: 1 } }).toArray(),
+    mongoCollection("sql_learning_tests").find({
+      user_id: userId,
+      generation_version: SQL_LEARNING_TOPIC_TEST_VERSION,
+      test_number: { $gte: 1, $lte: 5 },
+      status: "ready"
+    }, { projection: { id: 1, _id: 1, questions: 1 } }).toArray()
   ]);
+  const sqlLearningTestIds = sqlLearningTests.map((test: any) => String(test.id || test._id));
+  const sqlLearningTestQuestionCount = sqlLearningTests.reduce((total: number, test: any) => total + (Array.isArray(test.questions) ? test.questions.length : 0), 0);
+  const [sqlLearningRecentAttempts, sqlLearningSolvedRows] = sqlLearningTestIds.length
+    ? await Promise.all([
+      mongoCollection("sql_learning_test_attempts").find({
+        user_id: userId,
+        test_id: { $in: sqlLearningTestIds },
+        created_at: { $gte: since }
+      }, { projection: { test_id: 1, question_id: 1, correct: 1, created_at: 1 } }).toArray(),
+      mongoCollection("sql_learning_test_attempts").aggregate<{ _id: { test_id: string; question_id: string } }>([
+        { $match: { user_id: userId, test_id: { $in: sqlLearningTestIds }, correct: true } },
+        { $group: { _id: { test_id: "$test_id", question_id: "$question_id" } } }
+      ]).toArray()
+    ])
+    : [[], []];
+  const sqlLearningSolvedIds = sqlLearningSolvedRows.map((attempt) => `${attempt._id.test_id}:${attempt._id.question_id}`);
+  const sqlLearningSolvedSet = new Set(sqlLearningSolvedIds);
   const learningQuestionIds = [...new Set(learningAttempts.map((attempt: any) => String(attempt.question_id)))];
   const learningQuestions = learningQuestionIds.length
     ? await mongoCollection("learning_questions").find({ _id: { $in: learningQuestionIds }, $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] }, { projection: { module_id: 1 } }).toArray()
@@ -340,11 +364,11 @@ export async function dailyProgress(userId: string, days = 30, timeZone = "UTC",
     }
   ]).toArray();
   const allTimeTracks = summarizeAllTimeSolved(
-    sqlSolvedIds.map((questionId: unknown) => String(questionId)),
+    [...sqlSolvedIds.map((questionId: unknown) => String(questionId)), ...sqlLearningSolvedIds],
     completedLearningQuestions.map((question: any) => ({ question_id: String(question._id), track_id: String(question.module_id || "unknown") }))
   );
   const trackTotals = summarizeTrackQuestionTotals(
-    sqlQuestionIds.length,
+    sqlQuestionIds.length + sqlLearningTestQuestionCount,
     learningQuestionCounts.reduce((tracks: { trackId: string; total: number }[], entry: any) => {
       const trackId = String(entry._id.trackId);
       const track = tracks.find((item) => item.trackId === trackId);
@@ -362,6 +386,12 @@ export async function dailyProgress(userId: string, days = 30, timeZone = "UTC",
       total: 1,
       solved: solvedSqlIds.has(String(question.id || question._id)) ? 1 : 0
     })),
+    ...sqlLearningTests.flatMap((test: any) => (Array.isArray(test.questions) ? test.questions : []).map((question: any) => ({
+      trackId: "sql-interview-lab",
+      difficulty: String(question.difficulty || ""),
+      total: 1,
+      solved: sqlLearningSolvedSet.has(`${String(test.id || test._id)}:${String(question.id)}`) ? 1 : 0
+    }))),
     ...learningQuestionCounts.map((entry: any) => ({
       trackId: String(entry._id.trackId),
       difficulty: String(entry._id.difficulty),
@@ -376,6 +406,7 @@ export async function dailyProgress(userId: string, days = 30, timeZone = "UTC",
   ]);
   const records = [
     ...sqlAttempts.map((attempt: any) => ({ created_at: attempt.created_at, correct: Boolean(attempt.correct), track_id: "sql-interview-lab", question_id: String(attempt.challenge_id) })),
+    ...sqlLearningRecentAttempts.map((attempt: any) => ({ created_at: attempt.created_at, correct: Boolean(attempt.correct), track_id: "sql-interview-lab", question_id: `${String(attempt.test_id)}:${String(attempt.question_id)}` })),
     ...learningAttempts.map((attempt: any) => ({ created_at: attempt.created_at, correct: Boolean(attempt.correct), track_id: moduleByQuestionId.get(String(attempt.question_id)) || "unknown", question_id: String(attempt.question_id) }))
   ];
   return { ...summarizeDailyAttempts(records, days, timeZone), allTimeTracks, trackTotals, difficultyTotals };

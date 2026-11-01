@@ -1,5 +1,6 @@
 import { mongoCollection } from "./mongo.js";
 import { listWorkspaces } from "./workspaces.js";
+import { SQL_LEARNING_TOPIC_TEST_VERSION } from "./sql-learning.js";
 
 const modules = [
   {
@@ -232,15 +233,29 @@ export async function seedCurriculum(): Promise<void> {
 }
 
 export async function getLearningStudio(userId: string) {
-  const [workspaces, storedModules, progress, questionCounts, questionRows, attemptedQuestionRows, recentAttempt] = await Promise.all([
+  const [workspaces, storedModules, progress, questionCounts, questionRows, attemptedQuestionRows, recentAttempt, sqlLearningTests] = await Promise.all([
     listWorkspaces(userId, false),
     mongoCollection("learning_modules").find().sort({ order: 1 }).toArray(),
     mongoCollection("learning_progress").find({ user_id: userId }).toArray(),
     mongoCollection("learning_questions").aggregate([{ $match: { status: "published", $or: [{ owner_user_id: { $exists: false } }, { owner_user_id: null }, { owner_user_id: userId }] } }, { $group: { _id: "$module_id", count: { $sum: 1 } } }]).toArray(),
     mongoCollection("learning_question_progress").find({ user_id: userId, completed: true }, { projection: { question_id: 1 } }).toArray(),
     mongoCollection("learning_attempts").distinct("question_id", { user_id: userId }),
-    mongoCollection("learning_attempts").findOne({ user_id: userId }, { sort: { created_at: -1 }, projection: { question_id: 1 } })
+    mongoCollection("learning_attempts").findOne({ user_id: userId }, { sort: { created_at: -1 }, projection: { question_id: 1 } }),
+    mongoCollection("sql_learning_tests").find({
+      user_id: userId,
+      generation_version: SQL_LEARNING_TOPIC_TEST_VERSION,
+      test_number: { $gte: 1, $lte: 5 },
+      status: "ready"
+    }, { projection: { id: 1, _id: 1, "questions.id": 1 } }).toArray()
   ]);
+  const sqlLearningTestIds = sqlLearningTests.map((test: any) => String(test.id || test._id));
+  const sqlLearningTestAttempts = sqlLearningTestIds.length
+    ? await mongoCollection("sql_learning_test_attempts").aggregate<{ correct: number }>([
+      { $match: { user_id: userId, test_id: { $in: sqlLearningTestIds } } },
+      { $group: { _id: { test_id: "$test_id", question_id: "$question_id" }, correct: { $max: { $cond: ["$correct", 1, 0] } } } }
+    ]).toArray()
+    : [];
+  const sqlLearningTestQuestionCount = sqlLearningTests.reduce((total: number, test: any) => total + (Array.isArray(test.questions) ? test.questions.length : 0), 0);
   const workspaceIds = workspaces.map((workspace: any) => String(workspace.id || workspace._id));
   const sqlQuestions = workspaceIds.length
     ? await mongoCollection("challenges").find({ database_id: { $in: workspaceIds } }, { projection: { id: 1 } }).toArray()
@@ -278,9 +293,9 @@ export async function getLearningStudio(userId: string) {
   }
   return storedModules.map((module) => ({
     ...module,
-    questionCount: module.id === "sql-interview-lab" ? sqlQuestionIds.length : counts.get(String(module.id)) || 0,
-    completedQuestions: module.id === "sql-interview-lab" ? completedSql.length : completedModules.get(String(module.id)) || 0,
-    attemptedQuestions: module.id === "sql-interview-lab" ? attemptedSql.length : attemptedModules.get(String(module.id)) || 0,
+    questionCount: module.id === "sql-interview-lab" ? sqlQuestionIds.length + sqlLearningTestQuestionCount : counts.get(String(module.id)) || 0,
+    completedQuestions: module.id === "sql-interview-lab" ? completedSql.length + sqlLearningTestAttempts.filter((attempt) => attempt.correct > 0).length : completedModules.get(String(module.id)) || 0,
+    attemptedQuestions: module.id === "sql-interview-lab" ? attemptedSql.length + sqlLearningTestAttempts.length : attemptedModules.get(String(module.id)) || 0,
     continueQuestionId: recentQuestion?.module_id === module.id ? recentId : null,
     lessons: (module.lessons || []).map((lesson: any) => ({ ...lesson, completed: completed.has(String(lesson.id)) }))
   }));
