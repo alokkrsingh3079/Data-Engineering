@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { Activity, ArrowRight, Bookmark, BookOpen, Check, Code2, Flag, Layers3, Lightbulb, Play } from "lucide-react";
+import { Activity, ArrowRight, Bookmark, BookOpen, Check, CheckCircle2, Code2, Flag, Layers3, Lightbulb, Play } from "lucide-react";
 import CopyButton from "./CopyButton";
 import StudioNavigation from "./StudioNavigation";
 import "./learning-track-lab.css";
@@ -75,6 +75,7 @@ export default function LearningTrackLab() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [revisionOnly, setRevisionOnly] = useState(() => new URLSearchParams(location.search).get("revision") === "1");
+  const [unsolvedOnly, setUnsolvedOnly] = useState(() => new URLSearchParams(location.search).get("unsolved") === "1");
   const [tab, setTab] = useState("Problem");
 
   const generatedDatasets = useMemo(() => {
@@ -97,8 +98,8 @@ export default function LearningTrackLab() {
   const filteredQuestions = useMemo(() => questions.filter((item) => {
     const matchesLevel = level === "all" || level === "revision" || (level.startsWith("dataset:") ? isGeneratedQuestion(item) && datasetFilterKey(item) === level : item.learning_level === level);
     const matchesSearch = !search.trim() || `${item.title} ${item.topic} ${item.prompt}`.toLowerCase().includes(search.trim().toLowerCase());
-    return matchesLevel && matchesSearch && (!revisionOnly || revisionQuestionIds.has(item.id));
-  }), [questions, level, search, revisionOnly, revisionQuestionIds]);
+    return matchesLevel && matchesSearch && (!revisionOnly || revisionQuestionIds.has(item.id)) && (!unsolvedOnly || !item.completed);
+  }), [questions, level, search, revisionOnly, revisionQuestionIds, unsolvedOnly]);
   const levelCounts = useMemo(() => Object.fromEntries([
     ...levels.map((item) => [item, questions.filter((question) => question.learning_level === item).length]),
     ...generatedDatasets.map((dataset) => [dataset.key, dataset.count])
@@ -220,6 +221,25 @@ export default function LearningTrackLab() {
     finally { setBusy(false); }
   }
 
+  async function markKnown() {
+    if (!question || busy || question.completed) return;
+    setBusy(true); setError("");
+    try {
+      const response = await fetch(`${API}/api/learning/questions/${question.id}/mark-known`, { method: "POST", credentials: "include" });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || "Question could not be marked as solved.");
+      setQuestion((current) => current?.id === question.id ? { ...current, attempted: true, completed: true, revisionMarked: false } : current);
+      setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, attempted: true, completed: true, revisionMarked: false } : item));
+      setRevisionQuestionIds((current) => {
+        const next = new Set(current);
+        next.delete(question.id);
+        return next;
+      });
+      await loadAttempts(question.id);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Question could not be marked as solved."); }
+    finally { setBusy(false); }
+  }
+
   async function toggleBookmark() {
     if (!question) return;
     const bookmarked = !question.bookmarked;
@@ -257,7 +277,7 @@ export default function LearningTrackLab() {
       {moduleId !== "python-etl" && <section className="trackLevelBar"><div className="trackLevelIntro"><strong>Choose your starting point</strong><span>A–D very easy · E–H easy · I–K medium · L–N hard · O–R very hard</span></div><div className="trackLevelTabs" role="tablist" aria-label="Learning question bank">{["all", "revision", ...levels].map((item) => {if(item==="revision")return <button key={item} className={`bankProgress-revision ${revisionOnly ? "selected" : ""}`} role="tab" aria-label={`Revision questions, ${revisionCount} marked`} title="Show questions marked for revision" aria-selected={revisionOnly} onClick={() => selectBankFilter(item)}><span>Revision</span><small>{revisionCount}</small></button>;const bankQuestions=item==="all"?questions:questions.filter((question)=>question.learning_level===item);const completed=bankQuestions.filter((question)=>question.completed).length;const attempted=bankQuestions.filter((question)=>question.attempted).length;const progress=bankProgress(bankQuestions);return <button key={item} style={questionBankProgressStyle(completed,bankQuestions.length,attempted)} role="tab" aria-label={`${item === "all" ? "All questions" : `Level ${item}, ${levelBand(item)}`}, ${questionBankProgressLabel(progress)}`} title={`${item === "all" ? "All questions" : `Level ${item} · ${levelBand(item)}`} · ${questionBankProgressLabel(progress)}`} aria-selected={!revisionOnly && level === item} className={`${questionBankProgressClass(progress)} ${!revisionOnly && level === item ? `selected level-${item.toLowerCase()}` : ""}`} onClick={() => selectBankFilter(item)}><span>{item === "all" ? "All" : item}</span><small>{bankQuestions.length}</small></button>})}</div></section>}
       <div className="trackLayout" style={{ "--question-rail-width": `${railWidth}px` } as CSSProperties}>
         <aside className="trackQuestionRail">
-          <div className="trackRailTitle"><strong>{revisionOnly ? "REVISION ONLY" : "QUESTION BANK"}</strong><span>{filteredQuestions.length}</span></div>
+          <div className="trackRailTitle"><strong>{revisionOnly ? "REVISION ONLY" : unsolvedOnly ? "UNSOLVED QUESTIONS" : "QUESTION BANK"}</strong><span>{filteredQuestions.length}</span></div>
           <label className="questionRailWidthControl">Bank width <output>{railWidth}px</output><input type="range" min="220" max="560" step="10" value={railWidth} aria-label="Question bank width" onChange={(event) => setRailWidth(Number(event.target.value))} /></label>
           {moduleId === "python-etl" && <section className="pythonBankLevels">
             <div className="trackLevelIntro"><strong>Choose your starting point</strong><span>A–D very easy · E–H easy · I–K medium · L–N hard · O–R very hard</span></div>
@@ -276,10 +296,11 @@ export default function LearningTrackLab() {
             </div>
           </section>}
           <button className={`trackRevisionFilter ${revisionOnly ? "active" : ""}`} onClick={() => { setRevisionOnly(!revisionOnly); if (!revisionOnly) setLevel("all"); }}><Flag size={13} />{revisionOnly ? "Show all questions" : "Revision only"}</button>
+          <button className={`trackRevisionFilter ${unsolvedOnly ? "active" : ""}`} aria-pressed={unsolvedOnly} onClick={() => setUnsolvedOnly(!unsolvedOnly)}>{unsolvedOnly ? "Show solved too" : "Unsolved only"}</button>
           <label className="trackSearch">Search this track<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search exercises…" /></label>
           <div className="trackQuestionList">
             {filteredQuestions.map((item, index) => <button className={question?.id === item.id ? "selected" : ""} key={item.id} onClick={() => void selectQuestion(item)}><span className="trackQuestionName"><em>{String(index + 1).padStart(2, "0")}</em>{item.title}</span><small>{isGeneratedQuestion(item) ? `${item.dataset_name || "Dataset"} · ${item.topic}` : `Level ${levelFor(item)} · ${item.topic}`}{item.completed ? <Check size={12} /> : null}{item.revisionMarked ? <Flag size={12} aria-label="Marked for revision" /> : null}{item.bookmarked ? <Bookmark size={12} aria-label="Bookmarked" /> : null}</small></button>)}
-            {!filteredQuestions.length && <p className="trackEmpty">{revisionOnly ? "No questions are marked for revision." : level.startsWith("dataset:") ? "This dataset has no questions yet." : "No questions at this level yet."}</p>}
+            {!filteredQuestions.length && <p className="trackEmpty">{revisionOnly ? "No questions are marked for revision." : unsolvedOnly ? "All questions in this filter are marked solved." : level.startsWith("dataset:") ? "This dataset has no questions yet." : "No questions at this level yet."}</p>}
           </div>
         </aside>
         {question ? <article className="trackQuestionDetail">
@@ -288,12 +309,12 @@ export default function LearningTrackLab() {
           <div className="trackActions"><button disabled={!review} onClick={() => setReviewVisible(!reviewVisible)}><BookOpen size={14} />{reviewVisible ? "Hide reference solution" : "Show reference solution"}</button></div>
           {question.type === "coding" ? <>
             <div className="trackCodingSpec"><div><strong>Input</strong><span>{question.input_description}</span></div><div><strong>Required output</strong><span>{question.output_description}</span></div></div>
-            <div className="trackCodingGrid"><section className="trackCodePanel"><div className="trackPanelHead"><strong>{question.language === "python" ? "PYTHON" : "PYSPARK"} EDITOR</strong><button onClick={() => setCode(question.starter_code || "")}>Reset</button></div><CodeMirror value={code} height="480px" extensions={[python(), oneDark]} editable={!busy} onChange={(value) => setCode(value.slice(0, 32000))} basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }} /><div className="trackRunBar"><button disabled={!languageAvailable || busy || !code.trim()} onClick={() => void submitCode()}><Play size={14} />{busy ? "Running…" : "Run and submit"}</button><span>{languageAvailable ? "Isolated runner ready" : "Isolated runner unavailable; code is not sent to this server"}</span></div>{codeResult && <div className={`trackResult ${codeResult.correct ? "passed" : "failed"}`}><strong>{codeResult.correct ? "All tests passed" : "Tests need another try"}</strong><span>{codeResult.executionMs} ms</span>{codeResult.tests?.map((item: any) => <small key={item.name}>{item.name}: {item.passed ? "passed" : "failed"}</small>)}</div>}</section><aside className="trackPreview"><strong>PUBLIC EXAMPLE</strong>{example ? <><span>Input</span><pre>{JSON.stringify(example.input, null, 2)}</pre><span>Expected result</span><pre>{JSON.stringify(example.expected, null, 2)}</pre></> : <p>Sample input is supplied by the exercise.</p>}</aside></div>
+            <div className="trackCodingGrid"><section className="trackCodePanel"><div className="trackPanelHead"><strong>{question.language === "python" ? "PYTHON" : "PYSPARK"} EDITOR</strong><button onClick={() => setCode(question.starter_code || "")}>Reset</button></div><CodeMirror value={code} height="480px" extensions={[python(), oneDark]} editable={!busy} onChange={(value) => setCode(value.slice(0, 32000))} basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }} /><div className="trackRunBar"><button disabled={!languageAvailable || busy || !code.trim()} onClick={() => void submitCode()}><Play size={14} />{busy ? "Running…" : "Run and submit"}</button><button disabled={busy || question.completed} title="Self-report that you already know this question; no code will run." onClick={() => void markKnown()}><CheckCircle2 size={14} />{question.completed ? "Marked solved" : "I already know this"}</button><span>{languageAvailable ? "Isolated runner ready" : "Isolated runner unavailable; code is not sent to this server"}</span></div>{codeResult && <div className={`trackResult ${codeResult.correct ? "passed" : "failed"}`}><strong>{codeResult.correct ? "All tests passed" : "Tests need another try"}</strong><span>{codeResult.executionMs} ms</span>{codeResult.tests?.map((item: any) => <small key={item.name}>{item.name}: {item.passed ? "passed" : "failed"}</small>)}</div>}</section><aside className="trackPreview"><strong>PUBLIC EXAMPLE</strong>{example ? <><span>Input</span><pre>{JSON.stringify(example.input, null, 2)}</pre><span>Expected result</span><pre>{JSON.stringify(example.expected, null, 2)}</pre></> : <p>Sample input is supplied by the exercise.</p>}</aside></div>
             {question.hints?.length ? <details className="trackHints"><summary><Lightbulb size={14} /> Hints</summary>{question.hints.map((hint, index) => <p key={index}><b>{index + 1}.</b> {hint}</p>)}</details> : null}
-            {attempts.length > 0 && <section className="trackHistory"><strong>RECENT SUBMISSIONS</strong>{attempts.slice(0, 5).map((attempt) => <p key={attempt.id}><span>{attempt.correct ? "Passed" : "Retry"}</span><time>{new Date(attempt.created_at).toLocaleString()}</time></p>)}</section>}
+            {attempts.length > 0 && <section className="trackHistory"><strong>RECENT SUBMISSIONS</strong>{attempts.slice(0, 5).map((attempt) => <p key={attempt.id}><span>{attempt.self_reported ? "Marked solved" : attempt.correct ? "Passed" : "Retry"}</span><time>{new Date(attempt.created_at).toLocaleString()}</time></p>)}</section>}
           </> : <>
             <section className="trackOptions" role="radiogroup" aria-label="Answer options">{question.options?.map((option) => <label className={answerId === option.id ? "selected" : ""} key={option.id}><input type="radio" name="track-answer" checked={answerId === option.id} disabled={Boolean(attemptResult)} onChange={() => setAnswerId(option.id)} /><span>{option.text}</span></label>)}</section>
-            <div className="trackActions"><button className="trackPrimary" disabled={!answerId || busy || Boolean(attemptResult)} onClick={() => void submitChoice()}>{busy ? "Saving…" : "Check answer"}</button><button onClick={() => void toggleBookmark()}><Bookmark size={14} />{question.bookmarked ? "Saved" : "Save question"}</button></div>
+            <div className="trackActions"><button className="trackPrimary" disabled={!answerId || busy || Boolean(attemptResult)} onClick={() => void submitChoice()}>{busy ? "Saving…" : "Check answer"}</button><button disabled={busy || question.completed} title="Self-report that you already know this question." onClick={() => void markKnown()}><CheckCircle2 size={14} />{question.completed ? "Marked solved" : "I already know this"}</button><button onClick={() => void toggleBookmark()}><Bookmark size={14} />{question.bookmarked ? "Saved" : "Save question"}</button></div>
             {attemptResult && <section className={`trackResult ${attemptResult.correct ? "passed" : "failed"}`}><strong>{attemptResult.correct ? "Correct" : "Try again"}</strong><p>{attemptResult.explanation}</p><b>Explanation</b><p>{attemptResult.referenceAnswer}</p>{attemptResult.commonMistakes?.length > 0 && <><b>Common pitfalls</b><ul>{attemptResult.commonMistakes.map((mistake: string) => <li key={mistake}>{mistake}</li>)}</ul></>}</section>}
             {question.hints?.length ? <details className="trackHints"><summary><Lightbulb size={14} /> Hints</summary>{question.hints.map((hint, index) => <p key={index}><b>{index + 1}.</b> {hint}</p>)}</details> : null}
           </>}

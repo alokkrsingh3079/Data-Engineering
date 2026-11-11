@@ -35,6 +35,28 @@ export async function recordAttempt(attempt: Record<string, unknown>): Promise<v
   await mongoCollection("attempts").insertOne({ _id: String(attempt.id), ...attempt });
 }
 
+export async function recordKnownQuestion(sessionId: string, questionId: string, databaseId: string): Promise<void> {
+  const id = `self-known:${sessionId}:${questionId}`;
+  await mongoCollection("attempts").updateOne(
+    { _id: id },
+    {
+      $setOnInsert: {
+        _id: id,
+        id,
+        challenge_id: questionId,
+        database_id: databaseId,
+        session_id: sessionId,
+        sql: "",
+        correct: true,
+        execution_ms: 0,
+        self_reported: true,
+        created_at: new Date()
+      }
+    },
+    { upsert: true }
+  );
+}
+
 export async function listQuestionAttempts(questionId: string, sessionId: string) {
   return mongoCollection("attempts")
     .find({ challenge_id: questionId, session_id: sessionId })

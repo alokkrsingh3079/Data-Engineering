@@ -97,6 +97,24 @@ test("SQL Learning topic test cards summarize each question's latest submission"
   });
 });
 
+test("self-reported known SQL Learning answers count as correct question completions", () => {
+  const result = summarizeSqlLearningTestAttempts([
+    { question_id: "known-question", correct: true, self_reported: true },
+    { question_id: "executed-question", correct: true }
+  ], 2);
+
+  assert.deepEqual(result, {
+    totalQuestions: 2,
+    answeredQuestions: 2,
+    correctAnswers: 2,
+    incorrectAnswers: 0,
+    skippedQuestions: 0,
+    score: 100,
+    accuracy: 100,
+    completed: true
+  });
+});
+
 test("SQL Learning retries PostgreSQL query and type validation errors only", () => {
   assert.equal(isRetryableSqlLearningQueryError({ code: "42883", message: "function avg(text) does not exist" }), true);
   assert.equal(isRetryableSqlLearningQueryError({ code: "42601", message: "syntax error" }), true);

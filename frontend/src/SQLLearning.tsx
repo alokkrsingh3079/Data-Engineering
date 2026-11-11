@@ -73,7 +73,7 @@ type LessonExample = { title: string; level: string; problem: string; sql: strin
 type LessonContent = { overview: string; theory: string; syntax: string; parameters: string[]; returnType: string; rules: string[]; commonMistakes: string[]; useCases: string[]; interviewRelevance: string; dialectNotes: string; examples: LessonExample[] };
 type PracticeQuestion = { id: string; title: string; difficulty: "beginner" | "intermediate" | "advanced"; context: string; task: string; required_output: string; hint: string; explanation: string };
 type EditableQuestion = { title: string; difficulty: "beginner" | "intermediate" | "advanced"; context: string; task: string; required_output: string; reference_sql: string; hint: string; explanation: string };
-type PracticeTest = { id: string; topicId: string; moduleId: string; testNumber: number; assessmentKind: "topic" | "module" | "interview"; startedAt?: string | null; status: string; result: TestResultSummary; questionResults: { questionId: string; correct: boolean }[]; questions: PracticeQuestion[]; attempts: { question_id: string; correct: boolean; created_at: string }[] };
+type PracticeTest = { id: string; topicId: string; moduleId: string; testNumber: number; assessmentKind: "topic" | "module" | "interview"; startedAt?: string | null; status: string; result: TestResultSummary; questionResults: { questionId: string; correct: boolean }[]; questions: PracticeQuestion[]; attempts: { question_id: string; correct: boolean; self_reported?: boolean; created_at: string }[] };
 type VisibleSolution = { sql: string; explanation: string; expected: SqlResult };
 type SchemaColumn = { column_name: string; data_type: string; is_nullable?: "YES" | "NO"; is_primary_key?: boolean; column_default?: string | null };
 type SchemaRelationship = { constraint_name: string; table_name: string; column_name: string; foreign_table_name: string; foreign_column_name: string };
@@ -330,6 +330,31 @@ export default function SQLLearning() {
       }
     } catch (cause) {
       setPracticeMessage(cause instanceof Error ? cause.message : "Answer submission failed.");
+    } finally {
+      setPracticeBusy(false);
+    }
+  }
+
+  async function markPracticeQuestionKnown() {
+    if (!activeTest || !currentQuestion || practiceBusy || activeTest.assessmentKind === "interview" ||
+        activeTest.questionResults.some((result) => result.questionId === currentQuestion.id && result.correct)) return;
+    setPracticeBusy(true);
+    setPracticeMessage("");
+    try {
+      const response = await fetch(`${API}/api/sql-learning/tests/${encodeURIComponent(activeTest.id)}/questions/${encodeURIComponent(currentQuestion.id)}/mark-known`, {
+        method: "POST",
+        credentials: "include"
+      });
+      await readResponse<{ correct: boolean }>(response);
+      const refreshed = await fetch(`${API}/api/sql-learning/tests/${encodeURIComponent(activeTest.id)}`, { credentials: "include" });
+      setActiveTest(await readResponse<PracticeTest>(refreshed));
+      setPracticeMessage("Marked correct · self-reported; no SQL was executed.");
+      if (activeTopic) {
+        const topicResponse = await fetch(curriculumUrl(`${API}/api/sql-learning/topics/${encodeURIComponent(activeTopic.topic.id)}`, customMode), { credentials: "include" });
+        setActiveTopic(await readResponse<TopicDetail>(topicResponse));
+      }
+    } catch (cause) {
+      setPracticeMessage(cause instanceof Error ? cause.message : "Question could not be marked as known.");
     } finally {
       setPracticeBusy(false);
     }
@@ -1039,6 +1064,7 @@ export default function SQLLearning() {
                 <div className="sqlPracticeActions">
                   <button type="button" disabled={!practiceSql.trim() || practiceBusy || (activeTest.assessmentKind === "interview" && interviewSeconds === 0)} onClick={() => void runExample(practiceSql)}><Play size={14} /> Run query</button>
                   <button type="button" disabled={!practiceSql.trim() || practiceBusy || (activeTest.assessmentKind === "interview" && interviewSeconds === 0)} onClick={() => void submitPracticeAnswer()}><Send size={14} /> Submit answer</button>
+                  {activeTest.assessmentKind !== "interview" && <button type="button" disabled={practiceBusy || activeTest.questionResults.some((result) => result.questionId === currentQuestion.id && result.correct)} title="Self-report that you already know this SQL question; no query will run." onClick={() => void markPracticeQuestionKnown()}><CheckCircle2 size={14} />{activeTest.questionResults.some((result) => result.questionId === currentQuestion.id && result.correct) ? "Marked solved" : "I already know this"}</button>}
                   <button type="button" disabled={practiceBusy} onClick={() => { setPracticeSql(""); setPracticeResult(null); setPracticeMessage(""); }}>Reset SQL</button>
                   <button type="button" onClick={() => setVisibleHints((current) => ({ ...current, [currentQuestion.id]: !current[currentQuestion.id] }))}><Lightbulb size={14} /> Hint</button>
                   <button type="button" onClick={() => void revealPracticeSolution()}><Eye size={14} /> Show solution</button>

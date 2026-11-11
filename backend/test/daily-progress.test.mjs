@@ -47,6 +47,18 @@ test('daily progress streak expires after a day without a correct answer', () =>
   assert.equal(summary.today.attempts, 0);
 });
 
+test('a self-reported known answer counts as a solved question and streak activity', () => {
+  const summary = summarizeDailyAttempts([
+    { created_at: '2026-10-19T19:00:00.000Z', correct: true, self_reported: true, track_id: 'pyspark-foundations', question_id: 'spark-known' }
+  ], 7, 'UTC', new Date('2026-10-19T20:00:00.000Z'));
+
+  assert.equal(summary.streakDays, 1);
+  assert.equal(summary.today.solved, 1);
+  assert.deepEqual(summary.today.tracks, [
+    { trackId: 'pyspark-foundations', attempts: 1, solved: 1 }
+  ]);
+});
+
 test('all-time solved totals count unique correct questions by track', () => {
   const totals = summarizeAllTimeSolved(['sql-1', 'sql-1', 'sql-2'], [
     { question_id: 'python-1', track_id: 'python-etl' },

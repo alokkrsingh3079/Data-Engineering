@@ -651,6 +651,41 @@ export async function submitLearningAnswer(userId: string, questionId: string, o
   };
 }
 
+export async function markLearningQuestionKnown(userId: string, questionId: string) {
+  const question = await mongoCollection("learning_questions").findOne({
+    ...accessibleQuestionFilter(questionId, userId),
+    status: "published"
+  });
+  if (!question) return { status: "not_found" as const };
+
+  const attemptId = `self-known:${userId}:${questionId}`;
+  const completedAt = new Date();
+  await mongoCollection("learning_attempts").updateOne(
+    { _id: attemptId },
+    {
+      $setOnInsert: {
+        _id: attemptId,
+        id: attemptId,
+        user_id: userId,
+        question_id: questionId,
+        correct: true,
+        status: "self_reported",
+        self_reported: true,
+        execution_ms: 0,
+        created_at: completedAt
+      }
+    },
+    { upsert: true }
+  );
+  await mongoCollection("learning_question_progress").updateOne(
+    { user_id: userId, question_id: questionId },
+    { $set: { completed: true, completion_source: "self_reported", updated_at: completedAt }, $setOnInsert: { created_at: completedAt } },
+    { upsert: true }
+  );
+  await mongoCollection("learning_revision_marks").deleteOne({ user_id: userId, question_id: questionId });
+  return { status: "ok" as const, attemptId, completed: true };
+}
+
 export async function submitLearningCode(userId: string, questionId: string, code: string) {
   const question = await mongoCollection("learning_questions").findOne({ ...accessibleQuestionFilter(questionId, userId), status: "published", type: "coding" });
   if (!question) return { status: "not_found" as const };

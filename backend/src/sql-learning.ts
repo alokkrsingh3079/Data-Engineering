@@ -1260,6 +1260,31 @@ export async function submitSqlLearningPracticeAnswer(userId: string, testId: st
   }
 }
 
+export async function markSqlLearningQuestionKnown(userId: string, testId: string, questionId: string) {
+  const test = await mongoCollection<SqlLearningTest>("sql_learning_tests").findOne({
+    _id: testId,
+    user_id: userId,
+    status: "ready"
+  });
+  if (!test || test.assessment_kind === "interview") return { status: "not_found" as const };
+  if (!test.questions.some((question) => question.id === questionId)) return { status: "not_found" as const };
+
+  await mongoCollection("sql_learning_test_attempts").insertOne({
+    _id: crypto.randomUUID(),
+    user_id: userId,
+    test_id: testId,
+    topic_id: test.topic_id,
+    question_id: questionId,
+    sql: "",
+    correct: true,
+    self_reported: true,
+    execution_ms: 0,
+    created_at: new Date()
+  });
+  await updateChecklistAfterCompletedTest(userId, test);
+  return { status: "ok" as const, correct: true, selfReported: true };
+}
+
 export async function startSqlLearningMockInterview(userId: string, testId: string) {
   const tests = mongoCollection<SqlLearningTest>("sql_learning_tests");
   const test = await tests.findOne({ _id: testId, user_id: userId, status: "ready", assessment_kind: "interview" });

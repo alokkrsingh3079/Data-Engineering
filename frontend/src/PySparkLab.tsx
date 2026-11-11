@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { Bookmark, Check, Clock3, Code2, Database, ExternalLink, Flag, History, Layers3, Lightbulb, Play, Send, Sparkles } from "lucide-react";
+import { Bookmark, Check, CheckCircle2, Clock3, Code2, Database, ExternalLink, Flag, History, Layers3, Lightbulb, Play, Send, Sparkles } from "lucide-react";
 import CopyButton from "./CopyButton";
 import "./pyspark-lab.css";
 import "./pyspark-theme.css";
@@ -151,6 +151,7 @@ export default function PySparkLab() {
     return Number.isFinite(saved) && saved >= 220 && saved <= 560 ? saved : 260;
   });
   const [revisionOnly, setRevisionOnly] = useState(() => new URLSearchParams(location.search).get("revision") === "1");
+  const [unsolvedOnly, setUnsolvedOnly] = useState(() => new URLSearchParams(location.search).get("unsolved") === "1");
   const [revisionQuestionIds, setRevisionQuestionIds] = useState<Set<string>>(() => new Set());
 
   const generatedDatasets = useMemo(() => {
@@ -170,7 +171,7 @@ export default function PySparkLab() {
       name: (nameCounts.get(dataset.name) || 0) > 1 && dataset.id !== "legacy" ? `${dataset.name} · ${dataset.id.slice(0, 8)}` : dataset.name
     })).sort((left, right) => left.name.localeCompare(right.name));
   }, [questions]);
-  const visibleQuestions = useMemo(() => questions.filter((item) => (filter === "all" || filter === "revision" || (filter.startsWith("dataset:") ? isGeneratedQuestion(item) && datasetFilterKey(item) === filter : item.learning_level === filter)) && (!revisionOnly || revisionQuestionIds.has(item.id))), [questions, filter, revisionOnly, revisionQuestionIds]);
+  const visibleQuestions = useMemo(() => questions.filter((item) => (filter === "all" || filter === "revision" || (filter.startsWith("dataset:") ? isGeneratedQuestion(item) && datasetFilterKey(item) === filter : item.learning_level === filter)) && (!revisionOnly || revisionQuestionIds.has(item.id)) && (!unsolvedOnly || !item.completed)), [questions, filter, revisionOnly, revisionQuestionIds, unsolvedOnly]);
   const levelCounts = useMemo(() => Object.fromEntries([
     ...levels.map((level) => [level, questions.filter((item) => item.learning_level === level).length]),
     ...generatedDatasets.map((dataset) => [dataset.key, dataset.count])
@@ -394,6 +395,26 @@ export default function PySparkLab() {
     }
   }
 
+  async function markKnown() {
+    if (!question || busy || question.completed) return;
+    setError("");
+    try {
+      const response = await fetch(`${API}/api/learning/questions/${question.id}/mark-known`, { method: "POST", credentials: "include" });
+      const body = await readApiJson<any>(response);
+      if (!response.ok) throw new Error(body.error || "Question could not be marked as solved.");
+      setQuestion((current) => current?.id === question.id ? { ...current, attempted: true, completed: true, revisionMarked: false } : current);
+      setQuestions((items) => items.map((item) => item.id === question.id ? { ...item, attempted: true, completed: true, revisionMarked: false } : item));
+      setRevisionQuestionIds((current) => {
+        const next = new Set(current);
+        next.delete(question.id);
+        return next;
+      });
+      await loadHistory(question.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Question could not be marked as solved.");
+    }
+  }
+
   async function cancelExecution() {
     if (!activeJobId) return;
     const response = await fetch(`${API}/api/learning/jobs/${activeJobId}`, { method: "DELETE", credentials: "include" });
@@ -475,9 +496,10 @@ export default function PySparkLab() {
     {error && <div className="sparkLabError" role="alert">{error}</div>}
     <div className="sparkLabLayout" style={{ "--question-rail-width": `${railWidth}px` } as CSSProperties}>
       <aside className="sparkQuestionRail" aria-label="PySpark question bank">
-        <div className="sparkRailHead"><strong>{revisionOnly ? "REVISION ONLY" : "QUESTION BANK"}</strong><span>{visibleQuestions.length}</span></div>
+        <div className="sparkRailHead"><strong>{revisionOnly ? "REVISION ONLY" : unsolvedOnly ? "UNSOLVED QUESTIONS" : "QUESTION BANK"}</strong><span>{visibleQuestions.length}</span></div>
         <label className="questionRailWidthControl">Bank width <output>{railWidth}px</output><input type="range" min="220" max="560" step="10" value={railWidth} aria-label="Question bank width" onChange={(event) => setRailWidth(Number(event.target.value))} /></label>
         <button className={`sparkRevisionToggle ${revisionOnly ? "active" : ""}`} onClick={() => selectBankFilter(revisionOnly ? "all" : "revision")}><Flag size={13} />{revisionOnly ? "Show all questions" : "Revision only"}</button>
+        <button className={`sparkRevisionToggle ${unsolvedOnly ? "active" : ""}`} aria-pressed={unsolvedOnly} onClick={() => setUnsolvedOnly(!unsolvedOnly)}>{unsolvedOnly ? "Show solved too" : "Unsolved only"}</button>
         <div className="sparkLevelSelector" role="tablist" aria-label="PySpark question bank">{["all", "revision", ...levels, ...generatedDatasets.map((dataset) => dataset.key)].map((level) => {
           if (level === "revision") return <button key={level} className={`bankProgress-revision ${revisionOnly ? "active" : ""}`} role="tab" aria-label={`Revision questions, ${revisionCount} marked`} title="Show questions marked for revision" aria-selected={revisionOnly} onClick={() => selectBankFilter(level)}><strong>Revision</strong><span>{revisionCount}</span></button>;
           const dataset = generatedDatasets.find((entry) => entry.key === level);
@@ -494,7 +516,7 @@ export default function PySparkLab() {
           return <div className={`sparkLevelIntro ${dataset ? "level-dataset" : `level-${filter.toLowerCase()}`}`}><strong>{revisionOnly ? "REVISION QUESTIONS" : filter === "all" ? "FULL QUESTION BANK" : dataset ? dataset.name : `LEVEL ${filter} · ${levelBand(filter)}`}</strong><p>{revisionOnly ? "Questions you marked for revision." : levelDescription(filter)}</p></div>;
         })()}
         {visibleQuestions.map((item, index) => <button key={item.id} className={`sparkQuestionItem ${question?.id === item.id ? "selected" : ""}`} onClick={() => void chooseQuestion(item)}><span className="sparkQuestionTitle"><em>{String(index + 1).padStart(2, "0")}</em>{item.title}</span><span className="sparkQuestionMeta">{isGeneratedQuestion(item) ? `${item.dataset_name || "Dataset"} · ${item.topic}` : `${item.topic} · ${item.learning_level ? `Level ${item.learning_level}` : item.difficulty}`}{item.completed && <Check size={13} />}{item.revisionMarked && <Flag size={12} aria-label="Marked for revision" />}{item.bookmarked && <Bookmark size={12} aria-label="Bookmarked" />}</span></button>)}
-        {!visibleQuestions.length && <p className="sparkRailEmpty">{revisionOnly ? "No questions are marked for revision." : filter.startsWith("dataset:") ? "This dataset has no questions yet." : "No Spark exercises match this filter."}</p>}
+        {!visibleQuestions.length && <p className="sparkRailEmpty">{revisionOnly ? "No questions are marked for revision." : unsolvedOnly ? "All questions in this filter are marked solved." : filter.startsWith("dataset:") ? "This dataset has no questions yet." : "No Spark exercises match this filter."}</p>}
       </aside>
 
       {question && <section className="sparkWorkspace">
@@ -505,14 +527,14 @@ export default function PySparkLab() {
         <div className="sparkDatasetPreview"><div className="sparkSectionHeading"><strong>Sample DataFrames</strong><span>Public example</span></div>{example ? renderDatasets(example.input).map((dataset) => { const schema = question.input_schema?.find((item) => item.dataset === dataset.name); return <div className="sparkDataset" key={dataset.name}><h3>{dataset.name}</h3>{schema && <div className="sparkSchemaPreview"><strong>Schema</strong><span>{schema.columns.map((column) => `${column.name}: ${column.type}`).join(" · ")}</span></div>}<DataTable rows={dataset.rows} /></div>; }) : <p className="sparkEmptyData">No public input preview is available.</p>}</div>
 
         <section className="sparkEditorPanel" aria-label="PySpark coding workspace">
-          <div className="sparkEditorToolbar"><span><Code2 size={15} /> Python</span><div><button onClick={() => setCode(question.starter_code || "")}>Reset</button><button className="sparkRunButton" disabled={!runner.available || !!busy || !code.trim()} onClick={() => void execute(false)}><Play size={14} />{busy === "run" ? "Queued / running" : "Run Code"}</button><button className="sparkSubmitButton" disabled={!runner.available || !!busy || !code.trim()} onClick={() => void execute(true)}><Send size={14} />{busy === "submit" ? "Queued / evaluating" : "Submit Solution"}</button>{activeJobId && <button onClick={() => void cancelExecution()}>Cancel</button>}</div></div>
+          <div className="sparkEditorToolbar"><span><Code2 size={15} /> Python</span><div><button onClick={() => setCode(question.starter_code || "")}>Reset</button><button className="sparkRunButton" disabled={!runner.available || !!busy || !code.trim()} onClick={() => void execute(false)}><Play size={14} />{busy === "run" ? "Queued / running" : "Run Code"}</button><button className="sparkSubmitButton" disabled={!runner.available || !!busy || !code.trim()} onClick={() => void execute(true)}><Send size={14} />{busy === "submit" ? "Queued / evaluating" : "Submit Solution"}</button><button disabled={!!busy || question.completed} title="Self-report that you already know this question; no Spark job will run." onClick={() => void markKnown()}><CheckCircle2 size={14} />{question.completed ? "Marked solved" : "I already know this"}</button>{activeJobId && <button onClick={() => void cancelExecution()}>Cancel</button>}</div></div>
           <CodeMirror value={code} height="340px" extensions={[python(), oneDark]} onChange={setCode} editable={!busy} basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }} />
           <div className="sparkEditorStatus"><span className={busy ? "working" : runner.available ? "ready" : "offline"} />{busy ? `${jobStatus || "queued"} · ${busy === "run" ? "public example" : "hidden tests"} · ${elapsedSeconds}s / 45s` : runner.available ? "Ready · Spark local[2] · 45s job limit" : "Execution unavailable · code is not sent to the application server"}<span>CPU and output limits enforced</span></div>
         </section>
 
         <section className="sparkResultsPanel"><div className="sparkTabs" role="tablist">{TABS.map((item) => <button role="tab" aria-selected={tab === item} className={tab === item ? "active" : ""} key={item} onClick={() => item === "Solution" ? void showSolution() : setTab(item)}>{item}</button>)}</div>
           <div className="sparkTabContent" role="tabpanel">
-            {tab === "Test Cases" && <>{result ? <><div className={`sparkRunSummary ${result.correct ? "pass" : "fail"}`}><strong>{result.correct ? "All tests passed" : result.status === "failed" ? "Execution completed with failing tests" : result.status === "error" ? "Runtime error" : result.status === "timeout" ? "Execution timed out" : result.status === "resource_limit_exceeded" ? "Resource limit exceeded" : "Execution did not complete"}</strong><span><Clock3 size={14} />{result.executionMs ?? 0} ms</span>{result.message && <p>{result.message}</p>}</div><ul className="sparkTestList">{result.tests?.map((test) => <li key={test.name}><span className={test.passed ? "passed" : "failed"}>{test.passed ? "PASS" : "FAIL"}</span>{test.name}<small>{test.status || "completed"}</small></li>)}</ul>{result.output?.rows && <><h3>Actual DataFrame output</h3><DataTable rows={result.output.rows} /><p className="sparkSchemaLine">Schema: {requiredColumns.map((field) => `${field.name} ${field.type}`).join(" · ")}</p></>}{result.output?.console && <><h3>Console output</h3><pre className="sparkConsoleOutput">{result.output.console}</pre></>}</> : <div className="sparkTabBlank"><Play size={18} /><span>Run Code to execute the public sample or submit for full evaluation.</span></div>}{history.length > 0 && <div className="sparkHistory"><h3><History size={15} /> Recent submissions</h3>{history.map((attempt) => <div key={attempt.id}><span className={attempt.correct ? "passed" : "failed"}>{attempt.correct ? "Passed" : "Retry"}</span><time>{attempt.execution_ms} ms · {new Date(attempt.created_at).toLocaleString()}</time></div>)}</div>}</>}
+            {tab === "Test Cases" && <>{result ? <><div className={`sparkRunSummary ${result.correct ? "pass" : "fail"}`}><strong>{result.correct ? "All tests passed" : result.status === "failed" ? "Execution completed with failing tests" : result.status === "error" ? "Runtime error" : result.status === "timeout" ? "Execution timed out" : result.status === "resource_limit_exceeded" ? "Resource limit exceeded" : "Execution did not complete"}</strong><span><Clock3 size={14} />{result.executionMs ?? 0} ms</span>{result.message && <p>{result.message}</p>}</div><ul className="sparkTestList">{result.tests?.map((test) => <li key={test.name}><span className={test.passed ? "passed" : "failed"}>{test.passed ? "PASS" : "FAIL"}</span>{test.name}<small>{test.status || "completed"}</small></li>)}</ul>{result.output?.rows && <><h3>Actual DataFrame output</h3><DataTable rows={result.output.rows} /><p className="sparkSchemaLine">Schema: {requiredColumns.map((field) => `${field.name} ${field.type}`).join(" · ")}</p></>}{result.output?.console && <><h3>Console output</h3><pre className="sparkConsoleOutput">{result.output.console}</pre></>}</> : <div className="sparkTabBlank"><Play size={18} /><span>Run Code to execute the public sample or submit for full evaluation.</span></div>}{history.length > 0 && <div className="sparkHistory"><h3><History size={15} /> Recent submissions</h3>{history.map((attempt) => <div key={attempt.id}><span className={attempt.self_reported ? "passed" : attempt.correct ? "passed" : "failed"}>{attempt.self_reported ? "Marked solved" : attempt.correct ? "Passed" : "Retry"}</span><time>{attempt.self_reported ? "Self-reported" : `${attempt.execution_ms} ms`} · {new Date(attempt.created_at).toLocaleString()}</time></div>)}</div>}</>}
             {tab === "Expected Output" && (example ? <><DataTable rows={example.expected} /><p className="sparkExpectedNote">Public example only. Hidden test data and expected results stay on the runner.</p></> : <p>No public expected output.</p>)}
             {tab === "Hints" && <div className="sparkHintList">{question.hints?.length ? question.hints.map((hint, index) => <p key={index}><Lightbulb size={15} /><span><strong>Hint {index + 1}</strong>{hint}</span></p>) : <p>No hints are available.</p>}</div>}
             {tab === "Explanation" && <div className="sparkReviewContent">{review ? <><p>{review.explanation}</p><h3>Common mistakes</h3><ul>{review.commonMistakes.map((mistake) => <li key={mistake}>{mistake}</li>)}</ul></> : <p>Submit a solution to unlock the explanation and review notes.</p>}</div>}
