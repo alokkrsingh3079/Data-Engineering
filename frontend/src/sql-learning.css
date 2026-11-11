@@ -163,6 +163,7 @@
 .sqlQuestionStepper button{width:29px;height:29px;border:1px solid #2a4054;border-radius:5px;background:#0b1927;color:#9bb2c3;cursor:pointer}
 .sqlQuestionStepper button.active{border-color:#4ac3df;background:#11354a;color:#e3faff}
 .sqlQuestionStepper button.correct{border-color:#3a8566;color:#a8e8c1}
+.sqlQuestionStepper button.revisionMarked{box-shadow:inset 0 -3px #e6b458}
 .sqlQuestionDifficulty{color:#70bbd1;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em}
 .sqlQuestionCard h4{margin:7px 0;color:#deedf5;font-size:15px}
 .sqlQuestionCard>p,.sqlQuestionTask p{color:#a6bbc9;line-height:1.5}
@@ -197,7 +198,9 @@
 .sqlLearningHeaderActions button,.sqlCurriculumActions button,.sqlModuleActions button,.sqlAddTopicForm button,.sqlRevisionSchedule button,.sqlTopicActions button,.sqlChecklistHeading button,.sqlCustomLessonEditor button,.sqlPersonalNotes button,.sqlTopicTutor button,.sqlCustomModuleTitle button,.sqlTopicProgress>button{padding:8px 10px;border:1px solid #2a5974;border-radius:5px;background:#102a40;color:#c4eaf5;cursor:pointer}
 .sqlLearningHeaderActions>button:hover,.sqlCurriculumActions button.active{border-color:#48a8c4;background:#12384b}
 .sqlRevisionCenter,.sqlRevisionHistory{padding:16px;border:1px solid #1e3c55;border-radius:8px;background:#0b1927}
-.sqlRevisionMetrics{margin:14px 0}
+.sqlRevisionQuestionQueue{margin:12px 0;padding:13px;border:1px solid #203c53;border-radius:7px;background:#0a1a28}
+.sqlRevisionQuestionQueue h3{margin:0 0 8px;color:#d7e8f2;font-size:13px}
+.sqlRevisionMetrics{margin:14px 0;grid-template-columns:repeat(5,minmax(0,1fr))}
 .sqlRevisionFilters{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
 .sqlRevisionFilters button{padding:6px 9px;border:1px solid #29445b;border-radius:5px;background:#0d1d2c;color:#94adbf;text-transform:capitalize;cursor:pointer}
 .sqlRevisionFilters button.active{border-color:#4389a5;background:#123249;color:#d4f4ff}
@@ -210,6 +213,7 @@
 .sqlRevisionList strong,.sqlRevisionHistory strong{color:#d7e8f2;font-size:12px}
 .sqlRevisionList small,.sqlRevisionHistory span,.sqlRevisionHistory small{color:#819caf;font-size:10px}
 .sqlRevisionList article button{padding:7px 9px;border:1px solid #35617a;border-radius:5px;background:#102b40;color:#c6e8f3;cursor:pointer}
+.sqlRevisionList article button:disabled{opacity:.55;cursor:not-allowed}
 .sqlRevisionPriority{width:max-content;padding:3px 6px;border-radius:3px;font-size:9px;font-weight:700;letter-spacing:.08em}
 .sqlRevisionPriority.high{background:#40252b;color:#f1b1b8}.sqlRevisionPriority.medium{background:#3a321d;color:#e8d18c}.sqlRevisionPriority.low{background:#1b3341;color:#a6d9e8}
 .sqlRevisionHistory{margin-top:16px}.sqlRevisionHistory h3{margin:0 0 8px;color:#d7e8f2;font-size:13px}
@@ -222,6 +226,8 @@
 .sqlRevisionAnalyticsMetrics span,.sqlRevisionAnalyticsMetrics strong{color:#8eacbf;font-size:9px}
 .sqlRevisionAnalyticsMetrics strong{color:#d8eaf3;font-size:17px}
 .sqlRevisionRecommendations{display:grid}
+@media(max-width:900px){.sqlRevisionMetrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:650px){.sqlRevisionMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .sqlRevisionRecommendations article{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 2px;border-top:1px solid #1c3448}
 .sqlRevisionRecommendations article>div{display:grid;gap:4px}
 .sqlRevisionRecommendations strong{color:#d7e8f2;font-size:11px}

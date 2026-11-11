@@ -1158,7 +1158,7 @@ export async function getSqlLearningPracticeTest(userId: string, testId: string)
   const test = await mongoCollection<SqlLearningTest>("sql_learning_tests").findOne({ _id: testId, user_id: userId });
   if (!test) return null;
   const attemptsCollection = mongoCollection("sql_learning_test_attempts");
-  const [attempts, latestAttempts] = await Promise.all([
+  const [attempts, latestAttempts, revisionMarks] = await Promise.all([
     attemptsCollection.find({ user_id: userId, test_id: testId })
     .sort({ created_at: -1 })
     .limit(100)
@@ -1167,7 +1167,10 @@ export async function getSqlLearningPracticeTest(userId: string, testId: string)
       { $match: { user_id: userId, test_id: testId } },
       { $sort: { created_at: -1 } },
       { $group: { _id: "$question_id", correct: { $first: "$correct" } } }
-    ]).toArray()
+    ]).toArray(),
+    mongoCollection("sql_learning_question_revision_marks")
+      .find({ user_id: userId, test_id: testId }, { projection: { question_id: 1 } })
+      .toArray()
   ]);
   const result = summarizeSqlLearningTestAttempts(
     latestAttempts.map((attempt) => ({ question_id: attempt._id, correct: attempt.correct })),
@@ -1183,6 +1186,7 @@ export async function getSqlLearningPracticeTest(userId: string, testId: string)
     status: test.status,
     result,
     questionResults: latestAttempts.map((attempt) => ({ questionId: attempt._id, correct: attempt.correct })),
+    revisionQuestionIds: revisionMarks.map((mark) => String(mark.question_id)),
     questions: test.questions.map(hideSqlLearningQuestionSolution),
     attempts: attempts.map(({ _id: _id, ...attempt }) => attempt)
   };
@@ -1283,6 +1287,30 @@ export async function markSqlLearningQuestionKnown(userId: string, testId: strin
   });
   await updateChecklistAfterCompletedTest(userId, test);
   return { status: "ok" as const, correct: true, selfReported: true };
+}
+
+export async function setSqlLearningQuestionRevision(userId: string, testId: string, questionId: string, marked: boolean) {
+  const test = await mongoCollection<SqlLearningTest>("sql_learning_tests").findOne({
+    _id: testId,
+    user_id: userId,
+    status: "ready"
+  });
+  if (!test || test.assessment_kind === "interview" || !test.questions.some((question) => question.id === questionId)) {
+    return { status: "not_found" as const };
+  }
+
+  const marks = mongoCollection("sql_learning_question_revision_marks");
+  const markId = `${userId}:${testId}:${questionId}`;
+  if (marked) {
+    await marks.updateOne(
+      { _id: markId },
+      { $set: { user_id: userId, test_id: testId, topic_id: test.topic_id, question_id: questionId, updated_at: new Date() } },
+      { upsert: true }
+    );
+  } else {
+    await marks.deleteOne({ _id: markId });
+  }
+  return { status: "ok" as const, marked };
 }
 
 export async function startSqlLearningMockInterview(userId: string, testId: string) {
@@ -1465,7 +1493,7 @@ export async function completeSqlLearningRevision(userId: string, sessionId: str
 }
 
 export async function getSqlLearningRevisionCenter(userId: string) {
-  const [items, sessions, curriculum, settings, completedSessionCount, sessionCounts] = await Promise.all([
+  const [items, sessions, curriculum, settings, completedSessionCount, sessionCounts, questionMarks] = await Promise.all([
     mongoCollection<RevisionItem>("sql_learning_revision_items").find({ user_id: userId }).sort({ priority: 1, updated_at: -1 }).toArray(),
     mongoCollection("sql_learning_revision_sessions").find({ user_id: userId, status: "completed" }).sort({ completed_at: -1 }).limit(50).toArray(),
     getUserCurriculum(userId),
@@ -1474,10 +1502,47 @@ export async function getSqlLearningRevisionCenter(userId: string) {
     mongoCollection("sql_learning_revision_sessions").aggregate<{ _id: string; count: number }>([
       { $match: { user_id: userId, status: "completed" } },
       { $group: { _id: "$topic_id", count: { $sum: 1 } } }
-    ]).toArray()
+    ]).toArray(),
+    mongoCollection("sql_learning_question_revision_marks").find({ user_id: userId }).sort({ updated_at: -1 }).toArray()
   ]);
   const topics = new Map(curriculum.flatMap((module) => module.topics.map((topic) => [topic.id, { topic, module }] as const)));
+  const modules = new Map(curriculum.map((module) => [module.id, module] as const));
   const countsByTopic = new Map(sessionCounts.map((entry) => [entry._id, entry.count]));
+  const markedTests = questionMarks.length
+    ? await mongoCollection<SqlLearningTest>("sql_learning_tests").find({
+        _id: { $in: questionMarks.map((mark) => String(mark.test_id)) },
+        user_id: userId,
+        status: "ready",
+        assessment_kind: { $ne: "interview" }
+      }).toArray()
+    : [];
+  const testsById = new Map(markedTests.map((test) => [test.id, test] as const));
+  const questionRevisions = questionMarks.flatMap((mark) => {
+    const test = testsById.get(String(mark.test_id));
+    const question = test?.questions.find((item) => item.id === mark.question_id);
+    if (!test || !question) return [];
+    const module = modules.get(test.module_id);
+    if (!module) return [];
+    const contextTopic = test.assessment_kind === "module"
+      ? module.topics[0]
+      : topics.get(test.topic_id)?.topic;
+    if (!contextTopic) return [];
+    const topic = topics.get(test.topic_id)?.topic;
+    return [{
+      id: String(mark._id),
+      testId: test.id,
+      testNumber: test.test_number,
+      assessmentKind: test.assessment_kind || "topic",
+      topicId: test.topic_id,
+      contextTopicId: contextTopic.id,
+      topicTitle: topic?.title || (test.assessment_kind === "module" ? "Module assessment" : "Archived topic"),
+      moduleId: test.module_id,
+      moduleTitle: module.title,
+      questionId: question.id,
+      questionTitle: question.title,
+      markedAt: mark.updated_at
+    }];
+  });
   const revisions = items.flatMap((item) => {
     const found = topics.get(item.topic_id);
     if (!found) return [];
@@ -1529,6 +1594,7 @@ export async function getSqlLearningRevisionCenter(userId: string) {
     masteredTopics: revisions.filter((item) => item.lastScore !== null && item.lastScore >= 85).length,
     weakTopics: revisions.filter((item) => item.lastScore !== null && item.lastScore < 60).length,
     dueTopics: revisions.filter((item) => item.nextRevisionAt && new Date(item.nextRevisionAt) <= new Date()).length,
+    questionRevisions,
     analytics: {
       sessionsAnalyzed: sessions.length,
       averageScoreImprovement: scoreImprovements.length

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
-import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Clock3, Eye, Layers3, Lightbulb, Play, Search, Send, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Bookmark, CheckCircle2, Clock3, Eye, Layers3, Lightbulb, Play, Search, Send, Sparkles } from "lucide-react";
 import StudioNavigation from "./StudioNavigation";
 import SqlLessonRichText, { lessonSyntaxText } from "./SqlLessonRichText";
 import "./sql-learning.css";
@@ -73,12 +73,13 @@ type LessonExample = { title: string; level: string; problem: string; sql: strin
 type LessonContent = { overview: string; theory: string; syntax: string; parameters: string[]; returnType: string; rules: string[]; commonMistakes: string[]; useCases: string[]; interviewRelevance: string; dialectNotes: string; examples: LessonExample[] };
 type PracticeQuestion = { id: string; title: string; difficulty: "beginner" | "intermediate" | "advanced"; context: string; task: string; required_output: string; hint: string; explanation: string };
 type EditableQuestion = { title: string; difficulty: "beginner" | "intermediate" | "advanced"; context: string; task: string; required_output: string; reference_sql: string; hint: string; explanation: string };
-type PracticeTest = { id: string; topicId: string; moduleId: string; testNumber: number; assessmentKind: "topic" | "module" | "interview"; startedAt?: string | null; status: string; result: TestResultSummary; questionResults: { questionId: string; correct: boolean }[]; questions: PracticeQuestion[]; attempts: { question_id: string; correct: boolean; self_reported?: boolean; created_at: string }[] };
+type PracticeTest = { id: string; topicId: string; moduleId: string; testNumber: number; assessmentKind: "topic" | "module" | "interview"; startedAt?: string | null; status: string; result: TestResultSummary; questionResults: { questionId: string; correct: boolean }[]; revisionQuestionIds: string[]; questions: PracticeQuestion[]; attempts: { question_id: string; correct: boolean; self_reported?: boolean; created_at: string }[] };
 type VisibleSolution = { sql: string; explanation: string; expected: SqlResult };
 type SchemaColumn = { column_name: string; data_type: string; is_nullable?: "YES" | "NO"; is_primary_key?: boolean; column_default?: string | null };
 type SchemaRelationship = { constraint_name: string; table_name: string; column_name: string; foreign_table_name: string; foreign_column_name: string };
 type TopicDetail = { module: { id: string; title: string; order: number }; topic: Topic; progress: { checklist: Record<ChecklistKey, boolean>; theoryPercent: number; examplesPercent: number; practicePercent: number; overallPercent: number; status: TopicStatus; firstStudiedAt: string | null; firstCompletedAt: string | null; lastStudiedAt: string | null }; revision: { status: string; priority: string; reason: string; notes: string; nextRevisionAt: string | null; revisionCount: number } | null; personalNote: string; bookmarked: boolean; practiceDatabaseId: string | null; practiceDatabaseName: string | null; schema: { schemaName: string; tables: { name: string; columns: SchemaColumn[] }[]; relationships: SchemaRelationship[] } | null; samples: { name: string; schemaColumns: SchemaColumn[]; preview: SqlResult }[]; content: LessonContent | null; tests: { id: string; testNumber: number; questionCount: number; status: string; result: TestResultSummary }[] };
-type RevisionCenterData = { intervals: number[]; totalTopics: number; highPriority: number; mediumPriority: number; lowPriority: number; completedSessions: number; masteredTopics: number; weakTopics: number; dueTopics: number; analytics: { sessionsAnalyzed: number; averageScoreImprovement: number | null; improvedSessions: number; declinedSessions: number }; recommendations: { topicId: string; topicTitle: string; moduleTitle: string; reason: string; priority: string; lastScore: number | null; nextRevisionAt: string | null }[]; recentSessions: { topicId: string; topicTitle: string; completedAt: string; scoreBefore: number | null; scoreAfter: number | null; accuracyImprovement: number | null }[]; revisions: { topicId: string; topicTitle: string; moduleId: string; moduleTitle: string; status: string; priority: string; reason: string; notes: string; revisionCount: number; nextRevisionAt: string | null; lastScore: number | null }[] };
+type QuestionRevision = { id: string; testId: string; testNumber: number; assessmentKind: "topic" | "module"; topicId: string; contextTopicId: string; topicTitle: string; moduleId: string; moduleTitle: string; questionId: string; questionTitle: string; markedAt: string };
+type RevisionCenterData = { intervals: number[]; totalTopics: number; highPriority: number; mediumPriority: number; lowPriority: number; completedSessions: number; masteredTopics: number; weakTopics: number; dueTopics: number; analytics: { sessionsAnalyzed: number; averageScoreImprovement: number | null; improvedSessions: number; declinedSessions: number }; recommendations: { topicId: string; topicTitle: string; moduleTitle: string; reason: string; priority: string; lastScore: number | null; nextRevisionAt: string | null }[]; recentSessions: { topicId: string; topicTitle: string; completedAt: string; scoreBefore: number | null; scoreAfter: number | null; accuracyImprovement: number | null }[]; revisions: { topicId: string; topicTitle: string; moduleId: string; moduleTitle: string; status: string; priority: string; reason: string; notes: string; revisionCount: number; nextRevisionAt: string | null; lastScore: number | null }[]; questionRevisions: QuestionRevision[] };
 type SqlLearningAnalytics = { totalModules: number; totalTopics: number; completedTopics: number; completionPercent: number; accuracy: number | null; questionsAnswered: number; correctAnswers: number; currentStreak: number; longestStreak: number; activeDays: number; activeDaysLast30: number; activeDaysLast7: number; dailyActivity: { date: string; activityCount: number }[]; modules: { moduleId: string; title: string; totalTopics: number; completedTopics: number; completionPercent: number }[] };
 type PlannerTask = { id: string; topicId: string; title: string; targetDate: string | null; status: "planned" | "completed" };
 type PlannerData = { dailyGoalMinutes: number; weeklyStudyDaysGoal: number; tasks: PlannerTask[] };
@@ -360,6 +361,29 @@ export default function SQLLearning() {
     }
   }
 
+  async function togglePracticeQuestionRevision() {
+    if (!activeTest || !currentQuestion || practiceBusy || activeTest.assessmentKind === "interview") return;
+    const marked = !activeTest.revisionQuestionIds.includes(currentQuestion.id);
+    setPracticeBusy(true);
+    setPracticeMessage("");
+    try {
+      const response = await fetch(`${API}/api/sql-learning/tests/${encodeURIComponent(activeTest.id)}/questions/${encodeURIComponent(currentQuestion.id)}/revision`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ marked })
+      });
+      await readResponse<{ marked: boolean }>(response);
+      const refreshed = await fetch(`${API}/api/sql-learning/tests/${encodeURIComponent(activeTest.id)}`, { credentials: "include" });
+      setActiveTest(await readResponse<PracticeTest>(refreshed));
+      setPracticeMessage(marked ? "Question added to this test's revision list." : "Question removed from this test's revision list.");
+    } catch (cause) {
+      setPracticeMessage(cause instanceof Error ? cause.message : "Question revision mark could not be saved.");
+    } finally {
+      setPracticeBusy(false);
+    }
+  }
+
   async function revealPracticeSolution() {
     if (!activeTest || !currentQuestion) return;
     try {
@@ -439,6 +463,48 @@ export default function SQLLearning() {
       setActiveTest(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Revision center could not be loaded.");
+    }
+  }
+
+  async function openMarkedPracticeQuestion(item: QuestionRevision) {
+    setTopicLoading(true);
+    setError("");
+    try {
+      const topicResponse = await fetch(curriculumUrl(`${API}/api/sql-learning/topics/${encodeURIComponent(item.contextTopicId)}`, customMode), { credentials: "include" });
+      const detail = await readResponse<TopicDetail>(topicResponse);
+      const testResponse = await fetch(`${API}/api/sql-learning/tests/${encodeURIComponent(item.testId)}`, { credentials: "include" });
+      const test = await readResponse<PracticeTest>(testResponse);
+      const questionIndex = test.questions.findIndex((question) => question.id === item.questionId);
+      if (questionIndex < 0) throw new Error("This marked question is no longer available in its test.");
+      setActivePage("curriculum");
+      setActiveModule(null);
+      setActiveTopic(detail);
+      setActiveTest(test);
+      setActiveQuestionIndex(questionIndex);
+      setPracticeSql("");
+      setPracticeResult(null);
+      setPracticeMessage("");
+      setActiveTab("practice");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Marked practice question could not be opened.");
+    } finally {
+      setTopicLoading(false);
+    }
+  }
+
+  async function removeMarkedPracticeQuestion(item: QuestionRevision) {
+    try {
+      const response = await fetch(`${API}/api/sql-learning/tests/${encodeURIComponent(item.testId)}/questions/${encodeURIComponent(item.questionId)}/revision`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ marked: false })
+      });
+      await readResponse<{ marked: boolean }>(response);
+      const refreshed = await fetch(`${API}/api/sql-learning/revisions`, { credentials: "include" });
+      setRevisionData(await readResponse<RevisionCenterData>(refreshed));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Revision mark could not be removed.");
     }
   }
 
@@ -898,12 +964,20 @@ export default function SQLLearning() {
         onSave={saveLearningPlanner}
       /> : activePage === "revisions" ? <>
         <section className="sqlRevisionCenter">
-          <div className="sqlModulesHeading"><div><h2>Revision Center</h2><p>Review saved topics and retain each completed revision session.</p></div></div>
+          <div className="sqlModulesHeading"><div><h2>Revision Center</h2><p>Review saved topics and individual practice-test questions in one place.</p></div></div>
           <section className="sqlLearningMetrics sqlRevisionMetrics">
             <article><span>TOPICS TO REVIEW</span><strong>{revisionData?.totalTopics ?? 0}</strong></article>
+            <article><span>QUESTIONS TO REVIEW</span><strong>{revisionData?.questionRevisions.length ?? 0}</strong></article>
             <article><span>HIGH PRIORITY</span><strong>{revisionData?.highPriority ?? 0}</strong></article>
             <article><span>SESSIONS COMPLETED</span><strong>{revisionData?.completedSessions ?? 0}</strong></article>
             <article><span>DUE NOW</span><strong>{revisionData?.dueTopics ?? 0}</strong></article>
+          </section>
+          <section className="sqlRevisionQuestionQueue">
+            <h3>Practice questions marked for revision</h3>
+            {(revisionData?.questionRevisions || []).length ? <div className="sqlRevisionList">{revisionData!.questionRevisions.map((item) => <article key={item.id}>
+              <div><span className="sqlRevisionPriority medium">{item.assessmentKind === "module" ? "MODULE TEST" : `TEST ${item.testNumber}`}</span><strong>{item.questionTitle}</strong><small>{item.moduleTitle} · {item.topicTitle} · marked {new Date(item.markedAt).toLocaleDateString()}</small></div>
+              <div><button type="button" disabled={topicLoading} onClick={() => void openMarkedPracticeQuestion(item)}>Review question</button><button type="button" onClick={() => void removeMarkedPracticeQuestion(item)}>Remove mark</button></div>
+            </article>)}</div> : <p className="sqlLearningEmpty">Questions you mark inside SQL Learning practice tests will appear here.</p>}
           </section>
           <section className="sqlRevisionAnalytics">
             <h3>Revision analytics <small>{revisionData?.analytics.sessionsAnalyzed ?? 0} recent sessions</small></h3>
@@ -1056,7 +1130,7 @@ export default function SQLLearning() {
               </section>
               {currentQuestion && <article className="sqlQuestionCard">
                 <div className="sqlQuestionStepper">
-                  {activeTest.questions.map((question, index) => <button key={question.id} type="button" aria-label={`Question ${index + 1}`} className={`${index === activeQuestionIndex ? "active" : ""} ${activeTest.questionResults.find((result) => result.questionId === question.id)?.correct ? "correct" : ""}`} onClick={() => { setActiveQuestionIndex(index); setPracticeSql(""); setPracticeResult(null); setPracticeMessage(""); setEditingTestQuestion(false); }}>{index + 1}</button>)}
+                  {activeTest.questions.map((question, index) => <button key={question.id} type="button" aria-label={`Question ${index + 1}${activeTest.revisionQuestionIds.includes(question.id) ? ", marked for revision" : ""}`} className={`${index === activeQuestionIndex ? "active" : ""} ${activeTest.questionResults.find((result) => result.questionId === question.id)?.correct ? "correct" : ""} ${activeTest.revisionQuestionIds.includes(question.id) ? "revisionMarked" : ""}`} onClick={() => { setActiveQuestionIndex(index); setPracticeSql(""); setPracticeResult(null); setPracticeMessage(""); setEditingTestQuestion(false); }}>{index + 1}</button>)}
                 </div>
                 <span className="sqlQuestionDifficulty">{currentQuestion.difficulty}</span><h4>{currentQuestion.title}</h4>
                 <p>{currentQuestion.context}</p><div className="sqlQuestionTask"><strong>Task</strong><p>{currentQuestion.task}</p><small>{currentQuestion.required_output}</small></div>
@@ -1064,6 +1138,7 @@ export default function SQLLearning() {
                 <div className="sqlPracticeActions">
                   <button type="button" disabled={!practiceSql.trim() || practiceBusy || (activeTest.assessmentKind === "interview" && interviewSeconds === 0)} onClick={() => void runExample(practiceSql)}><Play size={14} /> Run query</button>
                   <button type="button" disabled={!practiceSql.trim() || practiceBusy || (activeTest.assessmentKind === "interview" && interviewSeconds === 0)} onClick={() => void submitPracticeAnswer()}><Send size={14} /> Submit answer</button>
+                  {activeTest.assessmentKind !== "interview" && <button type="button" aria-pressed={activeTest.revisionQuestionIds.includes(currentQuestion.id)} disabled={practiceBusy} title="Save this question in the test's revision list." onClick={() => void togglePracticeQuestionRevision()}><Bookmark size={14} />{activeTest.revisionQuestionIds.includes(currentQuestion.id) ? "Remove revision mark" : "Mark for revision"}</button>}
                   {activeTest.assessmentKind !== "interview" && <button type="button" disabled={practiceBusy || activeTest.questionResults.some((result) => result.questionId === currentQuestion.id && result.correct)} title="Self-report that you already know this SQL question; no query will run." onClick={() => void markPracticeQuestionKnown()}><CheckCircle2 size={14} />{activeTest.questionResults.some((result) => result.questionId === currentQuestion.id && result.correct) ? "Marked solved" : "I already know this"}</button>}
                   <button type="button" disabled={practiceBusy} onClick={() => { setPracticeSql(""); setPracticeResult(null); setPracticeMessage(""); }}>Reset SQL</button>
                   <button type="button" onClick={() => setVisibleHints((current) => ({ ...current, [currentQuestion.id]: !current[currentQuestion.id] }))}><Lightbulb size={14} /> Hint</button>

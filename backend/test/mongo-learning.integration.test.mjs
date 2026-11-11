@@ -13,7 +13,7 @@ import {
 import { closeMongo, connectMongo, mongoCollection } from '../src/mongo.ts';
 import { seedCurriculum } from '../src/curriculum.ts';
 import { answerLearningInterview, finishLearningInterview, getLearningInterview, listLearningInterviews, startLearningInterview } from '../src/learning-interviews.ts';
-import { getSqlLearningPracticeTest, markSqlLearningQuestionKnown, seedSqlLearningCurriculum } from '../src/sql-learning.ts';
+import { getSqlLearningPracticeTest, getSqlLearningRevisionCenter, markSqlLearningQuestionKnown, seedSqlLearningCurriculum, setSqlLearningQuestionRevision } from '../src/sql-learning.ts';
 
 test('Mongo learning attempts, bookmarks, answer secrecy, and learner isolation', {
   skip: process.env.RUN_MONGO_INTEGRATION !== '1'
@@ -98,6 +98,16 @@ test('Mongo learning attempts, bookmarks, answer secrecy, and learner isolation'
     assert.equal(sqlTest.result.completed, true);
     assert.equal(sqlTest.result.score, 100);
     assert.equal(sqlTest.attempts[0].self_reported, true);
+    const revisionMark = await setSqlLearningQuestionRevision(userTwo, sqlTestId, 'known-sql-question', true);
+    assert.deepEqual(revisionMark, { status: 'ok', marked: true });
+    assert.deepEqual((await getSqlLearningPracticeTest(userTwo, sqlTestId)).revisionQuestionIds, ['known-sql-question']);
+    const revisionCenter = await getSqlLearningRevisionCenter(userTwo);
+    assert.equal(revisionCenter.questionRevisions.length, 1);
+    assert.equal(revisionCenter.questionRevisions[0].questionTitle, 'Known SQL question');
+    assert.deepEqual(await setSqlLearningQuestionRevision(userTwo, sqlTestId, 'known-sql-question', false), { status: 'ok', marked: false });
+    assert.equal((await getSqlLearningRevisionCenter(userTwo)).questionRevisions.length, 0);
+    assert.deepEqual((await getSqlLearningPracticeTest(userTwo, sqlTestId)).revisionQuestionIds, []);
+    assert.deepEqual(await setSqlLearningQuestionRevision(userOne, sqlTestId, 'known-sql-question', true), { status: 'not_found' });
     await mongoCollection('sql_learning_tests').insertOne({
       _id: 'integration-known-interview',
       id: 'integration-known-interview',
@@ -113,6 +123,8 @@ test('Mongo learning attempts, bookmarks, answer secrecy, and learner isolation'
     });
     const interviewKnown = await markSqlLearningQuestionKnown(userTwo, 'integration-known-interview', 'interview-question');
     assert.equal(interviewKnown.status, 'not_found');
+    const interviewRevision = await setSqlLearningQuestionRevision(userTwo, 'integration-known-interview', 'interview-question', true);
+    assert.equal(interviewRevision.status, 'not_found');
 
     const correct = await submitLearningAnswer(userOne, questionId, 'a');
     assert.equal(correct.status, 'ok');

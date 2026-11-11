@@ -26,6 +26,12 @@ test("planner persistence scopes reads and writes to the authenticated user", ()
   assert.match(implementation, /Unknown SQL Learning topic/);
 });
 
+test("practice-test revision marks are owner-scoped and excluded from timed interviews", () => {
+  assert.match(server, /app\.put\('\/api\/sql-learning\/tests\/:testId\/questions\/:questionId\/revision'[\s\S]{0,150}typeof req\.body\?\.marked!=='boolean'/);
+  assert.match(implementation, /setSqlLearningQuestionRevision\(userId: string, testId: string, questionId: string, marked: boolean\)[\s\S]{0,500}user_id: userId[\s\S]{0,300}assessment_kind === "interview"/);
+  assert.match(implementation, /sql_learning_question_revision_marks/);
+});
+
 test("question validation executes through owned workspaces and the read-only SQL guard", () => {
   assert.match(implementation, /validateSqlLearningQuestionBatch[\s\S]{0,2000}runSqlLearningQuery\(userId, databaseId, question\.reference_sql\)/);
   assert.match(implementation, /runSqlLearningQuery\(userId: string, databaseId: string, sql: string\)[\s\S]{0,300}getWorkspaceByOwnedId\(userId, databaseId\)/);
