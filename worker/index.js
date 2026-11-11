@@ -19,7 +19,12 @@ export default {
       }
 
       const target = new URL(`${requestUrl.pathname}${requestUrl.search}`, apiOrigin);
-      return fetch(new Request(target, request));
+      let response = await fetch(new Request(target, request.clone()));
+      if (response.status === 429 && response.headers.get("x-render-routing") === "hibernate-rate-limited") {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        response = await fetch(new Request(target, request.clone()));
+      }
+      return response;
     }
 
     return env.ASSETS.fetch(request);

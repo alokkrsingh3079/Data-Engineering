@@ -27,7 +27,7 @@ For AI features, set `GEMINI_API_KEY` in the Render service's Environment settin
 
 ### Frontend on Cloudflare
 
-The [GitHub Actions workflow](.github/workflows/deploy-cloudflare.yml) builds the frontend and deploys the Worker on pushes to `main`. It requires the repository Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. If they are absent, the workflow intentionally skips the publish step. `API_ORIGIN` in [wrangler.jsonc](wrangler.jsonc) points to the API origin; keep the Worker proxy and Render `ALLOWED_ORIGIN` aligned.
+The [GitHub Actions workflow](.github/workflows/deploy-cloudflare.yml) builds the frontend and deploys the Worker on pushes to `main`. It requires the repository Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. If they are absent, the workflow intentionally skips the publish step. `API_ORIGIN` in [wrangler.jsonc](wrangler.jsonc) points to the API origin; keep the Worker proxy and Render `ALLOWED_ORIGIN` aligned. The Worker retries once when Render marks a response `hibernate-rate-limited`; this may help with transient wake-up throttling but cannot remove free-tier limits.
 
 After a change, verify the workflow actually published the Worker rather than merely completing its build step. Confirm the live page and its referenced asset hashes match the expected commit.
 

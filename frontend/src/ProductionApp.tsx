@@ -55,7 +55,9 @@ export function Login() {
       if (!r.ok) {
         setMsg(
           result?.error ||
-            `The server returned HTTP ${r.status}. Check the backend logs.`,
+            (r.status === 429
+              ? "The service is temporarily rate-limited. Wait a minute and try again."
+              : `The server returned HTTP ${r.status}. Check the backend logs.`),
         );
         return;
       }
