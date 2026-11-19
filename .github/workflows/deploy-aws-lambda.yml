@@ -16,6 +16,7 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
       STACK_NAME: data-engineering-practice-prod
+      SSM_PARAMETER_PREFIX: /data-engineering/prod/backend
 
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +45,27 @@ jobs:
           aws-access-key-id: ${{ secrets.ACCESS_KEY }}
           aws-secret-access-key: ${{ secrets.SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify required Parameter Store entries
+        run: |
+          aws ssm get-parameters-by-path \
+            --path "$SSM_PARAMETER_PREFIX" \
+            --recursive \
+            --query 'Parameters[].{Name:Name,Type:Type}' \
+            --output json \
+            > "$RUNNER_TEMP/ssm-parameters.json"
+          for name in MONGODB_URI DATABASE_URL AUTH_SECRET; do
+            parameter="$SSM_PARAMETER_PREFIX/$name"
+            if ! jq -e --arg name "$parameter" 'any(.[]; .Name == $name and .Type == "SecureString")' "$RUNNER_TEMP/ssm-parameters.json" > /dev/null; then
+              echo "::error::Missing required SecureString parameter: $parameter"
+              exit 1
+            fi
+          done
+          parameter="$SSM_PARAMETER_PREFIX/ALLOWED_ORIGIN"
+          if ! jq -e --arg name "$parameter" 'any(.[]; .Name == $name)' "$RUNNER_TEMP/ssm-parameters.json" > /dev/null; then
+            echo "::error::Missing required parameter: $parameter"
+            exit 1
+          fi
 
       - name: Build backend and SAM template
         run: |
