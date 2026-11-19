@@ -1,9 +1,10 @@
-import {mongoCollection} from "./mongo.js";
+import {connectMongo, mongoCollection} from "./mongo.js";
 import { createNote, createNoteFromPdf, createStickyNote, deleteNote, deletePdfDocument, deleteStickyNote, getNote, getPdfDocument, listNotes, listPdfDocuments, listStickyNotes, saveGeneratedNote, saveNoteProgress, savePdfDocument, setNoteBookmark, setNoteRevision, setPdfStatus, updateNote, updateStickyNote } from "./notes.js";
 import { generateNotesFromPdf, generateNotesFromTopic, generateStickyReminder } from "./ai.js";
 import {createWorkspace,deleteWorkspaceRecord,getWorkspaceById,listWorkspaces,migrateLegacyWorkspaces,workspaceOwnedByUser} from "./workspaces.js";
 import {approveSchemaImport,createSchemaImport,getInitialSnapshot,getSchemaImport,listFeatureFlags,listSnapshots,migrateLegacyRecords,setFeatureFlag} from "./records.js";
 import "dotenv/config";import express from "express";import cors from "cors";import multer from "multer";import crypto from "node:crypto";import {z} from "zod";import {pool,initDb,ensureDemoDatabase,createPracticeSchema,dropPracticeSchema,quoteIdent,schemaSnapshot,listTables,executeReadOnly,executeImport,snapshotDatabase,restoreSnapshot,schemaDDL,dataSQL,clearPracticeSchema} from "./db.js";import {aiConfigured,model,generateQuestions,tutor,learningTutor,extractSchemaFromImage,generateAdditionalSampleRows,generateDatasetCodingQuestions,parseHybridNoteAssistRequest,parseHybridNoteTranscriptionRequest,decodeHybridNoteAudio,streamHybridNoteSection,transcribeHybridNoteAudio} from "./ai.js";
+import { enqueueBackgroundJob, type BackgroundJob } from "./background-jobs.js";
 import {audit,requestToken,createSession,deleteSession,getUserByEmail,getUserFromToken,hashPassword,listAuditLogs,listUsers,migrateLegacyAuthData,recordUserLogin,requireRole,updateUserAccess,validateAuthConfig,verifyPassword,createUser} from "./auth.js";
 import {metrics,seedAdmin,seedStarterQuestions,ensureUserWorkspace,assignLegacyWorkspacesToAdmin} from "./ops.js";
 import {analyticsOverview,clearRevisionMark,dailyProgress,exportProgress,listQuestionAttempts,migrateLegacyLearningData,progressSummary,recordAttempt,recordKnownQuestion,revisionStatus,setRevisionMark} from "./learning.js";
@@ -21,7 +22,7 @@ import { executeOnRunner, normalizeRunnerInput } from "./runners.js";
 import { MAX_DATASET_BYTES } from "./dataset-files.js";
 import { parseJsonLike } from "./ai.js";
 import { isAllowedOrigin } from "./cors-config.js";
-const app=express(),port=Number(process.env.PORT||4000),upload=multer({storage:multer.memoryStorage(),limits:{fileSize:8*1024*1024}});app.use(cors({origin:(origin,callback)=>{if(!origin||isAllowedOrigin(origin))return callback(null,origin||true);callback(null,false)},credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','X-Client-Request-Id','x-practice-session']}));app.use(express.json({limit:'8mb'}));
+export const app=express();const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:8*1024*1024}});app.use(cors({origin:(origin,callback)=>{if(!origin||isAllowedOrigin(origin))return callback(null,origin||true);callback(null,false)},credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','X-Client-Request-Id','x-practice-session']}));app.use(express.json({limit:'8mb'}));
 app.use((req,res,next)=>{const sendJson=res.json.bind(res);(res as any).json=(body:any)=>{const hideSolution=(item:any)=>{if(!item||typeof item!=='object')return item;const{reference_sql,expected,...visible}=item;return{...visible,...(visible.expected_json===undefined&&expected!==undefined?{expected_json:expected}:{})}};if(req.method==='GET'&&req.path==='/api/questions'&&Array.isArray(body))body=body.map(hideSolution);if(req.method==='POST'&&req.path==='/api/questions/generate'&&body&&Array.isArray(body.accepted))body={...body,accepted:body.accepted.map(hideSolution),rejected:Array.isArray(body.rejected)?body.rejected.map((item:any)=>({...item,question:hideSolution(item.question)})):body.rejected};return sendJson(body)};next()});
 app.disable('x-powered-by');
 app.use((req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('Permissions-Policy','camera=(),microphone=(self),geolocation=()');res.setHeader('Content-Security-Policy',"default-src 'self'; frame-ancestors 'none'; base-uri 'self'");next()});
@@ -147,7 +148,7 @@ async function runDatasetQuestionGeneration(jobId:string,userId:string,dataset:a
 }
 app.post('/api/question-datasets/:datasetId/generate',async(req,res)=>{
  const input=datasetGeneration.safeParse(req.body);if(!input.success)return res.status(400).json({error:'Choose a supported lab, 1–10 questions, a difficulty, and a topic'});
- const userId=String((req as any).user.id);
+ const userId=String((req as any).user.id);let jobId:string|undefined;
  try{
   const dataset=await getQuestionDataset(userId,req.params.datasetId);if(!dataset)return res.status(404).json({error:'Dataset not found'});
   const runners=await learningRunnerStatus(),runner=input.data.language==='python'?runners.python:runners.pyspark;
@@ -155,11 +156,11 @@ app.post('/api/question-datasets/:datasetId/generate',async(req,res)=>{
   const tableName=input.data.tableName||dataset.table_name,codingTable=dataset.tables.find((table:any)=>table.name===tableName);
   if(!codingTable)return res.status(400).json({error:'Select a table from this uploaded database'});
   if(!codingTable.row_count||!codingTable.preview.length)return res.status(400).json({error:`The ${tableName} table has no sample rows for coding-question generation`});
-  const jobId=crypto.randomUUID(),now=new Date();
-  await mongoCollection('question_generation_jobs').insertOne({_id:jobId,user_id:userId,dataset_id:dataset.id,language:input.data.language,requested:input.data.count,generated:0,validated:0,failed:0,generatedTitles:[],validatedTitles:[],rejected:[],questionIds:[],stage:'queued',status:'running',currentTitle:null,error:null,created_at:now,updated_at:now});
-  void runDatasetQuestionGeneration(jobId,userId,dataset,codingTable,input.data);
-  res.status(202).json({jobId,status:'running',requested:input.data.count});
- }catch(error){res.status(503).json({error:error instanceof Error?error.message:'Question generation could not be started'})}
+  const currentJobId=crypto.randomUUID();jobId=currentJobId;const now=new Date();
+  await mongoCollection('question_generation_jobs').insertOne({_id:currentJobId,user_id:userId,dataset_id:dataset.id,table_name:tableName,language:input.data.language,requested:input.data.count,difficulty:input.data.difficulty,topic:input.data.topic,background_provider:process.env.BACKGROUND_JOBS_QUEUE_URL?'sqs':'local',generated:0,validated:0,failed:0,generatedTitles:[],validatedTitles:[],rejected:[],questionIds:[],stage:'queued',status:'running',currentTitle:null,error:null,created_at:now,updated_at:now});
+  await enqueueBackgroundJob({type:'dataset-question-generation',jobId:currentJobId,userId},()=>runDatasetQuestionGeneration(currentJobId,userId,dataset,codingTable,input.data));
+  res.status(202).json({jobId:currentJobId,status:'running',requested:input.data.count});
+ }catch(error){if(jobId)try{await mongoCollection('question_generation_jobs').updateOne({_id:jobId,user_id:userId},{$set:{status:'failed',stage:'failed',error:'Question generation could not be queued. Retry to generate a complete set.',updated_at:new Date()}})}catch(updateError){console.error('[Question generation] Failed to record queue error:',updateError)}res.status(503).json({error:error instanceof Error?error.message:'Question generation could not be started'})}
 });
 app.get('/api/question-generation/jobs/:jobId',async(req,res)=>{
  const jobId=z.string().uuid().safeParse(req.params.jobId);if(!jobId.success)return res.status(400).json({error:'Invalid generation job'});
@@ -225,15 +226,15 @@ async function runSqlLearningTestGeneration(jobId:string,userId:string,topicId:s
 app.post('/api/sql-learning/topics/:topicId/tests/:testNumber/generate',async(req,res)=>{
  const testNumber=z.coerce.number().int().min(1).max(5).safeParse(req.params.testNumber);
  if(!testNumber.success)return res.status(400).json({error:'Test number must be between 1 and 5'});
- const userId=String((req as any).user.id),useCustom=req.query.custom==='true',jobs=mongoCollection('sql_learning_test_generation_jobs');
+ const userId=String((req as any).user.id),useCustom=req.query.custom==='true',jobs=mongoCollection('sql_learning_test_generation_jobs');let jobId:string|undefined;
  try{
   const existing=await jobs.findOne({user_id:userId,topic_id:req.params.topicId,test_number:testNumber.data,use_custom:useCustom,status:'running'},{projection:{_id:1}});
   if(existing)return res.status(202).json({jobId:existing._id,status:'running'});
-  const jobId=crypto.randomUUID(),now=new Date();
-  await jobs.insertOne({_id:jobId,user_id:userId,topic_id:req.params.topicId,test_number:testNumber.data,use_custom:useCustom,status:'running',stage:'queued',test:null,error:null,created_at:now,updated_at:now});
-  void runSqlLearningTestGeneration(jobId,userId,req.params.topicId,testNumber.data,useCustom);
-  res.status(202).json({jobId,status:'running'});
- }catch(error){res.status(503).json({error:error instanceof Error?error.message:'Practice test generation could not be started.'})}
+  const currentJobId=crypto.randomUUID();jobId=currentJobId;const now=new Date();
+  await jobs.insertOne({_id:currentJobId,user_id:userId,topic_id:req.params.topicId,test_number:testNumber.data,use_custom:useCustom,background_provider:process.env.BACKGROUND_JOBS_QUEUE_URL?'sqs':'local',status:'running',stage:'queued',test:null,error:null,created_at:now,updated_at:now});
+  await enqueueBackgroundJob({type:'sql-learning-test-generation',jobId:currentJobId,userId},()=>runSqlLearningTestGeneration(currentJobId,userId,req.params.topicId,testNumber.data,useCustom));
+  res.status(202).json({jobId:currentJobId,status:'running'});
+ }catch(error){if(jobId)try{await jobs.updateOne({_id:jobId,user_id:userId},{$set:{status:'failed',stage:'failed',error:'Practice-test generation could not be queued. Retry to generate the test.',updated_at:new Date()}})}catch(updateError){console.error('[SQL Learning] Failed to record test-generation queue error:',updateError)}res.status(503).json({error:error instanceof Error?error.message:'Practice test generation could not be started.'})}
 });
 app.get('/api/sql-learning/test-generation-jobs/:jobId',async(req,res)=>{
  const jobId=z.string().uuid().safeParse(req.params.jobId);
@@ -491,4 +492,101 @@ app.use((error:any,_req:any,res:any,next:any)=>{
  next(error);
 });
 
-initDb().then(validateAuthConfig).then(seedCurriculum).then(seedSqlLearningCurriculum).then(seedLearningQuestions).then(migrateLegacyAuthData).then(seedAdmin).then(ensureDemoDatabase).then(seedStarterQuestions).then(()=>migrateLegacyQuestions()).then(assignLegacyWorkspacesToAdmin).then(migrateLegacyLearningData).then(migrateLegacyWorkspaces).then(migrateLegacyRecords).then(async()=>{await mongoCollection('question_generation_jobs').updateMany({status:'running'},{$set:{status:'failed',stage:'failed',currentTitle:null,error:'Generation was interrupted by a server restart. Retry to generate a complete set.',updated_at:new Date()}});await mongoCollection('sql_learning_test_generation_jobs').updateMany({status:'running'},{$set:{status:'failed',stage:'failed',error:'Practice-test generation was interrupted by a server restart. Retry to generate the test.',updated_at:new Date()}});const demo=(await pool.query('SELECT * FROM app_databases WHERE slug=$1',['demo-ecommerce'])).rows[0];if(demo&&!await getInitialSnapshot(String(demo.id)))await snapshotDatabase(String(demo.id),'Initial baseline');app.listen(port,()=>console.log(`SQL Practice backend on http://localhost:${port}`))}).catch(e=>{console.error(e);process.exit(1)});
+let initialization: Promise<void> | undefined;
+let runtimeInitialization: Promise<void> | undefined;
+
+export function initializeRuntime(): Promise<void> {
+  runtimeInitialization ??= (async () => {
+    validateAuthConfig();
+    await connectMongo(false);
+  })().catch(error => {
+    runtimeInitialization = undefined;
+    throw error;
+  });
+  return runtimeInitialization;
+}
+
+export function initializeBackend(): Promise<void> {
+  initialization ??= (async () => {
+    await initDb();
+    validateAuthConfig();
+    await seedCurriculum();
+    await seedSqlLearningCurriculum();
+    await seedLearningQuestions();
+    await migrateLegacyAuthData();
+    await seedAdmin();
+    await ensureDemoDatabase();
+    await seedStarterQuestions();
+    await migrateLegacyQuestions();
+    await assignLegacyWorkspacesToAdmin();
+    await migrateLegacyLearningData();
+    await migrateLegacyWorkspaces();
+    await migrateLegacyRecords();
+    const demo = (await pool.query('SELECT * FROM app_databases WHERE slug=$1',['demo-ecommerce'])).rows[0];
+    if (demo && !await getInitialSnapshot(String(demo.id))) await snapshotDatabase(String(demo.id),'Initial baseline');
+  })().catch(error => {
+    initialization = undefined;
+    throw error;
+  });
+  return initialization;
+}
+
+export async function recoverInterruptedBackgroundJobs(): Promise<void> {
+  await mongoCollection('question_generation_jobs').updateMany({status:'running',background_provider:{$ne:'sqs'}},{$set:{status:'failed',stage:'failed',currentTitle:null,error:'Generation was interrupted by a server restart. Retry to generate a complete set.',updated_at:new Date()}});
+  await mongoCollection('sql_learning_test_generation_jobs').updateMany({status:'running',background_provider:{$ne:'sqs'}},{$set:{status:'failed',stage:'failed',error:'Practice-test generation was interrupted by a server restart. Retry to generate the test.',updated_at:new Date()}});
+}
+
+export async function processBackgroundJob(job: BackgroundJob): Promise<void> {
+  if (!job || !["dataset-question-generation", "sql-learning-test-generation"].includes(job.type) || !job.jobId || !job.userId) {
+    throw new Error("Invalid background job message");
+  }
+
+  const collectionName = job.type === "dataset-question-generation"
+    ? "question_generation_jobs"
+    : "sql_learning_test_generation_jobs";
+  const jobs = mongoCollection(collectionName);
+  const now = new Date();
+  const claim = await jobs.updateOne(
+    {
+      _id: job.jobId,
+      user_id: job.userId,
+      status: "running",
+      $or: [{ worker_lease_until: { $exists: false } }, { worker_lease_until: { $lt: now } }]
+    },
+    { $set: { worker_lease_until: new Date(now.getTime() + 80 * 60 * 1000), updated_at: now } }
+  );
+  if (!claim.modifiedCount) return;
+
+  if (job.type === "dataset-question-generation") {
+    const record = await jobs.findOne({ _id: job.jobId, user_id: job.userId });
+    if (!record) return;
+    const input = datasetGeneration.safeParse({
+      language: record.language,
+      count: record.requested,
+      difficulty: record.difficulty,
+      topic: record.topic,
+      tableName: record.table_name
+    });
+    const dataset = await getQuestionDataset(job.userId, String(record.dataset_id));
+    const table = dataset?.tables.find(item => item.name === record.table_name);
+    if (!input.success || !dataset || !table) {
+      await jobs.updateOne(
+        { _id: job.jobId, user_id: job.userId },
+        { $set: { status: "failed", stage: "failed", error: "The dataset or generation settings are no longer available.", updated_at: new Date() } }
+      );
+      return;
+    }
+    await runDatasetQuestionGeneration(job.jobId, job.userId, dataset, table, input.data);
+    return;
+  }
+
+  const record = await jobs.findOne({ _id: job.jobId, user_id: job.userId });
+  if (!record) return;
+  await runSqlLearningTestGeneration(
+    job.jobId,
+    job.userId,
+    String(record.topic_id),
+    Number(record.test_number),
+    Boolean(record.use_custom)
+  );
+}

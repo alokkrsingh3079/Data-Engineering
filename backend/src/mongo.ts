@@ -2,17 +2,22 @@ import { MongoClient, type Collection, type Db, type Document } from "mongodb";
 
 let client: MongoClient | undefined;
 let database: Db | undefined;
+let indexesReady = false;
 
-export async function connectMongo(): Promise<Db> {
-  if (database) return database;
+export async function connectMongo(ensureIndexes = true): Promise<Db> {
+  if (database && (!ensureIndexes || indexesReady)) return database;
 
-  const uri = process.env.MONGODB_URI ??
-    (process.env.NODE_ENV === "production" ? undefined : "mongodb://127.0.0.1:27017");
-  if (!uri) throw new Error("MONGODB_URI must be configured");
+  if (!database) {
+    const uri = process.env.MONGODB_URI ??
+      (process.env.NODE_ENV === "production" ? undefined : "mongodb://127.0.0.1:27017");
+    if (!uri) throw new Error("MONGODB_URI must be configured");
 
-  client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
-  await client.connect();
-  database = client.db(process.env.MONGODB_DATABASE || "sql_software");
+    client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
+    await client.connect();
+    database = client.db(process.env.MONGODB_DATABASE || "sql_software");
+  }
+  if (!database) throw new Error("MongoDB connection was not initialized");
+  if (!ensureIndexes) return database;
 
   const sessions = database.collection("sessions");
   if (await database.listCollections({ name: "sessions" }).hasNext()) {
@@ -114,6 +119,7 @@ export async function connectMongo(): Promise<Db> {
     database.collection("interview_sessions").createIndex({ deadline_at: 1 }, { expireAfterSeconds: 2592000 })
   ]);
 
+  indexesReady = true;
   return database;
 }
 
@@ -127,4 +133,5 @@ export async function closeMongo(): Promise<void> {
   await client.close();
   client = undefined;
   database = undefined;
+  indexesReady = false;
 }

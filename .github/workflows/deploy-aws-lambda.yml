@@ -1,0 +1,85 @@
+name: Deploy AWS Lambda API
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "aws/**"
+      - ".github/workflows/deploy-aws-lambda.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: ${{ vars.AWS_ROLE_ARN != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
+      STACK_NAME: data-engineering-practice-prod
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - uses: aws-actions/setup-sam@v2
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build backend and SAM template
+        run: |
+          npm ci --prefix backend
+          npm run build --prefix backend
+          sam build --template-file aws/template.yaml --build-dir .aws-sam/build
+
+      - name: Deploy AWS resources
+        run: |
+          sam deploy \
+            --template-file .aws-sam/build/template.yaml \
+            --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Run database initialization and migrations
+        run: |
+          aws lambda invoke \
+            --function-name data-engineering-practice-prod-migrate \
+            --invocation-type RequestResponse \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{}' \
+            "$RUNNER_TEMP/migration-response.json" \
+            > "$RUNNER_TEMP/migration-metadata.json"
+          if jq -e 'has("FunctionError")' "$RUNNER_TEMP/migration-metadata.json" > /dev/null; then
+            echo "Database initialization failed. The Cloudflare Worker remains pointed at its current API."
+            exit 1
+          fi
+
+      - name: Verify API health and publish URL
+        run: |
+          API_URL="$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue | [0]" \
+            --output text)"
+          curl --fail --silent --show-error --max-time 25 "$API_URL/api/health"
+          echo
+          echo "AWS API URL: $API_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "Keep the Cloudflare Worker on its current origin until you have tested login, uploads, and job polling against this API."

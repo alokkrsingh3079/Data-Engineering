@@ -17,6 +17,24 @@ At the last documented check on 2026-10-24, the API health endpoint returned HTT
 
 ## Automatic deployment
 
+### Staged AWS Lambda migration
+
+The AWS deployment is prepared as a separate path and does not change the live Worker origin. It provisions an API Gateway HTTP API, a Node.js Lambda API, an SQS queue and Lambda worker for long-running generation, plus a one-shot migration function. API Gateway supplies an HTTPS `execute-api` URL; no DuckDNS or custom domain is needed. MongoDB Atlas and the existing PostgreSQL database remain external and are not copied.
+
+Before deploying:
+
+1. Back up MongoDB and PostgreSQL. The deploy workflow invokes the app's existing initialization and migration routines against those databases.
+2. In AWS Systems Manager Parameter Store, create **SecureString** parameters under `/data-engineering/prod/backend/`. Required values are `MONGODB_URI`, `DATABASE_URL`, and `AUTH_SECRET`. Set `PRACTICE_DATABASE_URL` and `PRACTICE_ROLE_SECRET` to the current production values when configured. Add `ALLOWED_ORIGIN` as `https://dataengineering.kumaralok265265.workers.dev`; add `GEMENI_API_KEY` (or `GEMINI_API_KEY`/`GOOGLE_API_KEY`), `ADMIN_PASSWORD`, and runner URLs/tokens only if those features need them. Never put these values in GitHub variables, workflow files, or chat.
+3. Configure GitHub Actions OIDC in AWS for `token.actions.githubusercontent.com`, audience `sts.amazonaws.com`. Create a deploy role whose trust is restricted to this repository's `main` branch, and grant the SAM/CloudFormation deployment permissions needed for Lambda, API Gateway, SQS, IAM role passing, and the SAM artifact bucket. Do not create access keys.
+4. Add the role ARN as the repository Actions variable `AWS_ROLE_ARN`; optionally set `AWS_REGION` (defaults to `ap-south-1`). Run **Deploy AWS Lambda API** from Actions or push a backend/infrastructure change after configuring the role.
+5. Confirm the workflow's database initialization and `/api/health` check succeed. The API URL is shown in the workflow summary. Test login, job polling, and uploads before changing `API_ORIGIN` in [wrangler.jsonc](wrangler.jsonc). The existing Worker remains on Render until that deliberate cutover.
+
+The API and worker roles can read/decrypt only the configured SSM parameter path; generation jobs are handed to SQS so they continue after the API response. The job worker is bounded to two concurrent executions and the API to five. After three failed deliveries, the dead-letter worker marks a generation job failed so the learner can retry. Check CloudWatch logs and AWS billing/Free-plan credits after testing. AWS's introductory Free plan is temporary, not a permanent zero-cost hosting guarantee; API Gateway, Lambda, SQS, logs, storage, and data transfer can incur charges. Do not convert the account to a paid plan if that is not acceptable.
+
+**Known compatibility limits:** API Gateway HTTP API has a 30-second integration limit and buffers the existing NDJSON note-assist response, so that endpoint no longer displays incremental chunks and may time out on long generations. Lambda's synchronous request payload limit can also reject requests near the app's current 5 MB upload limit because API Gateway encodes binary bodies. Test representative uploads; if the full limit is required, implement a direct-to-S3 upload path before cutover. Do not widen MongoDB Atlas or PostgreSQL network access to `0.0.0.0/0` to make Lambda connect; if current database allowlists block AWS's dynamic Lambda egress, stop and choose a secure network-egress design before cutover.
+
+After confirming production login, data persistence, runner connectivity, uploads, and both queued generation flows on AWS, update and deploy the Worker origin. Keep Render available for rollback until the AWS endpoint has been stable; then pause the old Render service only after its active jobs have finished.
+
 ### API on Render
 
 The `data-engineering-api` Render service is connected to `alokkrsingh3079/Data-Engineering`, branch `main`, with automatic deploy enabled. Its build command is `npm ci --include=dev --prefix backend && npm run build --prefix backend`; its start command is `npm start --prefix backend`; its health path is `/api/health`.

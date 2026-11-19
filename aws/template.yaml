@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Data Engineering API and durable generation worker on AWS Lambda.
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    CodeUri: ../backend
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        NODE_ENV: production
+        SSM_PARAMETER_PREFIX: /data-engineering/prod/backend
+        DB_POOL_SIZE: "2"
+
+Resources:
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+
+  BackgroundJobsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      VisibilityTimeout: 5400
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt BackgroundJobsDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  BackgroundJobsDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      VisibilityTimeout: 360
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: data-engineering-practice-prod-api
+      Handler: dist/lambda.handler
+      Timeout: 30
+      MemorySize: 1024
+      ReservedConcurrentExecutions: 5
+      Environment:
+        Variables:
+          BACKGROUND_JOBS_QUEUE_URL: !Ref BackgroundJobsQueue
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !GetAtt BackgroundJobsQueue.Arn
+            - Effect: Allow
+              Action:
+                - ssm:GetParametersByPath
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/data-engineering/prod/backend/*
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub ssm.${AWS::Region}.${AWS::URLSuffix}
+                StringLike:
+                  kms:EncryptionContext:PARAMETER_ARN: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/data-engineering/prod/backend/*
+      Events:
+        ApiProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /{proxy+}
+            Method: ANY
+        ApiRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /
+            Method: ANY
+
+  BackgroundJobFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: data-engineering-practice-prod-job-worker
+      Handler: dist/lambda-jobs.handler
+      Timeout: 900
+      MemorySize: 2048
+      ReservedConcurrentExecutions: 2
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+              Resource: !GetAtt BackgroundJobsQueue.Arn
+            - Effect: Allow
+              Action:
+                - ssm:GetParametersByPath
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/data-engineering/prod/backend/*
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub ssm.${AWS::Region}.${AWS::URLSuffix}
+                StringLike:
+                  kms:EncryptionContext:PARAMETER_ARN: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/data-engineering/prod/backend/*
+      Events:
+        BackgroundJobs:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt BackgroundJobsQueue.Arn
+            BatchSize: 1
+
+  BackgroundJobDeadLetterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: data-engineering-practice-prod-job-failures
+      Handler: dist/lambda-jobs.deadLetterHandler
+      Timeout: 60
+      MemorySize: 512
+      ReservedConcurrentExecutions: 2
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParametersByPath
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/data-engineering/prod/backend/*
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub ssm.${AWS::Region}.${AWS::URLSuffix}
+                StringLike:
+                  kms:EncryptionContext:PARAMETER_ARN: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/data-engineering/prod/backend/*
+      Events:
+        FailedBackgroundJobs:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt BackgroundJobsDeadLetterQueue.Arn
+            BatchSize: 1
+
+  MigrationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: data-engineering-practice-prod-migrate
+      Handler: dist/lambda-migration.handler
+      Timeout: 900
+      MemorySize: 2048
+      ReservedConcurrentExecutions: 1
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParametersByPath
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/data-engineering/prod/backend/*
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub ssm.${AWS::Region}.${AWS::URLSuffix}
+                StringLike:
+                  kms:EncryptionContext:PARAMETER_ARN: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/data-engineering/prod/backend/*
+
+Outputs:
+  ApiUrl:
+    Description: HTTPS API Gateway URL; no custom DNS is required.
+    Value: !Sub https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}
+  ApiFunctionName:
+    Value: !Ref ApiFunction
+  MigrationFunctionName:
+    Value: !Ref MigrationFunction
