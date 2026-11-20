@@ -580,6 +580,72 @@ export default function NotesStudio() {
       })()}</div>);
   }
 
+  async function printBook() {
+    if (!readerRef.current || !activeNote) {
+      setError("Open a note before preparing its print layout.");
+      return;
+    }
+
+    if (readerMode !== "notes") {
+      setReaderMode("notes");
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    }
+
+    const reader = readerRef.current;
+    if (!reader) {
+      setError("The note is not ready to print. Reload it and try again.");
+      return;
+    }
+
+    setError("");
+    setNotice("Preparing print layout…");
+    const host = document.createElement("div");
+    host.className = "notesBookPrintHost";
+    let previewer: import("pagedjs").Previewer | undefined;
+    const cleanup = () => {
+      document.body.classList.remove("notesBookPrinting");
+      host.remove();
+      if (previewer?.polisher.styleEl) previewer.polisher.destroy();
+    };
+
+    try {
+      const { Previewer } = await import("pagedjs");
+      const printReader = reader.cloneNode(true) as HTMLElement;
+      printReader.querySelectorAll(".readerViewControls, .readerCrumb").forEach((element) => element.remove());
+
+      const source = document.createElement("div");
+      source.className = "notesShell";
+      const main = document.createElement("main");
+      main.className = "notesMain";
+      const layout = document.createElement("div");
+      layout.className = `readerLayout ${subjectColor(activeNote.subject)}`;
+      layout.append(printReader);
+      main.append(layout);
+      source.append(main);
+
+      const stylesheets = Array.from(document.querySelectorAll<HTMLLinkElement | HTMLStyleElement>(
+        "link[rel='stylesheet']:not([data-pagedjs-ignore], [media~='screen']), style:not([data-pagedjs-inserted-styles], [data-pagedjs-ignore], [media~='screen'])",
+      )).map((element) => element instanceof HTMLLinkElement
+        ? element.href
+        : { [window.location.href]: element.textContent || "" });
+
+      document.body.append(host);
+      previewer = new Previewer();
+      const flow = await previewer.preview(source.outerHTML, stylesheets, host);
+      if (!flow.total) throw new Error("No pages were generated for this note.");
+
+      document.body.classList.add("notesBookPrinting");
+      window.addEventListener("afterprint", cleanup, { once: true });
+      setNotice("");
+      window.print();
+    } catch (cause) {
+      cleanup();
+      setError(cause instanceof Error ? `Could not prepare the book print layout: ${cause.message}` : "Could not prepare the book print layout.");
+    } finally {
+      setNotice("");
+    }
+  }
+
   async function signOut() {
     await fetch(`${API}/api/auth/logout`, { method: "POST", credentials: "include" });
     location.href = "/login";
@@ -613,9 +679,11 @@ export default function NotesStudio() {
     <main className="notesMain">
       <input ref={pdfFileRef} type="file" accept="application/pdf,.pdf" hidden onChange={(event) => void uploadPdf(event.target.files?.[0])} />
       {view === "builder" ? <HybridNotesBuilder key="hybrid-builder" note={builderNote} onClose={() => { setView("dashboard"); setBuilderNote(null); setActiveNote(null); }} onSaved={(saved) => { setBuilderNote(saved); void loadNotes(); }} /> : activeNote && !editing ? <>
-        <header className="notesTopbar"><button className="notesBack" onClick={() => { setReaderExpanded(false); setActiveNote(null); }}><ArrowLeft size={16} /> All notes</button><div className="notesTopActions"><button title={activeNote.bookmarked ? "Remove bookmark" : "Bookmark note"} aria-label="Toggle bookmark" onClick={() => void toggleNoteFlag(activeNote, "bookmarked")}><Bookmark size={16} fill={activeNote.bookmarked ? "currentColor" : "none"} /></button><button title="Download Markdown" aria-label="Download note" onClick={() => downloadNote(activeNote)}><Download size={16} /></button><button title="Print note" aria-label="Print note" onClick={() => window.print()}><Printer size={16} /></button><button className="notesSecondary small" onClick={() => startHybridBuilder(activeNote)}>Edit with Hybrid Builder</button><button className="notesPrimary small" onClick={() => startEdit(activeNote)}>Edit note</button></div></header>
+        <header className="notesTopbar"><button className="notesBack" onClick={() => { setReaderExpanded(false); setActiveNote(null); }}><ArrowLeft size={16} /> All notes</button><div className="notesTopActions"><button title={activeNote.bookmarked ? "Remove bookmark" : "Bookmark note"} aria-label="Toggle bookmark" onClick={() => void toggleNoteFlag(activeNote, "bookmarked")}><Bookmark size={16} fill={activeNote.bookmarked ? "currentColor" : "none"} /></button><button title="Download Markdown" aria-label="Download note" onClick={() => downloadNote(activeNote)}><Download size={16} /></button><button title="Print note" aria-label="Print note" onClick={() => void printBook()}><Printer size={16} /></button><button className="notesSecondary small" onClick={() => startHybridBuilder(activeNote)}>Edit with Hybrid Builder</button><button className="notesPrimary small" onClick={() => startEdit(activeNote)}>Edit note</button></div></header>
+        {notice && <div className="notesNotice" role="status"><span>{notice}</span><button aria-label="Dismiss" onClick={() => setNotice("")}><X size={15} /></button></div>}
+        {error && <div className="notesError" role="alert">{error}<button onClick={() => setError("")}><X size={14} /></button></div>}
         <div className={`readerLayout ${subjectColor(activeNote.subject)} ${readerTocVisible ? "" : "readerTocHidden"} ${readerToolsVisible ? "" : "readerToolsHidden"}`}>
-          <aside className="readerToc"><span>IN THIS NOTE</span>{headings.length ? headings.map((heading) => <a href={`#${heading.id}`} key={heading.id}>{heading.title}</a>) : <p>Add titled sections in Hybrid Notes Builder to build this outline.</p>}<button className={activeNote.revision_marked ? "revisionOn" : ""} onClick={() => void toggleNoteFlag(activeNote, "revision_marked")}><BookOpen size={15} />{activeNote.revision_marked ? "In revision queue" : "Mark for revision"}</button></aside>
+          <aside className="readerToc"><span>IN THIS NOTE</span>{headings.length ? headings.map((heading, index) => <a className={`readerTocAccent-${index % 4}`} href={`#${heading.id}`} key={heading.id}>{heading.title}</a>) : <p>Add titled sections in Hybrid Notes Builder to build this outline.</p>}<button className={activeNote.revision_marked ? "revisionOn" : ""} onClick={() => void toggleNoteFlag(activeNote, "revision_marked")}><BookOpen size={15} />{activeNote.revision_marked ? "In revision queue" : "Mark for revision"}</button></aside>
           <article className="noteReader" ref={readerRef} onScroll={updateProgress}>
             <div className="readerViewControls" aria-label="Note and source view controls">
               <div className="readerModeButtons" role="group" aria-label="Choose what to view">

@@ -357,6 +357,14 @@
   display: none;
 }
 
+.notesBookPrintHost {
+  position: fixed;
+  z-index: -1;
+  top: 0;
+  left: -10000px;
+  width: 8.5in;
+}
+
 @media print {
   @page {
     size: letter;
@@ -506,9 +514,36 @@
   }
 
   .printBookContents a {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
     color: #263d53;
     font: 11pt/1.4 "DM Sans", sans-serif;
     text-decoration: none;
+  }
+
+  .printBookContents a::after {
+    flex: none;
+    margin-left: auto;
+    color: #52677b;
+    content: target-counter(attr(href), page);
+  }
+
+  .notesBookPrintHost {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    width: auto !important;
+  }
+
+  body.notesBookPrinting > #root {
+    display: none !important;
+  }
+
+  body.notesBookPrinting .notesBookPrintHost .pagedjs_page {
+    margin: 0 auto !important;
+    box-shadow: none !important;
   }
 
   .readerStudyLayout,
