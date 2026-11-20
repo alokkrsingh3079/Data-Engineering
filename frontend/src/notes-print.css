@@ -566,6 +566,11 @@
     break-after: avoid-page;
   }
 
+  .noteText > h2.printSection {
+    break-before: page;
+    page-break-before: always;
+  }
+
   .noteText p {
     orphans: 3;
     widows: 3;

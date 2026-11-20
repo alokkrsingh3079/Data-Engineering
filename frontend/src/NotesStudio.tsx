@@ -522,6 +522,7 @@ export default function NotesStudio() {
     if (code.trim()) blocks.push({ type: "code", value: code.trimEnd(), language });
     if (text.trim()) blocks.push({ type: "text", value: text.trimEnd() });
     const renderLine = (line: string) => renderInlineNoteMarkdown(line, (page) => activeNote?.source_document_id ? `/api/notes/documents/${activeNote.source_document_id}/file#page=${page}` : undefined);
+    let firstSection = true;
     return blocks.map((block, index) => block.type === "code"
       ? block.language?.toLowerCase() === "flow"
         ? <div className="visualFlow" key={index} aria-label={block.value.replace(/\s*(?:->|→)\s*/g, ", then ")}>{block.value.split(/\s*(?:->|→)\s*/).filter(Boolean).map((step, stepIndex) => <Fragment key={stepIndex}>{stepIndex > 0 && <ArrowRight className="flowArrow" size={17} aria-hidden="true" />}<div className={`flowNode tone-${stepIndex % 5}`}><small>{String(stepIndex + 1).padStart(2, "0")}</small><strong>{step}</strong></div></Fragment>)}</div>
@@ -537,7 +538,10 @@ export default function NotesStudio() {
           if (heading) {
             const Tag = `h${heading[1].length}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
             const id = heading[2].toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-            elements.push(<Tag id={id} key={lineIndex}>{renderLine(heading[2])}</Tag>);
+            const section = heading[1].length === 2;
+            const className = section ? firstSection ? "printSectionFirst" : "printSection" : undefined;
+            if (section) firstSection = false;
+            elements.push(<Tag className={className} id={id} key={lineIndex}>{renderLine(heading[2])}</Tag>);
             lineIndex++;
             continue;
           }
