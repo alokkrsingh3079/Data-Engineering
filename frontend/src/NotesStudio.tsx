@@ -116,6 +116,15 @@ export default function NotesStudio() {
   const noteEditorRef = useRef<HybridNoteEditorHandle>(null);
   const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileNavOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mobileNavOpen]);
+
   async function loadNotes() {
     setLoading(true);
     setError("");
