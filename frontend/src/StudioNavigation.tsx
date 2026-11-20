@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Activity, BarChart3, BookOpen, ChevronDown, Code2, Database, Layers3, LogOut, RefreshCw, Sparkles, Target } from "lucide-react";
+import { Activity, BarChart3, BookOpen, ChevronDown, Code2, Database, Layers3, LogOut, Menu, RefreshCw, Sparkles, Target, X } from "lucide-react";
 import "./studio-sidebar.css";
+import "./responsive.css";
 
 type StudioNavigationProps = {
   activePath: string;
@@ -25,10 +26,20 @@ const links = [
 export default function StudioNavigation({ activePath, refreshLabel = "Refresh learning path", onRefresh }: StudioNavigationProps) {
   const [userName, setUserName] = useState("Data Engineer");
   const [error, setError] = useState("");
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [sqlExpanded, setSqlExpanded] = useState(() => {
     const saved = localStorage.getItem("studio.sqlNavigationExpanded");
     return saved === null ? true : saved === "true";
   });
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mobileOpen]);
 
   useEffect(() => {
     localStorage.setItem("studio.sqlNavigationExpanded", String(sqlExpanded));
@@ -64,27 +75,39 @@ export default function StudioNavigation({ activePath, refreshLabel = "Refresh l
     }
   }
 
-  return <aside className="studioSidebar">
+  return <aside className={`studioSidebar${mobileOpen ? " studioSidebarMenuOpen" : ""}`}>
     <a className="studioBrand" href="/" aria-label="Data Engineering Studio home">
       <span className="studioBrandMark"><Layers3 size={18} /></span>
       <span><strong>Data Engineering</strong><small>PRACTICE PLATFORM</small></span>
     </a>
-    <nav className="studioActions" aria-label="Main navigation">
-      {links.slice(0, 1).map(({ href, label, icon: Icon }) => <a className={activePath === href ? "studioNavActive" : ""} href={href} aria-current={activePath === href ? "page" : undefined} key={href}><Icon size={15} /> {label}</a>)}
+    <button
+      type="button"
+      className="studioMobileMenu"
+      aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
+      aria-expanded={mobileOpen}
+      aria-controls="studio-main-navigation"
+      onClick={() => setMobileOpen((open) => !open)}
+    >
+      {mobileOpen ? <X size={19} /> : <Menu size={19} />}
+      <span>{mobileOpen ? "Close" : "Menu"}</span>
+    </button>
+    {mobileOpen && <button type="button" className="studioMobileBackdrop" aria-label="Close navigation menu" onClick={() => setMobileOpen(false)} />}
+    <nav id="studio-main-navigation" className="studioActions" aria-label="Main navigation">
+      {links.slice(0, 1).map(({ href, label, icon: Icon }) => <a className={activePath === href ? "studioNavActive" : ""} href={href} aria-current={activePath === href ? "page" : undefined} onClick={() => setMobileOpen(false)} key={href}><Icon size={15} /> {label}</a>)}
       <div className="studioNavGroup">
         <button type="button" className={activePath === "/sql" || activePath === "/sql-learning" ? "studioNavActive" : ""} aria-expanded={sqlExpanded} onClick={() => setSqlExpanded((expanded) => !expanded)}>
           <Database size={15} /> SQL <ChevronDown className={sqlExpanded ? "studioNavChevronExpanded" : ""} size={14} />
         </button>
         {sqlExpanded && <div className="studioNavChildren">
-          <a className={activePath === "/sql" ? "studioNavActive" : ""} href="/sql" aria-current={activePath === "/sql" ? "page" : undefined}>SQL Lab</a>
-          <a className={activePath === "/sql-learning" ? "studioNavActive" : ""} href="/sql-learning" aria-current={activePath === "/sql-learning" ? "page" : undefined}>SQL Learning</a>
+          <a className={activePath === "/sql" ? "studioNavActive" : ""} href="/sql" aria-current={activePath === "/sql" ? "page" : undefined} onClick={() => setMobileOpen(false)}>SQL Lab</a>
+          <a className={activePath === "/sql-learning" ? "studioNavActive" : ""} href="/sql-learning" aria-current={activePath === "/sql-learning" ? "page" : undefined} onClick={() => setMobileOpen(false)}>SQL Learning</a>
         </div>}
       </div>
-      {links.slice(1).map(({ href, label, icon: Icon }) => <a className={activePath === href ? "studioNavActive" : ""} href={href} aria-current={activePath === href ? "page" : undefined} key={href}><Icon size={15} /> {label}</a>)}
-      <button type="button" onClick={onRefresh || (() => location.reload())}><RefreshCw size={15} /> {refreshLabel}</button>
+      {links.slice(1).map(({ href, label, icon: Icon }) => <a className={activePath === href ? "studioNavActive" : ""} href={href} aria-current={activePath === href ? "page" : undefined} onClick={() => setMobileOpen(false)} key={href}><Icon size={15} /> {label}</a>)}
+      <button type="button" onClick={() => { setMobileOpen(false); (onRefresh || (() => location.reload()))(); }}><RefreshCw size={15} /> {refreshLabel}</button>
     </nav>
     {error && <p className="studioNavigationError" role="status">{error}</p>}
-    <button className="studioSidebarAccount" onClick={() => void signOut()} title="Sign out">
+    <button className="studioSidebarAccount" onClick={() => void signOut()} title="Sign out" aria-label={`Sign out ${userName}`}>
       <span>{userName.slice(0, 1).toUpperCase()}</span>
       <span><strong>{userName}</strong><small>LEARNER ACCOUNT</small></span>
       <LogOut size={15} />

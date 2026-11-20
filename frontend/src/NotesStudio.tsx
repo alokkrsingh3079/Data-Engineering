@@ -3,10 +3,11 @@ import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { sql } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { ArrowLeft, ArrowRight, Bookmark, BookOpen, BriefcaseBusiness, Check, ChevronRight, Clock3, Cloud, Code2, Columns2, Database, Download, FileText, FolderOpen, GitBranch, GraduationCap, Layers3, Lightbulb, LogOut, Maximize2, Minimize2, Pencil, Pin, Plus, Printer, Search, Sparkles, Trash2, Type, Workflow, X, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, BookOpen, BriefcaseBusiness, Check, ChevronRight, Clock3, Cloud, Code2, Columns2, Database, Download, FileText, FolderOpen, GitBranch, GraduationCap, Layers3, Lightbulb, LogOut, Maximize2, Menu, Minimize2, Pencil, Pin, Plus, Printer, Search, Sparkles, Trash2, Type, Workflow, X, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
 import "./notes-studio.css";
 import "./notes-print.css";
 import "./sticky-notes.css";
+import "./responsive.css";
 import HybridNotesBuilder from "./HybridNotesBuilder";
 import HybridNoteEditor, { hybridNoteColorNames, type HybridNoteEditorHandle } from "./HybridNoteEditor";
 import { renderInlineNoteMarkdown } from "./note-markdown";
@@ -75,6 +76,7 @@ function formatDate(value: string | null) {
 }
 
 export default function NotesStudio() {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
   const [stickyNotes, setStickyNotes] = useState<StickyNote[]>([]);
   const [stickyDraft, setStickyDraft] = useState<{ text: string; color: StickyNote["color"]; format: StickyFormat; language: StickyLanguage }>({ text: "", color: "yellow", format: "text", language: "plaintext" });
@@ -562,9 +564,13 @@ export default function NotesStudio() {
   const ActiveSubjectIcon = activeNote ? subjectIcons[activeNote.subject] || BookOpen : BookOpen;
 
   return <div className={`notesShell ${activeNote && !editing && readerExpanded ? "notesReaderExpanded" : ""} ${readerTocVisible ? "" : "readerTocHidden"} ${readerToolsVisible ? "" : "readerToolsHidden"}`}>
-    <aside className="notesSidebar">
-      <a className="notesBrand" href="/"><span><Layers3 size={18} /></span><b>Data Engineering<small>PRACTICE PLATFORM</small></b></a>
-      <nav aria-label="Notes navigation">
+    <aside className={`notesSidebar${mobileNavOpen ? " notesSidebarOpen" : ""}`}>
+      <div className="notesSidebarTop">
+        <a className="notesBrand" href="/"><span><Layers3 size={18} /></span><b>Data Engineering<small>PRACTICE PLATFORM</small></b></a>
+        <button type="button" className="notesMobileMenu" aria-label={mobileNavOpen ? "Close notes menu" : "Open notes menu"} aria-expanded={mobileNavOpen} aria-controls="notes-navigation" onClick={() => setMobileNavOpen((open) => !open)}>{mobileNavOpen ? <X size={18} /> : <Menu size={18} />}<span>{mobileNavOpen ? "Close" : "Menu"}</span></button>
+      </div>
+      {mobileNavOpen && <button type="button" className="notesMobileBackdrop" aria-label="Close notes menu" onClick={() => setMobileNavOpen(false)} />}
+      <nav id="notes-navigation" aria-label="Notes navigation" onClick={() => setMobileNavOpen(false)}>
         <button className={view === "dashboard" ? "active" : ""} onClick={() => { setView("dashboard"); setActiveNote(null); }}><GraduationCap size={17} /> Notes Dashboard</button>
         <button className={view === "all" && !activeNote ? "active" : ""} onClick={() => { setView("all"); setActiveNote(null); }}><FolderOpen size={17} /> My Notes <span>{notes.length}</span></button>
         <button className={view === "bookmarks" ? "active" : ""} onClick={() => { setView("bookmarks"); setActiveNote(null); }}><Bookmark size={17} /> Bookmarks <span>{notes.filter((note) => note.bookmarked).length}</span></button>

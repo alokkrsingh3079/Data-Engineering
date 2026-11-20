@@ -4,7 +4,7 @@
   "main": "worker/index.js",
   "compatibility_date": "2026-10-07",
   "vars": {
-    "API_ORIGIN": "https://data-engineering-api.onrender.com"
+    "API_ORIGIN": "https://ofssgzuo52.execute-api.ap-southeast-2.amazonaws.com"
   },
   "assets": {
     "directory": "./frontend/dist",

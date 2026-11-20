@@ -12,6 +12,8 @@ Globals:
       Variables:
         NODE_ENV: production
         SSM_PARAMETER_PREFIX: /data-engineering/prod/backend
+        # Increment after SSM changes to recycle Lambda environments and reload cached secrets.
+        SSM_PARAMETER_REFRESH_REVISION: "2"
         DB_POOL_SIZE: "2"
 
 Resources:
@@ -42,7 +44,6 @@ Resources:
       Handler: dist/lambda.handler
       Timeout: 30
       MemorySize: 1024
-      ReservedConcurrentExecutions: 5
       Environment:
         Variables:
           BACKGROUND_JOBS_QUEUE_URL: !Ref BackgroundJobsQueue
@@ -87,7 +88,6 @@ Resources:
       Handler: dist/lambda-jobs.handler
       Timeout: 900
       MemorySize: 2048
-      ReservedConcurrentExecutions: 2
       Policies:
         - AWSLambdaBasicExecutionRole
         - Statement:
@@ -116,6 +116,8 @@ Resources:
           Properties:
             Queue: !GetAtt BackgroundJobsQueue.Arn
             BatchSize: 1
+            ScalingConfig:
+              MaximumConcurrency: 2
 
   BackgroundJobDeadLetterFunction:
     Type: AWS::Serverless::Function
@@ -124,7 +126,6 @@ Resources:
       Handler: dist/lambda-jobs.deadLetterHandler
       Timeout: 60
       MemorySize: 512
-      ReservedConcurrentExecutions: 2
       Policies:
         - AWSLambdaBasicExecutionRole
         - Statement:
@@ -147,6 +148,8 @@ Resources:
           Properties:
             Queue: !GetAtt BackgroundJobsDeadLetterQueue.Arn
             BatchSize: 1
+            ScalingConfig:
+              MaximumConcurrency: 2
 
   MigrationFunction:
     Type: AWS::Serverless::Function
@@ -155,7 +158,6 @@ Resources:
       Handler: dist/lambda-migration.handler
       Timeout: 900
       MemorySize: 2048
-      ReservedConcurrentExecutions: 1
       Policies:
         - AWSLambdaBasicExecutionRole
         - Statement:

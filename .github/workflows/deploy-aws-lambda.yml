@@ -14,12 +14,20 @@ jobs:
     permissions:
       contents: read
     env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+      AWS_COSTS_APPROVED: ${{ vars.AWS_COSTS_APPROVED }}
       STACK_NAME: data-engineering-practice-prod
       SSM_PARAMETER_PREFIX: /data-engineering/prod/backend
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Require explicit AWS cost approval
+        run: |
+          if [[ "$AWS_COSTS_APPROVED" != "true" ]]; then
+            echo "::error::This stack can incur AWS charges. Set the repository Actions variable AWS_COSTS_APPROVED=true only after accepting potential costs."
+            exit 1
+          fi
 
       - uses: actions/setup-node@v4
         with:

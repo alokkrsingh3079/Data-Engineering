@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import './styles.css';
 import './studio-theme.css';
 import './studio-layout.css';
+import './responsive.css';
 
 const App = lazy(() => import('./App'));
 const TimedInterview = lazy(() => import('./TimedInterview'));

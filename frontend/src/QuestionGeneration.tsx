@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Activity, ArrowLeft, ArrowRight, BarChart3, BookOpen, Code2, Database, FileUp, Layers3, LoaderCircle, Sparkles, Target, Trash2 } from "lucide-react";
 import "./question-generation.css";
 import "./studio-sidebar.css";
+import StudioNavigation from "./StudioNavigation";
+import "./responsive.css";
 
 type DatasetTable = {
   name: string;
@@ -323,16 +325,8 @@ export default function QuestionGeneration() {
     }
   }
 
-  return <div className="qgShell">
-    <aside className="studioSidebar qgSidebar">
-      <a className="studioBrand" href="/"><span className="studioBrandMark"><Database size={18} /></span><span><strong>Data Engineering</strong><small>PRACTICE PLATFORM</small></span></a>
-      <nav className="studioActions" aria-label="Main navigation">
-        <a href="/"><BarChart3 size={15} /> Dashboard</a><a href="/sql"><Database size={15} /> SQL lab</a><a href="/learn/python-etl"><Code2 size={15} /> Python lab</a><a href="/pyspark"><Layers3 size={15} /> PySpark lab</a><a href="/learn/azure-data-factory"><Activity size={15} /> Azure &amp; Databricks</a><a href="/learn/etl-data-quality"><Target size={15} /> ETL testing</a><a href="/notes"><BookOpen size={15} /> Notes &amp; Study Material</a>
-        <a className="studioNavActive" href="/question-generation"><Sparkles size={15} /> Question Generation</a>
-        <a href="/interview"><BookOpen size={15} /> Interview</a><a href="/ask-ai"><Sparkles size={15} /> Ask AI</a><a href="/analytics"><BarChart3 size={15} /> Progress &amp; Analytics</a><a href="/ai-interview"><Sparkles size={15} /> AI interview</a>
-      </nav>
-      <a className="qgBack" href="/"><ArrowLeft size={15} /> Back to dashboard</a>
-    </aside>
+  return <div className="studioShell qgShell">
+    <StudioNavigation activePath="/question-generation" />
     <main className="qgPage">
       <header className="qgHeader"><span>DATASET-GROUNDED PRACTICE</span><h1>Question Generation</h1><p>Upload a dataset, inspect its schema, then generate verified exercises for the existing labs.</p></header>
       {error && <div className="qgAlert" role="alert">{error}</div>}

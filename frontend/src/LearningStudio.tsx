@@ -4,6 +4,7 @@ import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Activity, ArrowRight, BarChart3, BookOpen, Bookmark, Check, ChevronDown, Circle, Clock3, Code2, Database, Flag, Layers3, Lightbulb, LogOut, RefreshCw, Sparkles, Target } from "lucide-react";
 import CopyButton from "./CopyButton";
+import StudioNavigation from "./StudioNavigation";
 import TodayTrackRings, { type OverallDifficultyProgress } from "./TodayTrackRings";
 import "./learning-studio.css";
 import "./learning-engine.css";
@@ -15,6 +16,7 @@ import "./solution-copy.css";
 import "./revision-bookmark.css";
 import "./dashboard-progress.css";
 import "./question-bank-progress.css";
+import "./responsive.css";
 import { questionBankProgress, questionBankProgressClass, questionBankProgressLabel, questionBankProgressStyle } from "./questionBankProgress";
 
 type Lesson = {
@@ -82,10 +84,6 @@ export default function LearningStudio() {
   const [modules, setModules] = useState<Module[]>([]);
   const [overallDifficulty, setOverallDifficulty] = useState<OverallDifficultyProgress | null>(null);
   const [dashboardOpen, setDashboardOpen] = useState(location.pathname === "/");
-  const [sqlExpanded, setSqlExpanded] = useState(() => {
-    const saved = localStorage.getItem("studio.sqlNavigationExpanded");
-    return saved === null ? true : saved === "true";
-  });
   const [userName, setUserName] = useState("Data Engineer");
   const [selectedModule, setSelectedModule] = useState("");
   const [selectedLesson, setSelectedLesson] = useState("");
@@ -123,9 +121,6 @@ export default function LearningStudio() {
   const [codeResult, setCodeResult] = useState<CodeResult | null>(null);
   const [codeRunning, setCodeRunning] = useState(false);
 
-  useEffect(() => {
-    localStorage.setItem("studio.sqlNavigationExpanded", String(sqlExpanded));
-  }, [sqlExpanded]);
   const deferredSearch = useDeferredValue(questionSearch);
 
   async function load() {
@@ -485,43 +480,9 @@ export default function LearningStudio() {
     window.history.pushState({}, "", `/learn/${item.module_id}?revision=1&questionId=${encodeURIComponent(item.id)}`);
   }
 
-  async function signOut() {
-    await fetch(`${API}/api/auth/logout`, { method: "POST", credentials: "include" });
-    location.href = "/login";
-  }
-
   return (
     <div className="studioShell">
-      <aside className="studioSidebar">
-        <a className="studioBrand" href="/" aria-label="Data Engineering Studio home">
-          <span className="studioBrandMark"><Layers3 size={18} /></span>
-          <span><strong>Data Engineering</strong><small>PRACTICE PLATFORM</small></span>
-        </a>
-        <nav className="studioActions" aria-label="Main navigation">
-          <a className={dashboardOpen ? "studioNavActive" : ""} href="/"><BarChart3 size={15} /> Dashboard</a>
-          <div className="studioNavGroup">
-            <button type="button" className={location.pathname === "/sql" || location.pathname === "/sql-learning" ? "studioNavActive" : ""} aria-expanded={sqlExpanded} onClick={() => setSqlExpanded((expanded) => !expanded)}>
-              <Database size={15} /> SQL <ChevronDown className={sqlExpanded ? "studioNavChevronExpanded" : ""} size={14} />
-            </button>
-            {sqlExpanded && <div className="studioNavChildren">
-              <a className={location.pathname === "/sql" ? "studioNavActive" : ""} href="/sql" aria-current={location.pathname === "/sql" ? "page" : undefined}>SQL Lab</a>
-              <a className={location.pathname === "/sql-learning" ? "studioNavActive" : ""} href="/sql-learning" aria-current={location.pathname === "/sql-learning" ? "page" : undefined}>SQL Learning</a>
-            </div>}
-          </div>
-          <a href="/learn/python-etl"><Code2 size={15} /> Python lab</a>
-          <a href="/pyspark"><Layers3 size={15} /> PySpark lab</a>
-          <a href="/learn/azure-data-factory"><Activity size={15} /> Azure &amp; Databricks</a>
-          <a href="/learn/etl-data-quality"><Target size={15} /> ETL testing</a>
-          <a href="/notes"><BookOpen size={15} /> Notes &amp; Study Material</a>
-          <a className={location.pathname === "/question-generation" ? "studioNavActive" : ""} href="/question-generation"><Sparkles size={15} /> Question Generation</a>
-          <a href="/interview"><BookOpen size={15} /> Interview</a>
-          <a href="/ask-ai"><Sparkles size={15} /> Ask AI</a>
-          <a href="/analytics"><BarChart3 size={15} /> Progress &amp; Analytics</a>
-          <a href="/ai-interview"><Sparkles size={15} /> AI interview</a>
-          <button type="button" onClick={() => void load()}><RefreshCw size={15} /> Refresh learning path</button>
-        </nav>
-        <button className="studioSidebarAccount" onClick={() => void signOut()} title="Sign out"><span>{userName.slice(0, 1).toUpperCase()}</span><span><strong>{userName}</strong><small>LEARNER ACCOUNT</small></span><LogOut size={15} /></button>
-      </aside>
+      <StudioNavigation activePath={location.pathname} refreshLabel="Refresh learning path" onRefresh={() => void load()} />
       <main className="studioPage">
 
       {dashboardOpen && <section className="studioWelcome">
