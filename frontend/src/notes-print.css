@@ -565,12 +565,19 @@
     break-after: avoid-page;
   }
 
-  .noteText p,
-  .noteListPoints,
-  .noteCallout,
-  .noteTableWrap,
-  .visualFlow {
+  .noteText p {
+    orphans: 3;
+    widows: 3;
+  }
+
+  .noteListPoints li,
+  .noteTableWrap tr,
+  .visualFlow .flowNode {
     break-inside: avoid;
+  }
+
+  .noteCallout > span {
+    break-after: avoid-page;
   }
 
   .noteText p,
