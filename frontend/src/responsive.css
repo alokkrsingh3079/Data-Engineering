@@ -924,7 +924,8 @@ html {
 }
 
 .notesShell .noteCode .cm-scroller {
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .notesShell .noteCode .cm-gutters {

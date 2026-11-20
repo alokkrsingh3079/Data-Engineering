@@ -499,6 +499,15 @@
     white-space: pre-wrap;
   }
 
+  .noteCode .cm-editor {
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  .noteCode .cm-scroller {
+    overflow: visible !important;
+  }
+
   .noteTableWrap {
     overflow: visible !important;
   }

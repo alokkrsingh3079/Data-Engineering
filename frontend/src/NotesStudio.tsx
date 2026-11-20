@@ -67,18 +67,9 @@ function noteCodeExtensions(language: string) {
 }
 
 function NoteCodeSample({ code, language }: { code: string; language: string }) {
-  const [wrapLines, setWrapLines] = useState(() => window.matchMedia("(max-width: 900px)").matches);
-
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 900px)");
-    const updateWrapping = () => setWrapLines(media.matches);
-    media.addEventListener("change", updateWrapping);
-    return () => media.removeEventListener("change", updateWrapping);
-  }, []);
-
   const extensions = useMemo(
-    () => [...noteCodeExtensions(language), ...(wrapLines ? [EditorView.lineWrapping] : [])],
-    [language, wrapLines],
+    () => [...noteCodeExtensions(language), EditorView.lineWrapping],
+    [language],
   );
 
   return <CodeMirror
