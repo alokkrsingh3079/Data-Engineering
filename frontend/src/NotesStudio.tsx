@@ -3,6 +3,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { sql } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { EditorView } from "@codemirror/view";
 import { ArrowLeft, ArrowRight, Bookmark, BookOpen, BriefcaseBusiness, Check, ChevronRight, Clock3, Cloud, Code2, Columns2, Database, Download, FileText, FolderOpen, GitBranch, GraduationCap, Layers3, Lightbulb, LogOut, Maximize2, Menu, Minimize2, Pencil, Pin, Plus, Printer, Search, Sparkles, Trash2, Type, Workflow, X, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
 import "./notes-studio.css";
 import "./notes-print.css";
@@ -63,6 +64,30 @@ function noteCodeExtensions(language: string) {
   if (language.toLowerCase() === "sql") return [sql()];
   if (["python", "pyspark"].includes(language.toLowerCase())) return [python()];
   return [];
+}
+
+function NoteCodeSample({ code, language }: { code: string; language: string }) {
+  const [wrapLines, setWrapLines] = useState(() => window.matchMedia("(max-width: 900px)").matches);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 900px)");
+    const updateWrapping = () => setWrapLines(media.matches);
+    media.addEventListener("change", updateWrapping);
+    return () => media.removeEventListener("change", updateWrapping);
+  }, []);
+
+  const extensions = useMemo(
+    () => [...noteCodeExtensions(language), ...(wrapLines ? [EditorView.lineWrapping] : [])],
+    [language, wrapLines],
+  );
+
+  return <CodeMirror
+    value={code}
+    extensions={extensions}
+    theme={oneDark}
+    editable={false}
+    basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false }}
+  />;
 }
 
 function subjectColor(subject: string) {
@@ -509,7 +534,7 @@ export default function NotesStudio() {
     return blocks.map((block, index) => block.type === "code"
       ? block.language?.toLowerCase() === "flow"
         ? <div className="visualFlow" key={index} aria-label={block.value.replace(/\s*(?:->|→)\s*/g, ", then ")}>{block.value.split(/\s*(?:->|→)\s*/).filter(Boolean).map((step, stepIndex) => <Fragment key={stepIndex}>{stepIndex > 0 && <ArrowRight className="flowArrow" size={17} aria-hidden="true" />}<div className={`flowNode tone-${stepIndex % 5}`}><small>{String(stepIndex + 1).padStart(2, "0")}</small><strong>{step}</strong></div></Fragment>)}</div>
-        : <div className={`noteCode ${block.language || ""}`} key={index}><div className="noteCodeBar"><span>{block.language || "CODE"}</span><button title="Copy code" aria-label="Copy code" onClick={() => void Promise.resolve().then(() => navigator.clipboard.writeText(block.value)).then(() => setNotice("Code copied")).catch(() => setError("Clipboard access was denied. Select and copy the code manually."))}><Check size={14} /> Copy</button></div><CodeMirror value={block.value} extensions={noteCodeExtensions(block.language || "")} theme={oneDark} editable={false} basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false }} /></div>
+        : <div className={`noteCode ${block.language || ""}`} key={index}><div className="noteCodeBar"><span>{block.language || "CODE"}</span><button title="Copy code" aria-label="Copy code" onClick={() => void Promise.resolve().then(() => navigator.clipboard.writeText(block.value)).then(() => setNotice("Code copied")).catch(() => setError("Clipboard access was denied. Select and copy the code manually."))}><Check size={14} /> Copy</button></div><NoteCodeSample code={block.value} language={block.language || ""} /></div>
       : <div className="noteText" key={index}>{(() => {
         const lines = block.value.split("\n");
         const elements: JSX.Element[] = [];

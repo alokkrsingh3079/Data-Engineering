@@ -743,7 +743,7 @@ html {
   display: none;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 900px) {
   .notesShell > .notesSidebar {
     position: sticky;
     z-index: 100;
@@ -905,5 +905,40 @@ html {
   .notesMobileMenu {
     min-height: 38px;
     padding: 6px 8px;
+  }
+}
+
+.notesShell .noteCode {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.notesShell .noteCode .cm-editor {
+  width: 100%;
+  max-width: 100%;
+  max-height: min(560px, 70vh);
+  background: #102238;
+  color: #d8edff;
+  font: 12px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.notesShell .noteCode .cm-scroller {
+  overflow: auto;
+}
+
+.notesShell .noteCode .cm-gutters {
+  border-right: 1px solid #29435e;
+  background: #0d1b2b;
+  color: #8198ae;
+}
+
+.notesShell .noteCode .cm-content {
+  padding: 12px 0;
+}
+
+@media (max-width: 900px) {
+  .notesShell .noteCode .cm-editor {
+    font-size: 11px;
   }
 }
