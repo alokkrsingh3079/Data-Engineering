@@ -612,6 +612,11 @@ export default function NotesStudio() {
       const { Previewer } = await import("pagedjs");
       const printReader = reader.cloneNode(true) as HTMLElement;
       printReader.querySelectorAll(".readerViewControls, .readerCrumb").forEach((element) => element.remove());
+      printReader.querySelectorAll<HTMLElement>(".noteCode .cm-editor").forEach((editor) => {
+        const code = document.createElement("pre");
+        code.textContent = Array.from(editor.querySelectorAll(".cm-line"), (line) => line.textContent || "").join("\n");
+        editor.replaceWith(code);
+      });
 
       const source = document.createElement("div");
       source.className = "notesShell";

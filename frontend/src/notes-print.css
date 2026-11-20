@@ -475,7 +475,6 @@
     display: block !important;
     min-height: 8.15in;
     padding: 0.15in 0.1in;
-    break-after: page;
   }
 
   .printBookContents h2 {
@@ -549,6 +548,8 @@
   .readerStudyLayout,
   .readerStudyLayout.withSourcePdf {
     display: block !important;
+    break-before: page !important;
+    page-break-before: always !important;
   }
 
   .readerContent {
@@ -619,9 +620,19 @@
     display: none !important;
   }
 
+  .noteCodeBar {
+    break-after: avoid-page;
+    page-break-after: avoid;
+  }
+
   .noteCode pre {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
     overflow-wrap: anywhere;
     white-space: pre-wrap;
+    break-inside: auto;
+    page-break-inside: auto;
   }
 
   .noteCode .cm-editor {
