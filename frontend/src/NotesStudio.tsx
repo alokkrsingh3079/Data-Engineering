@@ -638,6 +638,11 @@ export default function NotesStudio() {
               <h1>{activeNote.title}</h1>
               <div className="readerMeta">Updated {formatDate(activeNote.updated_at)}{activeNote.chapter && <span>{activeNote.chapter}</span>}{activeNote.subtopic && <span>{activeNote.subtopic}</span>}{activeNote.status === "draft" && <span>Draft</span>}{activeNote.tags?.map((tag) => <span key={tag}>#{tag}</span>)}{activeNote.source && <span>Source: {activeNote.source}</span>}{activeNote.source_document_id && <a href={`/api/notes/documents/${activeNote.source_document_id}/file`} target="_blank" rel="noreferrer">Source: {activeNote.source_filename || "PDF"}</a>}</div>
             </header>
+            {readerMode !== "source" && headings.length > 0 && <nav className="printBookContents" aria-label="Table of contents">
+              <h2>Contents</h2>
+              <p>{activeNote.title}</p>
+              <ol>{headings.map((heading, index) => <li key={heading.id}><span>{String(index + 1).padStart(2, "0")}</span><a href={`#${heading.id}`}>{heading.title}</a></li>)}</ol>
+            </nav>}
             <div className={`readerStudyLayout readerMode-${readerMode}`} style={{ "--reader-text-scale": [0.95, 1, 1.12, 1.25][readerTextSize] } as React.CSSProperties}>
               {readerMode !== "source" && <div className="readerContent">{activeNote.content ? renderContent(activeNote.content) : <div className="readerEmpty">This note has no content yet. Add your study material with Edit note.</div>}</div>}
               {readerMode !== "notes" && activeNote.source_document_id && <section className="readerPdfPanel" aria-label="Original source PDF">

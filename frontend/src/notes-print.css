@@ -353,10 +353,35 @@
   }
 }
 
+.printBookContents {
+  display: none;
+}
+
 @media print {
   @page {
     size: letter;
-    margin: 0.7in 0.75in;
+    margin: 0.72in 0.78in 0.68in;
+
+    @top-left {
+      content: "DATA ENGINEERING PRACTICE";
+      color: #64788b;
+      font: 700 8pt "DM Sans", sans-serif;
+      letter-spacing: 0.08em;
+    }
+
+    @top-right {
+      content: "STUDY NOTES";
+      color: #64788b;
+      font: 700 8pt "DM Sans", sans-serif;
+      letter-spacing: 0.08em;
+    }
+
+    @bottom-center {
+      content: counter(page);
+      color: #52677b;
+      font: 9pt "DM Sans", sans-serif;
+    }
+
   }
 
   html,
@@ -404,10 +429,15 @@
   }
 
   .readerHero {
-    margin: 0 0 22px !important;
-    padding: 0 0 16px !important;
-    border-bottom: 2px solid #1d5b88 !important;
+    display: flex !important;
+    min-height: 8.15in !important;
+    flex-direction: column;
+    justify-content: center;
+    margin: 0 !important;
+    padding: 0.7in 0.3in !important;
+    border-bottom: 0 !important;
     break-inside: avoid;
+    break-after: page;
   }
 
   .readerHero::after,
@@ -417,15 +447,68 @@
 
   .readerHero h1 {
     max-width: none !important;
-    margin: 12px 0 8px !important;
+    margin: 20px 0 14px !important;
     color: #123b5c !important;
-    font-size: 25pt !important;
+    font-size: 34pt !important;
     line-height: 1.2 !important;
+  }
+
+  .readerHero .readerSubject {
+    font-size: 10pt !important;
+    letter-spacing: 0.12em;
   }
 
   .readerHero .readerSubject,
   .readerHero .readerMeta {
     color: #476278 !important;
+  }
+
+  .printBookContents {
+    display: block !important;
+    min-height: 8.15in;
+    padding: 0.15in 0.1in;
+    break-after: page;
+  }
+
+  .printBookContents h2 {
+    margin: 0 0 8px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #1d5b88;
+    color: #123b5c;
+    font: 700 24pt/1.2 Manrope, sans-serif;
+  }
+
+  .printBookContents > p {
+    margin: 0 0 24px;
+    color: #60758a;
+    font: italic 11pt/1.5 "DM Sans", sans-serif;
+  }
+
+  .printBookContents ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .printBookContents li {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px dotted #bdcbd8;
+    break-inside: avoid;
+  }
+
+  .printBookContents li > span {
+    min-width: 24px;
+    color: #1d5b88;
+    font: 700 9pt "DM Sans", sans-serif;
+  }
+
+  .printBookContents a {
+    color: #263d53;
+    font: 11pt/1.4 "DM Sans", sans-serif;
+    text-decoration: none;
   }
 
   .readerStudyLayout,
